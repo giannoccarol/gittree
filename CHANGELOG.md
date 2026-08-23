@@ -1,3 +1,17 @@
+# [0.22.0](https://github.com/giannoccarol/gittree/compare/v0.21.4...v0.22.0) (2026-08-23)
+
+
+### Bug Fixes
+
+* **git:** handle localized merge-tree output and detect merge conflicts reliably ([b5d8e5d](https://github.com/giannoccarol/gittree/commit/b5d8e5da7c4b8fef0172b3404eedf63ac189ba0e))
+* **types:** resolve agent service strict errors and add build tsconfig ([c6dadad](https://github.com/giannoccarol/gittree/commit/c6dadad400f618e807fa287f529a71e7f5aaf6b7))
+
+
+### Features
+
+* **shared:** add typed GitTreeBridge contract (M5) ([01b317e](https://github.com/giannoccarol/gittree/commit/01b317e7c384ce4c3b8675ef4d906fdbb81c6194))
+* **shared:** add typed IPC contracts and convert pure leaves (M2) ([151a030](https://github.com/giannoccarol/gittree/commit/151a030f84724c8ac9be3242bfc9932d6b3db950))
+
 ## [0.21.4](https://github.com/giannoccarol/gittree/compare/v0.21.3...v0.21.4) (2026-08-20)
 
 
