@@ -61,20 +61,6 @@
   },
   "license": "MIT",
   "desktopName": "GitTree.desktop",
-  "build": {
-    "appId": "com.lorenzogit.gittree",
-    "productName": "GitTree",
-    "directories": {
-      "buildResources": "build",
-      "output": "dist"
-    },
-    "files": [
-      "dist/**/*",
-      "package.json"
-    ],
-    "asar": true,
-    "extraResources": []
-  },
   "type": "commonjs",
   "engines": {
     "node": ">=22"

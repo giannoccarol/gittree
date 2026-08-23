@@ -13,9 +13,20 @@ directories:
   buildResources: build
 
 files:
-  - src/**/*
+  - dist/**/*
   - icon.png
   - package.json
+  - "!dist/*-unpacked/**"
+  - "!dist/*.AppImage*"
+  - "!dist/*.pacman"
+  - "!dist/*.deb"
+  - "!dist/*.exe*"
+  - "!dist/*.zip*"
+  - "!dist/*.dmg*"
+  - "!dist/*.blockmap"
+  - "!dist/snap-template*"
+  - "!dist/builder-debug.yml"
+  - "!dist/builder-effective-config.yaml"
   - "!**/*.map"
   - "!**/*.md"
 

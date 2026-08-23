@@ -92,6 +92,7 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - run: npm run build:compile
       - run: npm run prepare:assets
       - run: npx electron-builder --win --x64 --publish never
       - name: Validate and upload Windows OTA assets
@@ -120,6 +121,7 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - run: npm run build:compile
       - run: npm run prepare:assets
       - name: Build macOS installers
         shell: bash
@@ -164,6 +166,7 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - run: npm run build:compile
       - run: npm run prepare:assets
       - name: Install Pacman packaging tools
         run: sudo apt-get update && sudo apt-get install --yes libarchive-tools
