@@ -4,7 +4,7 @@
   "description": "A fast, open-source Git desktop client for visual history and local-first repository management.",
   "main": "dist/main/main.mjs",
   "scripts": {
-    "start": "npm run build:compile && electron .",
+    "start": "npm run build:compile && node scripts/prepare-build-assets.js --renderer-only && electron .",
     "postinstall": "electron-builder install-app-deps",
     "build:compile": "tsc -p tsconfig.json",
     "prepare:assets": "node scripts/prepare-build-assets.js",
