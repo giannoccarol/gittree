@@ -1,3 +1,10 @@
+## [0.22.2](https://github.com/giannoccarol/gittree/compare/v0.22.1...v0.22.2) (2026-08-23)
+
+
+### Bug Fixes
+
+* restore CommonJS preload and verbatim i18n for sandboxed renderer ([6eea4cb](https://github.com/giannoccarol/gittree/commit/6eea4cb79639966f15f01929e09f768e7d4d619e))
+
 ## [0.22.1](https://github.com/giannoccarol/gittree/compare/v0.22.0...v0.22.1) (2026-08-23)
 
 
