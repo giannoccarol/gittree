@@ -142,10 +142,11 @@ export class RepositoryWorktrees {
   async list(): Promise<WorktreeEntry[]> {
     try {
       const worktrees = this.parse(await this.git.raw(['worktree', 'list', '--porcelain']));
-      if (!this.readStatus) return worktrees;
+      const readStatus = this.readStatus;
+      if (!readStatus) return worktrees;
       return Promise.all(worktrees.map(async worktree => ({
         ...worktree,
-        ...(await this.readStatus(worktree.path))
+        ...(await readStatus(worktree.path))
       })));
     } catch (error) {
       throw new Error(`Failed to get worktrees: ${(error as Error).message}`, { cause: error });

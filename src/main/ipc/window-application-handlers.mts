@@ -44,8 +44,8 @@ interface UpdateServiceLike {
 }
 
 interface WindowApplicationDependencies {
-  registerHandler: (channel: string, handler: (...args: unknown[]) => unknown) => void;
-  registerManagedRepoHandler: (channel: string, handler: (...args: unknown[]) => unknown) => void;
+  registerHandler: (channel: string, handler: (...args: never[]) => unknown) => void;
+  registerManagedRepoHandler: (channel: string, handler: (...args: never[]) => unknown) => void;
   getMainWindow: () => BrowserWindowLike | null;
   getWindowState: () => unknown;
   getUpdateService?: () => UpdateServiceLike | null | undefined;
@@ -78,19 +78,19 @@ function registerWindowHandlers({ registerHandler, getMainWindow, getWindowState
 
 function registerUpdateHandlers({ registerHandler, getUpdateService, getAppVersion, isPackaged }: WindowApplicationDependencies) {
   registerHandler('update:get-state', () => (
-    getUpdateService()?.getState() || {
+    getUpdateService?.()?.getState() || {
       status: isPackaged ? 'idle' : 'disabled',
       currentVersion: getAppVersion()
     }
   ));
   registerHandler('update:check', () => (
-    getUpdateService()?.check(true) || { success: false, error: 'Updater is not ready' }
+    getUpdateService?.()?.check?.(true) || { success: false, error: 'Updater is not ready' }
   ));
   registerHandler('update:download', () => (
-    getUpdateService()?.download() || { success: false, error: 'Updater is not ready' }
+    getUpdateService?.()?.download?.() || { success: false, error: 'Updater is not ready' }
   ));
   registerHandler('update:install', () => (
-    getUpdateService()?.install() || { success: false, error: 'Updater is not ready' }
+    getUpdateService?.()?.install?.() || { success: false, error: 'Updater is not ready' }
   ));
 }
 
@@ -128,9 +128,9 @@ export function registerWindowApplicationHandlers(dependencies: WindowApplicatio
   registerHandler('window:open-inspector', (payload: unknown) => openInspector(payload));
   registerHandler('window:update-inspector', (payload: unknown) => updateInspector(payload));
   registerHandler('dialog:select-directory', async () => {
-    const result = await showOpenDialog(getMainWindow(), { properties: ['openDirectory'] });
-    return !result.canceled && result.filePaths.length
-      ? authorizeDirectory(result.filePaths[0])
+    const result = await showOpenDialog!(getMainWindow(), { properties: ['openDirectory'] });
+    return !result.canceled && result.filePaths!.length
+      ? authorizeDirectory(result.filePaths![0])
       : null;
   });
 }

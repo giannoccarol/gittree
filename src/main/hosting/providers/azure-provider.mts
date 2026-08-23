@@ -122,8 +122,8 @@ export class AzureProviderAdapter {
       path: filePath,
       oldPath: oldPath && oldPath !== filePath ? oldPath : null,
       status,
-      additions: null,
-      deletions: null,
+      additions: 0,
+      deletions: 0,
       binary: Boolean(entry.item?.isFolder),
       patch: ''
     };
@@ -371,15 +371,17 @@ export class AzureProviderAdapter {
       description: this.buildDescription(options.body, options.workItems),
       isDraft: options.draft
     };
-    if (options.reviewers.length) {
-      body.reviewers = await this.resolveReviewers(repo, options.reviewers);
+    const reviewers = options.reviewers ?? [];
+    const workItems = options.workItems ?? [];
+    if (reviewers.length) {
+      body.reviewers = await this.resolveReviewers(repo, reviewers);
     }
-    if (options.workItems.length) {
-      body.workItemRefs = options.workItems.map(id => ({ id: String(id) }));
+    if (workItems.length) {
+      body.workItemRefs = workItems.map(id => ({ id: String(id) }));
     }
     const created = await this.api(repo, '/pullrequests', { method: 'POST', body });
     const warnings = [];
-    for (const label of options.labels) {
+    for (const label of options.labels ?? []) {
       try {
         await this.api(repo, `/pullrequests/${created.data.pullRequestId}/labels`, {
           method: 'POST',
@@ -393,7 +395,7 @@ export class AzureProviderAdapter {
     return {
       success: true,
       pullRequest: summary,
-      url: `https://dev.azure.com/${encodeURIComponent(repo.organization)}/${encodeURIComponent(repo.project)}/_git/${encodeURIComponent(repo.repository)}/pullrequest/${summary.number}`,
+      url: `https://dev.azure.com/${encodeURIComponent(String(repo.organization))}/${encodeURIComponent(String(repo.project))}/_git/${encodeURIComponent(repo.repository)}/pullrequest/${summary.number}`,
       warnings
     };
   }

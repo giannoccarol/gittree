@@ -267,8 +267,7 @@ export class RepositoryWorkingTree {
       staged: parsed.staged,
       binary: parsed.binary,
       hunks: parsed.hunks.map(hunk => {
-        const copy = { ...hunk };
-        delete copy.raw;
+        const { raw: _raw, ...copy } = hunk;
         return copy;
       })
     };
@@ -371,7 +370,7 @@ export class RepositoryWorkingTree {
       throw new Error('Working tree changed; refresh Changes and try again');
     }
     const prelude = 'noDiff' in diff ? '' : diff.prelude;
-    const patch = `${prelude}${selected.map(hunk => hunk.raw).join('')}`;
+    const patch = `${prelude}${selected.map(hunk => hunk!.raw).join('')}`;
     const args = ['apply', '--cached', '--recount', '--whitespace=nowarn'];
     if (reverse) args.push('--reverse');
     args.push('-');

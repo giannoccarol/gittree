@@ -16,7 +16,7 @@ function validateCloneUrl(value: unknown): string | null {
   const supported = /^https:\/\//i.test(url) || /^ssh:\/\//i.test(url) ||
     /^git\+ssh:\/\//i.test(url) || /^[A-Za-z0-9._-]+@[A-Za-z0-9._-]+:[^\s]+$/.test(url);
   const hasControlCharacters = [...url].some(character => {
-    const code = character.codePointAt(0);
+    const code = character.codePointAt(0) ?? 0;
     return code < 0x20 || code === 0x7f;
   });
   return supported && !hasControlCharacters ? url : null;
@@ -64,7 +64,7 @@ async function cloneRepository(url: string, parentDirectory: string, repositoryW
 }
 
 interface RepositoryHandlerDependencies {
-  registerHandler: (channel: string, handler: (...args: unknown[]) => unknown) => void;
+  registerHandler: (channel: string, handler: (...args: never[]) => unknown) => void;
   scanRepositories: (rootPath: unknown, options?: Record<string, unknown>) => Promise<ScanResult>;
   sendToRenderer: (channel: string, payload: unknown) => void;
   repositoryWorkspace: RepositoryWorkspace;
@@ -150,7 +150,7 @@ async function addRepositories(
 }
 
 interface RepositoryHandlersBundle {
-  registerHandler: (channel: string, handler: (...args: unknown[]) => unknown) => void;
+  registerHandler: (channel: string, handler: (...args: never[]) => unknown) => void;
   repositoryWorkspace: RepositoryWorkspace;
   isWorkingTreeRepository: (repoPath: unknown) => Promise<boolean> | boolean;
   createGitService: (repoPath: string) => unknown;

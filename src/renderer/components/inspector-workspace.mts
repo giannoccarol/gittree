@@ -201,9 +201,9 @@ export class InspectorWorkspace {
       const status = document.createElement('span');
       status.className = `inspector-file-status is-${String(file.status || 'M').toLowerCase()}`;
       const statusIcon = document.createElement('i');
-      statusIcon.className = `ph ${this.statusIcon(file.status)}`;
+      statusIcon.className = `ph ${this.statusIcon(String(file.status))}`;
       statusIcon.setAttribute('aria-hidden', 'true');
-      status.title = this.translate(this.statusLabel(file.status));
+      status.title = this.translate(this.statusLabel(String(file.status)));
       status.appendChild(statusIcon);
 
       const path = document.createElement('span');

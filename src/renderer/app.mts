@@ -104,16 +104,16 @@ export class GitTreeApp {
   bus = new EventBus();
   dialogs = new DialogService();
   toasts = new ToastService({
-    container: document.getElementById('toast') as HTMLElement,
+    container: document.getElementById('toast')! as HTMLElement,
     translate: key => window.I18n?.t(key) ?? key,
     encode: value => HtmlEncoder.encode(value)
   });
-  repositoryWorkspace: RepositoryWorkspaceController | null = null;
-  remoteOperations: RemoteOperationController | null = null;
-  panelMotion: WorkspacePanelMotion | null = null;
-  workspaceState: WorkspaceStateController | null = null;
-  shortcutController: ShortcutController | null = null;
-  workspaceResize: WorkspaceResizeController | null = null;
+  repositoryWorkspace!: RepositoryWorkspaceController;
+  remoteOperations!: RemoteOperationController;
+  panelMotion!: WorkspacePanelMotion;
+  workspaceState!: WorkspaceStateController;
+  shortcutController!: ShortcutController;
+  workspaceResize!: WorkspaceResizeController;
   platform = 'win32';
   windowState: { isMaximized?: boolean } | null = null;
   popoutOpen = false;
@@ -132,14 +132,15 @@ export class GitTreeApp {
       return this.repositoryWorkspace.isCurrentRepository(repoPath);
     }
     const current = this.state.repo?.path;
-    return Boolean(current) && this.pathKey(repoPath) === this.pathKey(current);
+    if (!current) return false;
+    return this.pathKey(repoPath ?? '') === this.pathKey(current);
   }
 
   async init(): Promise<void> {
     this.components.welcome = new WelcomeScreen();
     this.components.repoTabs = new RepoTabs(byId('repo-tab-list'), this, {
       storage: localStorage,
-      platform: window.gitTree.platform
+      platform: window.gitTree.platform as string
     });
     this.components.settings = new SettingsView(this);
     this.components.branchContextMenu = new BranchContextMenu(this);
@@ -158,12 +159,12 @@ export class GitTreeApp {
     );
     this.components.diffViewer = new DiffViewer(byId('detail-body'), this);
     this.components.inspectorWorkspace = new InspectorWorkspace({
-      container: document.getElementById('inspector-workspace'),
-      graphContainer: document.getElementById('inspector-graph-view'),
-      filesPanel: document.getElementById('inspector-files-panel'),
-      fileList: document.getElementById('inspector-file-list'),
-      filesToggle: document.getElementById('btn-toggle-inspector-files'),
-      diffContainer: document.getElementById('detail-body'),
+      container: document.getElementById('inspector-workspace')!,
+      graphContainer: document.getElementById('inspector-graph-view')!,
+      filesPanel: document.getElementById('inspector-files-panel')!,
+      fileList: document.getElementById('inspector-file-list')!,
+      filesToggle: document.getElementById('btn-toggle-inspector-files')!,
+      diffContainer: document.getElementById('detail-body')!,
       translate: t,
       storage: localStorage,
       onGraphSelect: hash => this.components.graphView.select(hash),
@@ -252,7 +253,7 @@ export class GitTreeApp {
     });
     this.shortcutController = new ShortcutController({
       document,
-      platform: window.gitTree.platform || 'win32',
+      platform: window.gitTree.platform as string,
       translate: t,
       callbacks: {
         openRepository: () => this.components.welcome.openRepo(),
@@ -321,7 +322,7 @@ export class GitTreeApp {
       button.onclick = () => window.I18n?.toggleLanguage();
     });
     document.querySelectorAll<HTMLElement>('.window-minimize').forEach(button => {
-      button.onclick = () => window.gitTree.minimizeWindow();
+      (button as HTMLElement).onclick = () => window.gitTree.minimizeWindow();
     });
     document.querySelectorAll<HTMLElement>('.window-maximize').forEach(button => {
       button.onclick = async () => {
@@ -421,7 +422,7 @@ export class GitTreeApp {
     button.disabled = state.status === 'downloading' || state.status === 'checking';
     button.classList.toggle(
       'is-hidden',
-      !['available', 'downloading', 'downloaded'].includes(state.status)
+      !['available', 'downloading', 'downloaded'].includes(String(state.status))
     );
 
     if (state.status === 'available') {
@@ -462,7 +463,7 @@ export class GitTreeApp {
       const list = await window.gitTree.getStashList(repoPath) as { all?: Array<{ message?: string }> } | undefined;
       if (!this.isCurrentRepo(repoPath)) return;
       this.state.stashes = list?.all || [];
-      this.renderStashes((document.getElementById('stash-search') as HTMLInputElement | null)?.value || '');
+      this.renderStashes((document.getElementById('stash-search')! as HTMLInputElement | null)?.value || '');
     } catch {
       this.state.stashes = [];
       container.innerHTML = '';
@@ -499,7 +500,7 @@ export class GitTreeApp {
         button.onclick = event => {
           event.stopPropagation();
           const index = Number((item as HTMLElement).dataset.stashIndex);
-          this.runStashAction(button.dataset.action, index);
+          this.runStashAction(button.dataset.action ?? '', index);
         };
       });
     });
@@ -598,8 +599,8 @@ export class GitTreeApp {
   }
 
   updatePushPullCounts(ahead = 0, behind = 0): void {
-    const pullCount = document.getElementById('btn-pull-count');
-    const pushCount = document.getElementById('btn-push-count');
+    const pullCount = document.getElementById('btn-pull-count')!;
+    const pushCount = document.getElementById('btn-push-count')!;
     if (pullCount) {
       const show = behind > 0;
       pullCount.textContent = show ? String(behind) : '';
@@ -631,7 +632,7 @@ export class GitTreeApp {
       currentBranchMetadata?.ahead || 0,
       currentBranchMetadata?.behind || 0
     );
-    this.components.statusBar.setBranch(branchName);
+    this.components.statusBar.setBranch(branchName ?? '');
     return branchName;
   }
 
@@ -655,7 +656,7 @@ export class GitTreeApp {
   async onCommitSelected(hash: string): Promise<void> {
     if (!this.state.repo) return;
     await this.components.diffViewer.showDiffForCommit(this.state.repo.path, hash);
-    this.animateContentRefresh(document.getElementById('detail-body'));
+    this.animateContentRefresh(document.getElementById('detail-body')!);
     this.syncInspectorWorkspace();
   }
 
@@ -707,7 +708,7 @@ export class GitTreeApp {
       currentBranchMetadata?.ahead || 0,
       currentBranchMetadata?.behind || 0
     );
-    this.components.statusBar.setBranch(branchName);
+    this.components.statusBar.setBranch(String(branchName));
     this.components.welcome.markStep?.('branch');
     this.pushInspectorPayload();
   }
@@ -898,7 +899,8 @@ export class GitTreeApp {
     window.gitTree.onInspectorClosed(() => {
       this.popoutOpen = false;
     });
-    window.gitTree.onDeepLinkOpen((repo: { path?: string }) => {
+    window.gitTree.onDeepLinkOpen((payload: unknown) => {
+      const repo = payload as { path?: string };
       this.components.repoTabs?.addRepo(repo.path as string);
     });
     byId('btn-popout-inspector').onclick = async () => {

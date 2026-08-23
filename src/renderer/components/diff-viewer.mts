@@ -41,7 +41,7 @@ export class DiffViewer {
     this.body = bodyEl;
     this.app = app;
     const savedMode = localStorage.getItem('gittree.diff.mode');
-    this.mode = ['unified', 'split'].includes(savedMode) ? savedMode : 'unified';
+    this.mode = savedMode === 'unified' || savedMode === 'split' ? savedMode : 'unified';
     this.modeBeforeExpanded = null;
     this.inspectorExpanded = false;
     this.currentDiff = null;
@@ -67,9 +67,9 @@ export class DiffViewer {
 
     this.wordLevel = localStorage.getItem('gittree.diff.wordLevel') !== '0';
 
-    document.getElementById('btn-diff-unified').onclick = () => this.setMode('unified');
-    document.getElementById('btn-diff-split').onclick = () => this.setMode('split');
-    document.getElementById('btn-diff-word').onclick = () => {
+    document.getElementById('btn-diff-unified')!.onclick = () => this.setMode('unified');
+    document.getElementById('btn-diff-split')!.onclick = () => this.setMode('split');
+    document.getElementById('btn-diff-word')!.onclick = () => {
       this.wordLevel = !this.wordLevel;
       localStorage.setItem('gittree.diff.wordLevel', this.wordLevel ? '1' : '0');
       this.syncModeButtons();
@@ -92,9 +92,9 @@ export class DiffViewer {
   }
 
   syncModeButtons(): void {
-    const unifiedButton = document.getElementById('btn-diff-unified');
-    const splitButton = document.getElementById('btn-diff-split');
-    const wordButton = document.getElementById('btn-diff-word');
+    const unifiedButton = document.getElementById('btn-diff-unified')!;
+    const splitButton = document.getElementById('btn-diff-split')!;
+    const wordButton = document.getElementById('btn-diff-word')!;
     unifiedButton.classList.toggle('active', this.mode === 'unified');
     unifiedButton.setAttribute('aria-pressed', String(this.mode === 'unified'));
     splitButton.classList.toggle('active', this.mode === 'split');
@@ -103,7 +103,7 @@ export class DiffViewer {
     wordButton?.setAttribute('aria-pressed', String(this.wordLevel));
   }
 
-  appendHighlightedLine(contentEl: HTMLElement, text: string, counterpart: string): void {
+  appendHighlightedLine(contentEl: HTMLElement, text: string, counterpart: string | null): void {
     if (!this.wordLevel || !text || !counterpart || text === counterpart) {
       contentEl.textContent = text;
       return;
@@ -149,7 +149,7 @@ export class DiffViewer {
   async showDiffForCommit(repoPath: string, hash: string): Promise<void> {
     this.activeRepoPath = repoPath;
     this.activeHash = hash;
-    const title = document.getElementById('detail-title');
+    const title = document.getElementById('detail-title')!;
     const compactTitle = t('details.changesIn', { hash: hash.substring(0, 7) });
     title.textContent = compactTitle;
     title.title = compactTitle;
@@ -162,32 +162,32 @@ export class DiffViewer {
     try {
       const detail = await window.gitTree.getCommitDetail(repoPath, hash) as CommitDetail;
       if (detail?.error) { this.body.innerHTML = `<div class="diff-placeholder">${this.esc(detail.error)}</div>`; return; }
-      this.currentDiff = detail.diff;
-      this.fileSummaries = this.extractFileSummaries(detail.diff);
+      this.currentDiff = detail.diff ?? null;
+      this.fileSummaries = this.extractFileSummaries(String(detail.diff ?? ''));
       const subject = String(detail.message || '').split(/\r?\n/)[0].trim();
       title.textContent = subject || compactTitle;
       title.title = detail.message || compactTitle;
       this.syncCommitMeta(detail);
-      this.render(detail.diff);
+      this.render(String(detail.diff));
     } catch (e) {
       this.body.innerHTML = `<div class="diff-placeholder">${this.esc((e as Error).message)}</div>`;
     }
   }
 
   syncCommitMeta(detail: Partial<CommitDetail> | null = null): void {
-    const meta = document.getElementById('detail-meta');
+    const meta = document.getElementById('detail-meta')!;
     if (!meta) return;
     const hash = detail?.hash || '';
-    document.getElementById('detail-hash').textContent = hash ? hash.slice(0, 7) : '';
-    document.getElementById('detail-author').textContent = detail?.author_name || '';
-    document.getElementById('detail-date').textContent = detail?.date
+    document.getElementById('detail-hash')!.textContent = hash ? hash.slice(0, 7) : '';
+    document.getElementById('detail-author')!.textContent = detail?.author_name || '';
+    document.getElementById('detail-date')!.textContent = detail?.date
       ? new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' })
         .format(new Date(detail.date))
       : '';
     const count = typeof detail?.diff === 'string'
       ? (detail.diff.match(/^diff --git /gm) || []).length
       : 0;
-    document.getElementById('detail-files').textContent = count
+    document.getElementById('detail-files')!.textContent = count
       ? t('details.files', { count })
       : '';
     meta.classList.toggle('is-hidden', !hash);
@@ -554,8 +554,8 @@ export class DiffViewer {
     const repoPath = this.activeRepoPath;
     const hash = this.activeHash;
     if (!repoPath || !hash) return undefined;
-    const overlay = document.getElementById('modal-overlay');
-    const dialog = document.getElementById('modal-dialog');
+    const overlay = document.getElementById('modal-overlay')!;
+    const dialog = document.getElementById('modal-dialog')!;
     dialog.className = 'confirm-dialog ai-blame-dialog';
     dialog.setAttribute('role', 'dialog');
     dialog.setAttribute('aria-modal', 'true');
@@ -623,7 +623,7 @@ export class DiffViewer {
               <button class="btn btn-primary" type="button" data-close>${this.esc(t('common.cancel'))}</button>
             </div>
           </div>`;
-        dialog.querySelector<HTMLElement>('[data-close]').onclick = () => finish(null);
+        dialog!.querySelector<HTMLElement>('[data-close]')!.onclick = () => finish(null);
       });
     });
   }
@@ -722,7 +722,7 @@ export class DiffViewer {
     this.activeRepoPath = null;
     this.activeHash = null;
     this.body.innerHTML = `<div class="diff-placeholder"><i class="ph ph-cursor-click"></i>${t('details.placeholder')}</div>`;
-    const title = document.getElementById('detail-title');
+    const title = document.getElementById('detail-title')!;
     title.textContent = t('details.title');
     title.title = '';
     this.syncCommitMeta();

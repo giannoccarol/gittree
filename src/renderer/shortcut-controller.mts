@@ -70,7 +70,7 @@ export class ShortcutController {
 
   refreshHints(): void {
     this.document.querySelectorAll<HTMLElement>('[data-platform-shortcut]').forEach(element => {
-      element.textContent = this.label(element.dataset.platformShortcut);
+      element.textContent = this.label(element.dataset.platformShortcut ?? '');
     });
     const titleKeys: Record<string, string> = {
       fetch: 'actions.fetch',
@@ -79,8 +79,8 @@ export class ShortcutController {
       newBranch: 'sidebar.newBranch'
     };
     this.document.querySelectorAll<HTMLElement>('[data-shortcut-title]').forEach(element => {
-      const action = element.dataset.shortcutTitle;
-      element.title = `${this.translate(titleKeys[action])} (${this.label(action)})`;
+      const action = element.dataset.shortcutTitle ?? '';
+      element.title = `${this.translate(titleKeys[action])} (${this.label(String(action))})`;
       element.setAttribute('aria-label', element.title);
     });
   }
@@ -94,7 +94,7 @@ export class ShortcutController {
   handleKeydown(event: KeyboardEvent): void {
     const editable = (event.target as HTMLElement).closest?.('input, textarea, select, [contenteditable="true"]');
     const modalOpen = !this.document
-      .getElementById('modal-overlay')
+      .getElementById('modal-overlay')!
       .classList.contains('is-hidden');
     const primary = this.isPrimaryModifier(event);
     const key = event.key.toLowerCase();

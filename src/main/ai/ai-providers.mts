@@ -45,7 +45,7 @@ export async function requestOpenAiCompatible({
 }: AiRequestOptions): Promise<string> {
   const { signal, dispose } = timeoutSignal(timeoutMs);
   try {
-    const response = await fetch(`${baseUrl.replace(/\/+$/, '')}/chat/completions`, {
+    const response = await fetch(`${baseUrl!.replace(/\/+$/, '')}/chat/completions`, {
       method: 'POST',
       signal,
       headers: {

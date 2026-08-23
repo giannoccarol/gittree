@@ -116,13 +116,13 @@ export class HostingService {
     this.providerAdapters = options.providerAdapters || {
       github: new GitHubProviderAdapter({
         api: (repository, endpoint, options) => this.api(repository as HostedRepositoryRef, endpoint, options),
-        graphql: ((query: string, variables: Record<string, unknown>, token?: string) => this.githubGraphql(query, variables)) as ProviderAdapterSurface extends { graphql?: infer G } ? G : never
+        graphql: ((query: string, variables: Record<string, unknown>, _token?: string) => this.githubGraphql(query, variables)) as ProviderAdapterSurface extends { graphql?: infer G } ? G : never
       }),
       gitlab: new GitLabProviderAdapter({ api: (repository, endpoint, options) => this.api(repository as HostedRepositoryRef, endpoint, options) }),
       azure: new AzureProviderAdapter({
         api: (repository, endpoint, options) => this.api(repository as HostedRepositoryRef, endpoint, options),
-        identityMatches: (...args) => this.azureIdentityMatches(...args),
-        identitySearch: (...args) => this.azureIdentitySearch(...args)
+        identityMatches: (user, reviewer) => this.azureIdentityMatches(user as Record<string, unknown>, reviewer),
+        identitySearch: (organization: unknown, name: unknown) => this.azureIdentitySearch(String(organization ?? ''), String(name))
       })
     };
   }
@@ -218,14 +218,14 @@ export class HostingService {
   async providerStatus(provider: string): Promise<unknown> {
     this.validateProvider(provider);
     const account = await this.vault.getAccount(provider);
-    const security = this.vault.getSecurityState();
+    const security = this.vault.getSecurityState?.();
     return {
       provider,
       configured: provider === 'azure' ? true : Boolean(this.oauthConfig[provider]),
       connected: Boolean(account?.accessToken),
       user: account?.user || null,
       phase: this.loginSessions.has(provider) ? 'authorizing' : 'idle',
-      warning: security.warning || ''
+      warning: security!.warning || ''
     };
   }
 
@@ -312,8 +312,8 @@ export class HostingService {
   }
 
   async pollDeviceToken(provider: string, clientId: string, session: LoginSession): Promise<unknown> {
-    while (Date.now() < session.expiresAt && !session.controller.signal.aborted) {
-      await this.sleep(session.interval * 1000);
+    while (Date.now() < (session.expiresAt ?? 0) && !session.controller.signal.aborted) {
+      await this.sleep((session.interval ?? 5) * 1000);
       let token: Record<string, unknown>;
       if (provider === 'github') {
         token = await this.requestForm(
@@ -339,7 +339,7 @@ export class HostingService {
       const err = String(token.error ?? '');
       if (err === 'authorization_pending') continue;
       if (err === 'slow_down') {
-        session.interval += 5;
+        session.interval = (session.interval ?? 5) + 5;
         continue;
       }
       if (token.error) throw new Error(String(token.error_description || token.error));
@@ -383,8 +383,8 @@ export class HostingService {
 
   async logout(provider: string): Promise<{ success: true; provider: string }> {
     await this.cancelLogin(provider);
-    await this.vault.removeAccount(provider);
-    await this.vault.removeProviderDrafts(provider);
+    (await this.vault.removeAccount?.(provider));
+    (await this.vault.removeProviderDrafts?.(provider));
     return { success: true, provider };
   }
 
@@ -511,7 +511,7 @@ export class HostingService {
     if (!account?.accessToken) throw new Error(`Connect ${repo.provider} first`);
     let url;
     if (repo.provider === 'azure') {
-      url = `https://dev.azure.com/${encodeURIComponent(repo.organization)}/${encodeURIComponent(repo.project)}/_apis/git/repositories/${encodeURIComponent(repo.repository)}${this.withAzureApiVersion(endpoint)}`;
+      url = `https://dev.azure.com/${encodeURIComponent(String(repo.organization ?? ''))}/${encodeURIComponent(String(repo.project ?? ''))}/_apis/git/repositories/${encodeURIComponent(repo.repository)}${this.withAzureApiVersion(endpoint)}`;
     } else {
       url = repo.provider === 'github'
         ? `https://api.github.com${endpoint}`
@@ -571,7 +571,14 @@ export class HostingService {
   }
 
   async listPullRequests(
-    repository: unknown,
+    repository: {
+      provider?: unknown;
+      host?: unknown;
+      ownerPath?: unknown;
+      repository?: unknown;
+      organization?: unknown;
+      project?: unknown;
+    },
     options: { page?: unknown; filter?: unknown; search?: unknown } = {}
   ) {
     const repo = this.validateRepository(repository);
@@ -755,7 +762,7 @@ export class HostingService {
       safeDraft.completedOperations = [
         ...new Set([
           ...(safeDraft.completedOperations as string[]),
-          ...((storedDraft.completedOperations as string[]) || [])
+          ...((storedDraft!.completedOperations as string[]) || [])
         ])
       ];
     }

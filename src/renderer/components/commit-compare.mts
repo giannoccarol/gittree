@@ -59,17 +59,17 @@ export class CommitCompare {
   }
 
   ensureContainer(): void {
-    this.container = document.getElementById('merge-workspace-overlay');
+    this.container = document.getElementById('merge-workspace-overlay')!;
   }
 
   showLoading(): void {
-    this.container.classList.remove('is-hidden');
-    this.container.innerHTML = `<div class="empty-state"><i class="ph ph-circle-notch"></i>${t('commitCompare.loading')}</div>`;
+    this.container!.classList.remove('is-hidden');
+    this.container!.innerHTML = `<div class="empty-state"><i class="ph ph-circle-notch"></i>${t('commitCompare.loading')}</div>`;
   }
 
   hide(): void {
-    this.container.classList.add('is-hidden');
-    this.container.innerHTML = '';
+    this.container!.classList.add('is-hidden');
+    this.container!.innerHTML = '';
     this.data = null;
   }
 
@@ -77,13 +77,13 @@ export class CommitCompare {
     if (!this.data) return;
     const files = this.data.files || [];
 
-    this.container.innerHTML = `
+    this.container!.innerHTML = `
       <div class="commit-compare">
         <div class="commit-compare-header">
           <div class="commit-compare-direction">
-            <span class="badge badge-head">${this.esc(this.hashA.slice(0, 8))}</span>
+            <span class="badge badge-head">${this.esc(this.hashA!.slice(0, 8))}</span>
             <i class="ph ph-arrow-right commit-compare-arrow"></i>
-            <span class="badge badge-branch">${this.esc(this.hashB.slice(0, 8))}</span>
+            <span class="badge badge-branch">${this.esc(this.hashB!.slice(0, 8))}</span>
           </div>
           <div class="commit-compare-stat">
             <span class="commit-compare-stat-value">${files.length}</span>
@@ -103,11 +103,11 @@ export class CommitCompare {
         </div>
       </div>
     `;
-    this.container.classList.remove('is-hidden');
+    this.container!.classList.remove('is-hidden');
 
     document.getElementById('commit-compare-close')!.onclick = () => this.hide();
-    this.container.querySelectorAll<HTMLElement>('.commit-compare-file-item').forEach(item => {
-      item.onclick = () => this.selectFile((item as HTMLElement).dataset.path, item as HTMLElement);
+    this.container!.querySelectorAll<HTMLElement>('.commit-compare-file-item').forEach(item => {
+      item.onclick = () => this.selectFile((item as HTMLElement).dataset.path ?? '', item as HTMLElement);
     });
   }
 
@@ -124,16 +124,16 @@ export class CommitCompare {
   }
 
   async selectFile(filePath: string, element?: HTMLElement): Promise<void> {
-    this.container.querySelectorAll('.commit-compare-file-item').forEach(el => el.classList.remove('active'));
+    this.container!.querySelectorAll('.commit-compare-file-item').forEach(el => el.classList.remove('active'));
     if (element) element.classList.add('active');
     this.selectedFile = filePath;
 
-    const diffEl = document.getElementById('commit-compare-diff');
+    const diffEl = document.getElementById('commit-compare-diff')!;
     diffEl.innerHTML = `<div class="diff-placeholder"><i class="ph ph-circle-notch"></i>${t('common.loading')}</div>`;
 
     try {
       const repo = this.app.state.repo;
-      const diff = await window.gitTree.getCommitFileDiff(repo.path, this.hashA, this.hashB, filePath) as CommitFileDiff;
+      const diff = await window.gitTree.getCommitFileDiff(repo!.path, this.hashA, this.hashB, filePath) as CommitFileDiff;
       if (diff?.error) {
         diffEl.innerHTML = `<div class="diff-placeholder">${this.esc(diff.error)}</div>`;
         return;

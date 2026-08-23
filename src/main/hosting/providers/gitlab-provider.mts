@@ -73,7 +73,7 @@ export class GitLabProviderAdapter {
     return {
       items: result.data.map((item: ProviderPayload) => this.normalizeSummary(item, account.user)),
       page,
-      hasMore: Boolean(result.headers.get('x-next-page'))
+      hasMore: Boolean(result.headers!.get('x-next-page'))
     };
   }
 
@@ -84,8 +84,8 @@ export class GitLabProviderAdapter {
       status: file.new_file ? 'added' : file.deleted_file ? 'removed' : file.renamed_file
         ? 'renamed'
         : 'modified',
-      additions: null,
-      deletions: null,
+      additions: 0,
+      deletions: 0,
       binary: false,
       patch: file.diff || ''
     };
@@ -299,16 +299,18 @@ export class GitLabProviderAdapter {
     const warnings: string[] = [];
     let reviewerIds: number[] = [];
     let assigneeIds: number[] = [];
-    if (options.reviewers.length) {
+    const reviewers = options.reviewers ?? [];
+    const assignees = options.assignees ?? [];
+    if (reviewers.length) {
       try {
-        reviewerIds = await this.resolveUserIds(repo, options.reviewers);
+        reviewerIds = await this.resolveUserIds(repo, reviewers);
       } catch (error: unknown) {
         warnings.push((error as Error).message);
       }
     }
-    if (options.assignees.length) {
+    if (assignees.length) {
       try {
-        assigneeIds = await this.resolveUserIds(repo, options.assignees);
+        assigneeIds = await this.resolveUserIds(repo, assignees);
       } catch (error: unknown) {
         warnings.push((error as Error).message);
       }
@@ -323,7 +325,7 @@ export class GitLabProviderAdapter {
           : options.title,
         description: options.body,
         draft: options.draft,
-        labels: options.labels.join(',') || undefined,
+        labels: (options.labels ?? []).join(',') || '',
         reviewer_ids: reviewerIds.length ? reviewerIds : undefined,
         assignee_ids: assigneeIds.length ? assigneeIds : undefined,
         remove_source_branch: options.removeSourceBranch

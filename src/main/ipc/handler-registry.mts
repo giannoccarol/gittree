@@ -21,10 +21,12 @@ export function createHandlerRegistry({ handle, removeHandler = () => {}, assert
 
   const registeredChannels = new Set<string>();
 
-  const registerHandler = (channel: string, implementation: (...args: unknown[]) => unknown) => {
+  // Handlers are stored contravariantly (`never[]`) so that IPC wrappers with
+  // narrower typed signatures can be registered without losing their types.
+  const registerHandler = (channel: string, implementation: (...args: never[]) => unknown) => {
     handle(channel, async (_event: unknown, ...args: unknown[]) => {
       try {
-        return await implementation(...args);
+        return await (implementation as (...args: unknown[]) => unknown)(...args);
       } catch (error) {
         return errorEnvelope(error);
       }
@@ -32,7 +34,7 @@ export function createHandlerRegistry({ handle, removeHandler = () => {}, assert
     registeredChannels.add(channel);
   };
 
-  type ManagedRepoImplementation = (repoPath: string, ...args: unknown[]) => unknown;
+  type ManagedRepoImplementation = (repoPath: string, ...args: never[]) => unknown;
 
   const registerManagedRepoHandler = (channel: string, implementation: ManagedRepoImplementation) => {
     registerHandler(channel, async (repoPath: unknown, ...args: unknown[]) => {

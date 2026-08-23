@@ -34,7 +34,6 @@ export class GitService {
 
   constructor(repoPath: string, { queue }: { queue?: RepositoryQueue } = {}) {
     this.session = new RepositorySession(repoPath, { queue });
-    bindMethodsToQueue(this);
     this.git = this.session.git;
     this.repoPath = this.session.path;
     this.operations = new RepositoryOperations({
@@ -70,6 +69,8 @@ export class GitService {
       assertValidBranchName: branch => this.assertValidBranchName(branch),
       assertCommitish: ref => this.assertCommitish(ref)
     });
+    // Bind after every field is initialized so `this` is fully constructed.
+    bindMethodsToQueue(this);
   }
 
   runExclusive<T>(fn: () => Promise<T>): Promise<T> {
@@ -641,7 +642,7 @@ export class GitService {
     try {
       const result = await this.git.pull(
         remote,
-        branch,
+        String(branch),
         options as GitTaskOptions
       );
       return { success: true, remote, branch, result };
@@ -725,7 +726,7 @@ export class GitService {
   }
 
   async applyWorkingHunks(snapshotId: string, filePath: string, hunkIds: unknown, reverse?: boolean) {
-    return this.workingTree.applyWorkingHunks(snapshotId, filePath, hunkIds, reverse);
+    return this.workingTree.applyWorkingHunks(snapshotId, filePath, hunkIds, reverse ?? false);
   }
 
   runGitWithInput(args: string[], input: string) {
@@ -957,6 +958,7 @@ export class GitService {
   }
 
   async createWorktree(directory: string, branch?: string | null) {
+    if (!branch) throw new Error('Branch name is required to create a worktree');
     const result = await this.worktrees.create({ directory, branch, baseRef: 'HEAD' });
     return { success: true, path: result.path, branch: result.branch };
   }

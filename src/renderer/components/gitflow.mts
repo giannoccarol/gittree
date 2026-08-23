@@ -18,8 +18,8 @@ export class GitFlow {
 
   constructor(app: GitTreeApp) {
     this.app = app;
-    this.overlay = document.getElementById('modal-overlay') as HTMLElement;
-    this.dialog = document.getElementById('modal-dialog') as HTMLElement;
+    this.overlay = document.getElementById('modal-overlay')! as HTMLElement;
+    this.dialog = document.getElementById('modal-dialog')! as HTMLElement;
     this.mode = 'start';
     this.type = 'feature';
     this.localBranches = [];
@@ -306,9 +306,9 @@ export class GitFlow {
 
   async checkoutAndMerge(target: string, source: string): Promise<void> {
     const repo = this.app.state.repo;
-    const checkout = await window.gitTree.checkoutBranch(repo.path, target) as { error?: string } | undefined;
+    const checkout = await window.gitTree.checkoutBranch(repo!.path, target) as { error?: string } | undefined;
     if (checkout?.error) throw new Error(checkout.error);
-    const merge = await window.gitTree.merge(repo.path, source, 'noff') as { error?: string; conflictState?: { type?: string } } | undefined;
+    const merge = await window.gitTree.merge(repo!.path, source, 'noff') as { error?: string; conflictState?: { type?: string } } | undefined;
     if (merge?.error) {
       if (merge.conflictState?.type) {
         this.handedOff = true;
@@ -321,10 +321,10 @@ export class GitFlow {
 
   async tagHead(name: string, message: string): Promise<void> {
     const repo = this.app.state.repo;
-    const log = await window.gitTree.getLog(repo.path, 1) as { latest?: { hash?: string } } | undefined;
+    const log = await window.gitTree.getLog(repo!.path, 1) as { latest?: { hash?: string } } | undefined;
     const hash = log?.latest?.hash;
     if (!hash) throw new Error('Could not resolve HEAD for tagging');
-    const tag = await window.gitTree.createTag(repo.path, name, hash, message) as { error?: string } | undefined;
+    const tag = await window.gitTree.createTag(repo!.path, name, hash, message) as { error?: string } | undefined;
     if (tag?.error) throw new Error(tag.error);
   }
 

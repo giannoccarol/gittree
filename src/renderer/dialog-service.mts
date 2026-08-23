@@ -53,8 +53,8 @@ export class DialogService {
     encode?: Encode;
   } = {}) {
     this.document = options.document ?? document as DialogDocument;
-    this.overlay = options.overlay ?? this.document.getElementById('modal-overlay') as HTMLElement;
-    this.dialog = options.dialog ?? this.document.getElementById('modal-dialog') as HTMLElement;
+    this.overlay = options.overlay ?? this.document.getElementById('modal-overlay')! as HTMLElement;
+    this.dialog = options.dialog ?? this.document.getElementById('modal-dialog')! as HTMLElement;
     this.encode = options.encode ?? ((value: unknown) => HtmlEncoder.encode(value));
     this.activeCancel = null;
   }

@@ -3,8 +3,10 @@ const I18n = {
 
   async init() {
     const stored = localStorage.getItem('gittree.language');
+    /** @type {string | null} */
+    const storedLanguage = stored;
     const systemLanguage = navigator.language?.toLowerCase().startsWith('it') ? 'it' : 'en';
-    const language = this.supportedLanguages.includes(stored) ? stored : systemLanguage;
+    const language = storedLanguage !== null && this.supportedLanguages.includes(storedLanguage) ? storedLanguage : systemLanguage;
 
     await i18next.init({
       lng: language,
@@ -1632,7 +1634,7 @@ const I18n = {
       }
     });
 
-    document.documentElement.lang = language;
+    document.documentElement.lang = String(language);
     this.syncControls();
   },
 
@@ -1657,17 +1659,21 @@ const I18n = {
 
   translateDOM(root = document) {
     /** @param {HTMLElement} el */
-    const text = (el) => { el.textContent = this.t(el.dataset.i18n); };
+    const text = (/** @type {HTMLElement} */ el) => { el.textContent = this.t(el.dataset.i18n ?? ''); };
     /** @param {HTMLInputElement} el */
-    const placeholder = (el) => { el.placeholder = this.t(el.dataset.i18nPlaceholder); };
+    const placeholder = (/** @type {HTMLInputElement} */ el) => { el.placeholder = this.t(el.dataset.i18nPlaceholder ?? ''); };
     /** @param {HTMLElement} el */
-    const title = (el) => { el.title = this.t(el.dataset.i18nTitle); };
+    const title = (/** @type {HTMLElement} */ el) => { el.title = this.t(el.dataset.i18nTitle ?? ''); };
     /** @param {HTMLElement} el */
-    const ariaLabel = (el) => { el.setAttribute('aria-label', this.t(el.dataset.i18nAriaLabel)); };
-    root.querySelectorAll('[data-i18n]').forEach(text);
-    root.querySelectorAll('[data-i18n-placeholder]').forEach(placeholder);
-    root.querySelectorAll('[data-i18n-title]').forEach(title);
-    root.querySelectorAll('[data-i18n-aria-label]').forEach(ariaLabel);
+    const ariaLabel = (/** @type {HTMLElement} */ el) => { el.setAttribute('aria-label', this.t(el.dataset.i18nAriaLabel ?? '')); };
+    const i18nNodes = /** @type {NodeListOf<HTMLElement>} */ (root.querySelectorAll('[data-i18n]'));
+    const placeholderNodes = /** @type {NodeListOf<HTMLInputElement>} */ (root.querySelectorAll('[data-i18n-placeholder]'));
+    const titleNodes = /** @type {NodeListOf<HTMLElement>} */ (root.querySelectorAll('[data-i18n-title]'));
+    const ariaLabelNodes = /** @type {NodeListOf<HTMLElement>} */ (root.querySelectorAll('[data-i18n-aria-label]'));
+    i18nNodes.forEach(text);
+    placeholderNodes.forEach(placeholder);
+    titleNodes.forEach(title);
+    ariaLabelNodes.forEach(ariaLabel);
   },
 
   syncControls() {

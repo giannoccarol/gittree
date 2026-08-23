@@ -10,11 +10,8 @@ interface SyncState {
   behind?: number;
 }
 
-type RepoTabsApp = {
-  state: { activeRepoIndex: number };
-  showToast: (message: unknown, type?: string) => void;
-  emit: (event: string, data?: unknown) => void;
-};
+import type { GitTreeApp } from '../app.mts';
+type RepoTabsApp = GitTreeApp;
 
 export interface RepoTabsOptions {
   platform?: string | null;
@@ -129,7 +126,7 @@ export class RepoTabs {
 
   render(): void {
     this.container.replaceChildren();
-    this.container.classList.toggle('has-pinned', this.pinnedKeys.size > 0);
+    this.container!.classList.toggle('has-pinned', this.pinnedKeys.size > 0);
     this.repos.forEach((repo, i) => {
       const el = document.createElement('div');
       el.className = 'repo-tab';
@@ -145,7 +142,7 @@ export class RepoTabs {
 
       const name = document.createElement('span');
       name.className = 'repo-tab-name';
-      name.textContent = repo.name;
+      name.textContent = repo.name || '';
       name.title = repo.path;
 
       const sync = this.createSyncIndicator(repo.path);
@@ -293,7 +290,7 @@ export class RepoTabs {
     const offset = event.key === 'ArrowLeft' ? -1 : 1;
     const moved = this.moveRepoByOffset(index, offset);
     if (moved) {
-      const element = this.container.querySelector<HTMLElement>(
+      const element = this.container!.querySelector<HTMLElement>(
         `[data-path="${CSS.escape(this.repos[index + offset].path)}"]`
       );
       element?.focus();
@@ -333,7 +330,7 @@ export class RepoTabs {
     tab.classList.add('is-dragging');
     if (event.dataTransfer) {
       event.dataTransfer.effectAllowed = 'move';
-      event.dataTransfer.setData('text/plain', tab.dataset.path);
+      event.dataTransfer.setData('text/plain', tab.dataset.path ?? '');
     }
   }
 
@@ -342,13 +339,13 @@ export class RepoTabs {
     const target = (event.target as HTMLElement).closest?.('.repo-tab') as HTMLElement | null;
     if (!this.draggedKey || !target) return;
     const dragged = this.repos.find(repo => this.repoKey(repo.path) === this.draggedKey);
-    const targetRepo = this.repos.find(repo => this.sameRepo(repo.path, target.dataset.path));
+    const targetRepo = this.repos.find(repo => this.sameRepo(repo.path, target.dataset.path ?? ''));
     if (!dragged || !targetRepo || this.isPinned(dragged) !== this.isPinned(targetRepo)) return;
     event.preventDefault();
     const rect = target.getBoundingClientRect();
     this.dragOverAfter = event.clientX >= rect.left + (rect.width / 2);
     this.dragOverKey = this.repoKey(target.dataset.path);
-    this.container.querySelectorAll<HTMLElement>('.repo-tab').forEach(element => {
+    this.container!.querySelectorAll<HTMLElement>('.repo-tab').forEach(element => {
       element.classList.toggle(
         'is-drag-over-before',
         this.repoKey(element.dataset.path) === this.dragOverKey && !this.dragOverAfter
@@ -367,7 +364,7 @@ export class RepoTabs {
     if (!this.draggedKey || !target) return;
     event.preventDefault();
     const dragged = this.repos.find(repo => this.repoKey(repo.path) === this.draggedKey);
-    const targetRepo = this.repos.find(repo => this.sameRepo(repo.path, target.dataset.path));
+    const targetRepo = this.repos.find(repo => this.sameRepo(repo.path, target.dataset.path ?? ''));
     if (dragged && targetRepo) {
       this.moveRepo(dragged.path, targetRepo.path, this.dragOverAfter);
     }
@@ -375,7 +372,7 @@ export class RepoTabs {
   }
 
   clearDragState(): void {
-    this.container.querySelectorAll<HTMLElement>('.repo-tab').forEach(element => {
+    this.container!.querySelectorAll<HTMLElement>('.repo-tab').forEach(element => {
       element.classList.remove('is-dragging', 'is-drag-over-before', 'is-drag-over-after');
     });
     this.draggedKey = null;
@@ -412,14 +409,16 @@ export class RepoTabs {
       indicator.appendChild(this.syncBusyPart());
       return indicator;
     }
+    const ahead = state!.ahead || 0;
+    const behind = state!.behind || 0;
     indicator.title = t('tabs.syncState', {
-      branch: state.branch,
-      ahead: state.ahead || 0,
-      behind: state.behind || 0
+      branch: state!.branch,
+      ahead,
+      behind
     });
     indicator.setAttribute('aria-label', indicator.title);
-    if (state.ahead > 0) indicator.appendChild(this.syncPart('ahead', state.ahead));
-    if (state.behind > 0) indicator.appendChild(this.syncPart('behind', state.behind));
+    if (ahead > 0) indicator.appendChild(this.syncPart('ahead', ahead));
+    if (behind > 0) indicator.appendChild(this.syncPart('behind', behind));
     return indicator;
   }
 

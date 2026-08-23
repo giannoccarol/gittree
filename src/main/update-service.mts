@@ -53,7 +53,7 @@ export class UpdateService {
   initialized: boolean;
   startupTimer: ReturnType<typeof setTimeout> | null;
   timer: ReturnType<typeof setInterval> | null;
-  updaterListeners: Array<[string, (...args: unknown[]) => void]>;
+  updaterListeners: Array<[string, (...args: never[]) => void]>;
   state: UpdateState;
 
   constructor(
@@ -156,8 +156,8 @@ export class UpdateService {
     this.broadcast();
   }
 
-  listenToUpdater(event: string, listener: (...args: unknown[]) => void): void {
-    this.autoUpdater.on(event, listener);
+  listenToUpdater(event: string, listener: (...args: never[]) => void): void {
+    this.autoUpdater.on(event, listener as (...args: unknown[]) => void);
     this.updaterListeners.push([event, listener]);
   }
 
@@ -167,7 +167,7 @@ export class UpdateService {
     this.startupTimer = null;
     this.timer = null;
     for (const [event, listener] of this.updaterListeners.splice(0)) {
-      this.autoUpdater.removeListener?.(event, listener);
+      this.autoUpdater.removeListener?.(event, listener as (...args: unknown[]) => void);
     }
     this.window = null;
     this.initialized = false;

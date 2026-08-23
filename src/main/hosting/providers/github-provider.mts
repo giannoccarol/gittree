@@ -83,7 +83,7 @@ export class GitHubProviderAdapter {
     return {
       items,
       page,
-      hasMore: /rel="next"/.test(result.headers.get('link') || '')
+      hasMore: /rel="next"/.test(result.headers?.get('link') || '')
     };
   }
 
@@ -206,7 +206,7 @@ export class GitHubProviderAdapter {
     return {
       files: (result.data as ProviderPayload[]).map((file: ProviderPayload) => this.normalizeFile(file)),
       page,
-      hasMore: /rel="next"/.test(result.headers.get('link') || '')
+      hasMore: /rel="next"/.test(result.headers?.get('link') || '')
     };
   }
 

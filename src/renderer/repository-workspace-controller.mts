@@ -16,12 +16,12 @@ export interface RepositoryWorkspaceCallbacks {
 export interface RepositoryWorkspaceComponents {
   welcome: { hide: () => void; markStep?: (step: string) => void };
   graphView: { load: (repoPath: string) => Promise<void>; select: (hash: string) => void };
-  branchList: { load: (repoPath: string, loadSession: unknown) => Promise<void> };
+  branchList: { load: (repoPath: string, loadSession?: WorkspaceLoadSession | null, options?: { background?: boolean }) => Promise<void> };
   changes: { load: (repoPath: string) => Promise<void> };
-  pullRequests: { load: (repoPath: string, loadSession: unknown) => Promise<void> };
+  pullRequests: { load: (repoPath: string, loadSession?: { branchMetadata(): Promise<unknown> } | null) => Promise<void> };
   diffViewer: { clear: () => void };
-  statusBar: { setBranch: (label: string) => void; setRepo: (name: string) => void };
-  conflict: { open: (operationState: unknown) => Promise<void> };
+  statusBar: { setBranch: (label: string) => void; setRepo: (name?: string) => void };
+  conflict: { open: (state?: OperationStateInfo | null) => Promise<void> };
 }
 
 interface WorkspaceBridge {
@@ -31,17 +31,21 @@ interface WorkspaceBridge {
   getOperationState(repoPath: string): Promise<unknown>;
 }
 
+import type { OperationStateInfo } from './components/conflict-resolver.mts';
+
+export interface WorkspaceLoadSession {
+  branchMetadata(): Promise<unknown>;
+  status(): Promise<unknown>;
+  operationState(): Promise<unknown>;
+}
+
 export interface RepositoryWorkspaceDependencies {
   bridge: WorkspaceBridge;
   document: Document;
   translate: (key: string, options?: Record<string, unknown>) => string;
   state: { repo: RepositoryEntry | null };
   components: RepositoryWorkspaceComponents;
-  createLoadSession: (bridge: WorkspaceBridge, repoPath: string) => {
-    branchMetadata(): Promise<unknown>;
-    status(): Promise<unknown>;
-    operationState(): Promise<{ type?: string }>;
-  };
+  createLoadSession: (bridge: WorkspaceBridge, repoPath: string) => WorkspaceLoadSession;
   callbacks: RepositoryWorkspaceCallbacks;
 }
 
@@ -81,7 +85,8 @@ export class RepositoryWorkspaceController {
       : normalized;
   }
 
-  isCurrentRepository(repoPath: string): boolean {
+  isCurrentRepository(repoPath?: string): boolean {
+    if (!repoPath) return false;
     const current = this.state.repo?.path;
     return Boolean(current) && this.pathKey(repoPath) === this.pathKey(current);
   }
@@ -124,7 +129,7 @@ export class RepositoryWorkspaceController {
       );
       this.components.statusBar.setRepo(repo.name);
       this.components.welcome?.markStep?.('open');
-      const operationState = await loadSession.operationState();
+      const operationState = await loadSession.operationState() as OperationStateInfo | null;
       if (loadToken === this.loadToken && operationState?.type) {
         await this.components.conflict.open(operationState);
       }
@@ -134,26 +139,26 @@ export class RepositoryWorkspaceController {
   }
 
   setLoading(loading: boolean): void {
-    const workspace = this.document.getElementById('workspace');
+    const workspace = this.document.getElementById('workspace')!;
     workspace?.classList.toggle('is-project-loading', loading);
     workspace?.setAttribute('aria-busy', String(loading));
     if (workspace) workspace.dataset.loadState = loading ? 'loading' : 'settled';
     this.document
       .querySelectorAll('#branch-loading-indicator, #workspace-loading-indicator, #inspector-loading-indicator')
       .forEach(indicator => indicator.classList.toggle('is-hidden', !loading));
-    this.document.getElementById('sidebar')?.setAttribute('aria-busy', String(loading));
+    this.document.getElementById('sidebar')!?.setAttribute('aria-busy', String(loading));
     this.document.querySelector('.main')?.setAttribute('aria-busy', String(loading));
-    this.document.getElementById('detail-panel')?.setAttribute('aria-busy', String(loading));
+    this.document.getElementById('detail-panel')!?.setAttribute('aria-busy', String(loading));
   }
 
   setInteractive(): void {
-    const workspace = this.document.getElementById('workspace');
+    const workspace = this.document.getElementById('workspace')!;
     if (workspace) workspace.dataset.loadState = 'interactive';
     this.document
       .querySelectorAll('#workspace-loading-indicator, #inspector-loading-indicator')
       .forEach(indicator => indicator.classList.add('is-hidden'));
     this.document.querySelector('.main')?.setAttribute('aria-busy', 'false');
-    this.document.getElementById('detail-panel')?.setAttribute('aria-busy', 'false');
+    this.document.getElementById('detail-panel')!?.setAttribute('aria-busy', 'false');
   }
 
   destroy(): void {

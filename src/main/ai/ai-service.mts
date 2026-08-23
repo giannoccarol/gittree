@@ -207,7 +207,7 @@ export class AiService {
   }
 
   async clearKey(): Promise<Record<string, unknown>> {
-    await this.vault.removeAccount('ai');
+    await this.vault.removeAccount?.('ai');
     this.keyConfigured = false;
     this.agentEnvironment = environmentForAi({
       provider: this.settings.provider,

@@ -18,12 +18,12 @@ interface InspectorPayload {
 }
 
 const bridge = window.gitTree;
-const body = document.getElementById('inspector-body') as HTMLElement;
-const title = document.getElementById('inspector-title') as HTMLElement;
-const meta = document.getElementById('inspector-meta') as HTMLElement;
-const eyebrow = document.getElementById('inspector-eyebrow') as HTMLElement;
-const mode = document.getElementById('inspector-mode') as HTMLElement;
-const word = document.getElementById('inspector-word') as HTMLElement;
+const body = document.getElementById('inspector-body')! as HTMLElement;
+const title = document.getElementById('inspector-title')! as HTMLElement;
+const meta = document.getElementById('inspector-meta')! as HTMLElement;
+const eyebrow = document.getElementById('inspector-eyebrow')! as HTMLElement;
+const mode = document.getElementById('inspector-mode')! as HTMLElement;
+const word = document.getElementById('inspector-word')! as HTMLElement;
 
 const fallbackStrings: Record<string, string> = {
   'details.graphBranch': 'Branch',
@@ -50,11 +50,11 @@ function translate(key: string, options: Record<string, unknown> = {}): string {
 }
 
 const inspectorWorkspace = new InspectorWorkspace({
-  container: document.getElementById('inspector-workspace'),
-  graphContainer: document.getElementById('inspector-graph-view'),
-  filesPanel: document.getElementById('inspector-files-panel'),
-  fileList: document.getElementById('inspector-file-list'),
-  filesToggle: document.getElementById('btn-toggle-inspector-files'),
+  container: document.getElementById('inspector-workspace')!,
+  graphContainer: document.getElementById('inspector-graph-view')!,
+  filesPanel: document.getElementById('inspector-files-panel')!,
+  fileList: document.getElementById('inspector-file-list')!,
+  filesToggle: document.getElementById('btn-toggle-inspector-files')!,
   diffContainer: body,
   translate,
   storage: localStorage
@@ -109,11 +109,11 @@ function renderPayload(payload: InspectorPayload): void {
   receivedPayload = true;
 }
 
-bridge.onInspectorRender(renderPayload);
+bridge.onInspectorRender(payload => renderPayload(payload as InspectorPayload));
 
 window.I18n?.init()
   .then(() => {
-    window.I18n.translateDOM();
+    window.I18n!.translateDOM();
     inspectorWorkspace.refreshTranslations();
     if (lastPayload) renderPayload(lastPayload);
   })

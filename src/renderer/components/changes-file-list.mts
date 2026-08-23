@@ -80,7 +80,7 @@ export class ChangesFileList {
     this.items = items || [];
     this.renderRow = renderRow;
     this.emptyText = emptyText;
-    const scrollTop = this.container.scrollTop || 0;
+    const scrollTop = this.container!.scrollTop || 0;
     this.frame = 0;
     this.container.replaceChildren();
     this.spacer = null;
@@ -96,16 +96,16 @@ export class ChangesFileList {
     spacer.style.height = `${this.items.length * this.rowHeight}px`;
     this.container.appendChild(spacer);
     this.spacer = spacer;
-    this.container.scrollTop = scrollTop;
+    this.container!.scrollTop = scrollTop;
     this.paint();
   }
 
   paint(): void {
     if (!this.spacer || !this.renderRow || !this.items.length) return;
-    const visible = Math.ceil(this.container.clientHeight / this.rowHeight);
+    const visible = Math.ceil(this.container!.clientHeight / this.rowHeight);
     const start = Math.max(
       0,
-      Math.floor(this.container.scrollTop / this.rowHeight) - this.overscan
+      Math.floor(this.container!.scrollTop / this.rowHeight) - this.overscan
     );
     const end = Math.min(
       this.items.length,

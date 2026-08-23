@@ -113,7 +113,7 @@ export class WorkspaceStateController {
 
   bindWorkspaceModes(): void {
     this.document.querySelectorAll<HTMLElement>('[data-workspace-mode]').forEach(button => {
-      this.bind(button, 'click', () => this.setMode(button.dataset.workspaceMode));
+      this.bind(button, 'click', () => this.setMode(button.dataset.workspaceMode ?? ''));
     });
   }
 
@@ -138,13 +138,13 @@ export class WorkspaceStateController {
       button.classList.toggle('active', active);
       button.setAttribute('aria-selected', String(active));
     });
-    this.document.getElementById('main-view').classList.toggle('is-hidden', safeMode !== 'history');
-    this.document.getElementById('changes-view').classList.toggle('is-hidden', safeMode !== 'changes');
-    this.document.getElementById('pull-requests-view').classList.toggle(
+    this.document.getElementById('main-view')!.classList.toggle('is-hidden', safeMode !== 'history');
+    this.document.getElementById('changes-view')!.classList.toggle('is-hidden', safeMode !== 'changes');
+    this.document.getElementById('pull-requests-view')!.classList.toggle(
       'is-hidden',
       safeMode !== 'pullRequests'
     );
-    this.document.getElementById('global-search').classList.toggle(
+    this.document.getElementById('global-search')!.classList.toggle(
       'is-hidden',
       safeMode !== 'history'
     );
@@ -159,7 +159,7 @@ export class WorkspaceStateController {
       : safeMode === 'changes'
         ? 'changes.title'
         : 'pullRequests.title';
-    const title = this.document.getElementById('workspace-title');
+    const title = this.document.getElementById('workspace-title')!;
     const eyebrow = title.querySelector('.eyebrow') as HTMLElement;
     const heading = title.querySelector('h2') as HTMLElement;
     eyebrow.dataset.i18n = eyebrowKey;
@@ -175,16 +175,16 @@ export class WorkspaceStateController {
 
   bindSidebar(): void {
     const toggle = () => {
-      const workspace = this.document.getElementById('workspace-body');
+      const workspace = this.document.getElementById('workspace-body')!;
       this.setSidebarCollapsed(!workspace.classList.contains('sidebar-collapsed'));
     };
-    this.bind(this.document.getElementById('btn-toggle-sidebar'), 'click', toggle);
-    this.bind(this.document.getElementById('btn-collapse-sidebar'), 'click', toggle);
+    this.bind(this.document.getElementById('btn-toggle-sidebar')!, 'click', toggle);
+    this.bind(this.document.getElementById('btn-collapse-sidebar')!, 'click', toggle);
   }
 
   setSidebarCollapsed(collapsed: boolean, persist = true): void {
-    const workspace = this.document.getElementById('workspace-body');
-    const toggleButton = this.document.getElementById('btn-toggle-sidebar');
+    const workspace = this.document.getElementById('workspace-body')!;
+    const toggleButton = this.document.getElementById('btn-toggle-sidebar')!;
     const changed = workspace.classList.contains('sidebar-collapsed') !== collapsed;
     this.panelMotion.transition('sidebar', {
       opening: !collapsed,
@@ -201,8 +201,8 @@ export class WorkspaceStateController {
   }
 
   bindInspector(): void {
-    this.bind(this.document.getElementById('btn-toggle-inspector'), 'click', () => {
-      const inspector = this.document.getElementById('detail-panel');
+    this.bind(this.document.getElementById('btn-toggle-inspector')!, 'click', () => {
+      const inspector = this.document.getElementById('detail-panel')!;
       const hiddenByResponsiveLayout = this.inspectorState !== 'closed' &&
         this.computedStyle(inspector).display === 'none';
       if (this.inspectorState === 'closed') {
@@ -213,10 +213,10 @@ export class WorkspaceStateController {
         this.setInspectorState('closed');
       }
     });
-    this.bind(this.document.getElementById('btn-close-inspector'), 'click', () => {
+    this.bind(this.document.getElementById('btn-close-inspector')!, 'click', () => {
       this.setInspectorState('closed');
     });
-    this.bind(this.document.getElementById('btn-maximize-inspector'), 'click', () => {
+    this.bind(this.document.getElementById('btn-maximize-inspector')!, 'click', () => {
       this.toggleInspectorMaximized();
     });
     this.bind(this.document.querySelector('.detail-panel-header') as HTMLElement | null, 'dblclick', event => {
@@ -234,9 +234,9 @@ export class WorkspaceStateController {
       ? state as InspectorState
       : 'open';
     const previousState = this.inspectorState;
-    const workspace = this.document.getElementById('workspace-body');
-    const toggleButton = this.document.getElementById('btn-toggle-inspector');
-    const maximizeButton = this.document.getElementById('btn-maximize-inspector');
+    const workspace = this.document.getElementById('workspace-body')!;
+    const toggleButton = this.document.getElementById('btn-toggle-inspector')!;
+    const maximizeButton = this.document.getElementById('btn-maximize-inspector')!;
     const isOpen = safeState !== 'closed';
     const isMaximized = safeState === 'maximized';
     const changedVisibility = (previousState === 'closed') !== (safeState === 'closed');
@@ -292,8 +292,8 @@ export class WorkspaceStateController {
     const headers = [...this.document.querySelectorAll<HTMLElement>('.sidebar-section-header.collapsible')];
     headers.forEach(header => {
       const section = header.parentElement;
-      const sectionId = section.dataset.section;
-      const body = section.querySelector('.sidebar-section-body') as HTMLElement;
+      const sectionId = section!.dataset.section!;
+      const body = section!.querySelector('.sidebar-section-body') as HTMLElement;
       const arrow = header.querySelector('.collapse-arrow') as HTMLElement;
       if (!sectionId || !body || !arrow) return;
 
@@ -306,7 +306,7 @@ export class WorkspaceStateController {
         this.applySidebarSectionState({ header, body, arrow }, nextCollapsed);
         const collapsedSections = headers
           .filter(item => item.classList.contains('collapsed'))
-          .map(item => item.parentElement.dataset.section)
+          .map(item => item.parentElement!.dataset.section ?? '')
           .filter(Boolean);
         this.storage.setItem(storageKey, JSON.stringify(collapsedSections));
       });

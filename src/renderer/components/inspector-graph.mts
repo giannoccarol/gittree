@@ -144,7 +144,7 @@ export class InspectorGraph {
   update(snapshot: GraphSnapshot = {}): void {
     this.refreshTranslations();
     const rows = Array.isArray(snapshot.rows) ? snapshot.rows : [];
-    const revision = Number.isInteger(snapshot.revision) ? snapshot.revision : 0;
+    const revision = Number.isInteger(snapshot.revision) ? (snapshot.revision as number) : 0;
     const firstHash = rows[0]?.hash || '';
     const lastHash = rows.at(-1)?.hash || '';
     const dataChanged = revision !== this.revision || rows.length !== this.rows.length ||
@@ -180,8 +180,8 @@ export class InspectorGraph {
     this.raf = requestAnimationFrame(() => {
       this.raf = 0;
       this.renderViewport();
-      const available = Math.max(1, this.container.scrollHeight - this.container.clientHeight);
-      if (this.container.scrollTop / available >= 0.85) this.onRequestMore?.();
+      const available = Math.max(1, this.container!.scrollHeight - this.container!.clientHeight);
+      if (this.container!.scrollTop / available >= 0.85) this.onRequestMore?.();
     });
   }
 
@@ -203,10 +203,10 @@ export class InspectorGraph {
 
     const start = Math.max(
       0,
-      Math.floor(this.container.scrollTop / this.rowHeight) - this.overscan
+      Math.floor(this.container!.scrollTop / this.rowHeight) - this.overscan
     );
     const visibleCount = Math.ceil(
-      Math.max(this.rowHeight, this.container.clientHeight) / this.rowHeight
+      Math.max(this.rowHeight, this.container!.clientHeight) / this.rowHeight
     );
     const end = Math.min(this.rows.length, start + visibleCount + (this.overscan * 2));
     if (!force && start === this.renderedRange[0] && end === this.renderedRange[1]) return;
@@ -217,7 +217,7 @@ export class InspectorGraph {
     if (!force) {
       for (const element of this.layer.children) {
         if (element.classList.contains('inspector-graph-row') && (element as HTMLElement).dataset.hash) {
-          reusable.set((element as HTMLElement).dataset.hash, element as HTMLElement);
+          reusable.set((element as HTMLElement).dataset.hash ?? '', element as HTMLElement);
         }
       }
       const visibleHashes = new Set(this.rows.slice(start, end).map(row => row.hash));
@@ -318,7 +318,7 @@ export class InspectorGraph {
   branchNames(row: GraphRowData): string[] {
     return [...new Set((row.refs || [])
       .filter(ref => ref && ['branch', 'remote'].includes(ref.type) && ref.shortName)
-      .map(ref => ref.shortName))];
+      .map(ref => String(ref.shortName)))];
   }
 
   createTooltip(): HTMLElement {
@@ -406,15 +406,15 @@ export class InspectorGraph {
     this.mounted = false;
     if (this.raf) cancelAnimationFrame(this.raf);
     this.resizeObserver?.disconnect();
-    this.container.removeEventListener('scroll', this.handleScroll);
-    this.container.removeEventListener('click', this.handleClick);
-    this.container.removeEventListener('keydown', this.handleKeydown);
-    this.container.removeEventListener('pointerover', this.handlePointerOver);
-    this.container.removeEventListener('pointerout', this.handlePointerOut);
-    this.container.removeEventListener('focusin', this.handleFocusIn);
-    this.container.removeEventListener('focusout', this.handleFocusOut);
+    this.container!.removeEventListener('scroll', this.handleScroll);
+    this.container!.removeEventListener('click', this.handleClick);
+    this.container!.removeEventListener('keydown', this.handleKeydown);
+    this.container!.removeEventListener('pointerover', this.handlePointerOver);
+    this.container!.removeEventListener('pointerout', this.handlePointerOut);
+    this.container!.removeEventListener('focusin', this.handleFocusIn);
+    this.container!.removeEventListener('focusout', this.handleFocusOut);
     this.tooltip.remove();
-    this.container.replaceChildren();
+    this.container!.replaceChildren();
   }
 }
 

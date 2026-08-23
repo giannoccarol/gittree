@@ -24,11 +24,11 @@ export class GlobalSearch {
 
   constructor(app: GitTreeApp) {
     this.app = app;
-    this.overlay = document.getElementById('search-overlay') as HTMLElement;
-    this.input = document.getElementById('search-input') as HTMLInputElement;
-    this.results = document.getElementById('search-results') as HTMLElement;
-    this.filters = document.getElementById('search-filters') as HTMLElement;
-    this.aiButton = document.getElementById('search-ai-ask');
+    this.overlay = document.getElementById('search-overlay')! as HTMLElement;
+    this.input = document.getElementById('search-input')! as HTMLInputElement;
+    this.results = document.getElementById('search-results')! as HTMLElement;
+    this.filters = document.getElementById('search-filters')! as HTMLElement;
+    this.aiButton = document.getElementById('search-ai-ask')!;
     this.allData = [];
     this.selectedIdx = -1;
     this.visible = false;
@@ -50,8 +50,8 @@ export class GlobalSearch {
       }
     });
 
-    document.getElementById('global-search').addEventListener('click', () => this.show());
-    document.getElementById('global-search').addEventListener('focus', () => this.show());
+    document.getElementById('global-search')!.addEventListener('click', () => this.show());
+    document.getElementById('global-search')!.addEventListener('focus', () => this.show());
 
     this.input.addEventListener('input', () => this.search());
     this.input.addEventListener('keydown', e => this.handleKey(e));
@@ -107,7 +107,7 @@ export class GlobalSearch {
         if (status?.files) {
           status.files.forEach(f => {
             this.allData.push({
-              type: 'file', label: f.path, subtitle: f.working_dir || f.index, detail: 'Modified',
+              type: 'file', label: f.path, subtitle: f.working_dir || f.index || '', detail: 'Modified',
               data: { path: f.path }
             });
           });
@@ -117,7 +117,7 @@ export class GlobalSearch {
 
     if (this.app.components.repoTabs?.repos) {
       this.app.components.repoTabs.repos.forEach(r => {
-        this.allData.push({ type: 'repo', label: r.name, subtitle: r.path, detail: 'Repository', data: { path: r.path } });
+        this.allData.push({ type: 'repo', label: r.name || '', subtitle: r.path, detail: 'Repository', data: { path: r.path } });
       });
     }
 
@@ -193,10 +193,10 @@ export class GlobalSearch {
       }
       this.renderResults(matches.map(match => ({
         type: 'commit',
-        label: match.subject || match.hash,
+        label: String(match.subject || match.hash || ''),
         subtitle: String(match.hash || '').slice(0, 7),
         detail: match.reason || '',
-        data: { hash: match.hash }
+        data: { hash: String(match.hash ?? '') }
       })));
     } finally {
       this.aiSearching = false;

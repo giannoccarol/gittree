@@ -2,7 +2,7 @@ import type { HostingService } from '../hosting-service.mts';
 import type { CredentialVault } from '../credential-vault.mts';
 import type { GitService } from '../git-service.mts';
 
-type RegisterHandler = (channel: string, handler: (...args: unknown[]) => unknown) => void;
+type RegisterHandler = (channel: string, handler: (...args: never[]) => unknown) => void;
 
 interface AuthHandlerDependencies {
   registerHandler: RegisterHandler;
@@ -45,7 +45,7 @@ export function registerAuthHandlers({
 }
 
 interface PullRequestHandlerDependencies {
-  registerManagedRepoHandler: (channel: string, handler: (...args: unknown[]) => unknown) => void;
+  registerManagedRepoHandler: (channel: string, handler: (...args: never[]) => unknown) => void;
   getHostingRepository: (repoPath: string, provider: string) => Promise<Record<string, unknown> & { organization?: string; remoteName?: string; webBase?: string }>;
   getGitService: (repoPath: string) => GitService;
   hostingService: HostingService;
@@ -65,12 +65,17 @@ export function registerPullRequestHandlers({
     repository: Record<string, unknown>,
     provider: string,
     repoPath: string,
-    ...args: unknown[]
+    ...args: never[]
   ) => unknown;
   const withRepository = (implementation: WithRepositoryImplementation) =>
     async (repoPath: string, provider: string, ...args: unknown[]) => {
       const repository = await getHostingRepository(repoPath, provider);
-      return implementation(repository, provider, repoPath, ...args);
+      return (implementation as (
+        repository: Record<string, unknown>,
+        provider: string,
+        repoPath: string,
+        ...args: unknown[]
+      ) => unknown)(repository, provider, repoPath, ...args);
     };
   registerManagedRepoHandler(
     'hosting:pull-request-create',
@@ -156,7 +161,7 @@ export function registerPullRequestHandlers({
 }
 
 interface OpenPullRequestDependencies {
-  registerManagedRepoHandler: (channel: string, handler: (...args: unknown[]) => unknown) => void;
+  registerManagedRepoHandler: (channel: string, handler: (...args: never[]) => unknown) => void;
   getGitService: (repoPath: string) => GitService;
   buildPullRequestUrl: (provider: unknown, source: string, target: string) => string | null;
   isSafeExternalUrl: (url: string) => boolean;

@@ -155,8 +155,8 @@ export class RepositoryOperations {
     for (const commit of commits) {
       for (const parent of commit.parents) {
         if (!byHash.has(parent)) continue;
-        indegree.set(commit.hash, indegree.get(commit.hash) + 1);
-        children.get(parent).push(commit.hash);
+        indegree.set(commit.hash, indegree.get(commit.hash)! + 1);
+        children.get(parent)!.push(commit.hash);
       }
     }
     const ready = commits
@@ -167,8 +167,8 @@ export class RepositoryOperations {
       const commit = ready.shift();
       if (!commit) break;
       ordered.push(commit);
-      for (const childHash of children.get(commit.hash)) {
-        indegree.set(childHash, indegree.get(childHash) - 1);
+      for (const childHash of children.get(commit.hash)!) {
+        indegree.set(childHash, indegree.get(childHash)! - 1);
         if (indegree.get(childHash) === 0) {
           const child = byHash.get(childHash);
           if (child) ready.push(child);
@@ -578,14 +578,15 @@ export class RepositoryOperations {
 
   async skipOperation() {
     const state = await this.getOperationState();
-    if (!['rebase', 'cherry-pick'].includes(state.type)) {
+    const operationType = state.type;
+    if (operationType !== 'rebase' && operationType !== 'cherry-pick') {
       throw new Error('Only rebase and cherry-pick operations can skip a commit');
     }
     try {
-      await this.git.raw([state.type, '--skip']);
+      await this.git.raw([operationType, '--skip']);
       return { success: true, state: await this.getOperationState() };
     } catch (error) {
-      throw new Error(`Failed to skip ${state.type}: ${(error as Error).message}`, { cause: error });
+      throw new Error(`Failed to skip ${operationType}: ${(error as Error).message}`, { cause: error });
     }
   }
 

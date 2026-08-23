@@ -50,8 +50,8 @@ export class SettingsView {
 
   constructor(app: GitTreeApp) {
     this.app = app;
-    this.overlay = document.getElementById('modal-overlay') as HTMLElement;
-    this.dialog = document.getElementById('modal-dialog') as HTMLElement;
+    this.overlay = document.getElementById('modal-overlay')! as HTMLElement;
+    this.dialog = document.getElementById('modal-dialog')! as HTMLElement;
     this.autoFetchStorageKey = 'gittree.settings.autoFetch';
     this.profilesStorageKey = 'gittree.settings.gitProfiles';
     this.assignmentsStorageKey = 'gittree.settings.profileAssignments';
@@ -60,7 +60,7 @@ export class SettingsView {
     this.renderGeneration = 0;
     this.updateState = null;
     this.activeSection = null;
-    this.unsubscribeUpdates = window.gitTree.onUpdateState((state: Record<string, unknown>) => this.handleUpdateState(state));
+    this.unsubscribeUpdates = window.gitTree.onUpdateState(payload => this.handleUpdateState(payload as Record<string, unknown>));
     document.addEventListener('keydown', event => {
       if (event.key === 'Escape' && this.dialog.classList.contains('settings-dialog')) {
         event.preventDefault();
@@ -94,7 +94,7 @@ export class SettingsView {
         const response = await window.gitTree.getBranchMetadata(repo.path) as { error?: string } | undefined;
         metadata = response?.error ? null : response as Record<string, unknown>;
       }
-      const remotes = repo ? await this.readRemotes(repo.path) : [];
+      const remotes = repo ? await this.readRemotes(String(repo.path)) : [];
       const agentSettings = (scope === 'about'
         ? null
         : await window.gitTree.getAgentSettings?.().then(
@@ -522,12 +522,12 @@ export class SettingsView {
   }
 
   async populateVersion(): Promise<void> {
-    const el = document.getElementById('about-version');
+    const el = document.getElementById('about-version')!;
     if (el && window.gitTree.getAppVersion) {
       const v = await window.gitTree.getAppVersion();
       el.textContent = v as string;
     }
-    const gitStatus = document.getElementById('about-git-version');
+    const gitStatus = document.getElementById('about-git-version')!;
     if (gitStatus && window.gitTree.getGitVersion) {
       const info = await window.gitTree.getGitVersion() as { supported?: boolean; version?: string; minimum?: string } | undefined;
       if (info && !info.supported) {
@@ -563,16 +563,17 @@ export class SettingsView {
   syncAppearanceState(): void {
     const current = document.documentElement.dataset.theme;
     this.dialog.querySelectorAll<HTMLElement>('[data-theme-choice]').forEach(button => {
-      const active = (button as HTMLElement).dataset.themeChoice === current;
+      const active = String((button as HTMLElement).dataset.themeChoice) === current;
       button.classList.toggle('is-active', active);
       button.setAttribute('aria-pressed', String(active));
     });
     this.dialog.querySelectorAll<HTMLElement>('[data-tone-choice]').forEach(button => {
       const toneTheme = (button as HTMLElement).dataset.toneTheme;
-      const toneId = (button as HTMLElement).dataset.toneChoice;
-      const tone = ((Theme.tones as unknown as Record<string, Array<{ id: string; preview: string[] }>>)[toneTheme] || []).find(item => item.id === toneId);
+      const toneId = String((button as HTMLElement).dataset.toneChoice ?? '');
+      const toneList = (Theme.tones as unknown as Record<string, Array<{ id: string; preview: string[] }>>)[String(toneTheme)] ?? [];
+      const tone = toneList.find(item => item.id === toneId);
       const chips = button.querySelectorAll('.settings-tone-chips i');
-      tone?.preview.forEach((color, index) => {
+      tone?.preview.forEach((color: string, index: number) => {
         if (chips[index]) (chips[index] as HTMLElement).style.background = color;
       });
       const active = (toneTheme === 'light' || toneTheme === 'dark') && Theme.getTone(toneTheme) === toneId;
@@ -661,7 +662,7 @@ export class SettingsView {
   async refreshRemotesList(repo: { path?: string }): Promise<void> {
     const container = this.dialog.querySelector('#settings-remotes-list');
     if (!container || !repo) return;
-    const remotes = await this.readRemotes(repo.path);
+    const remotes = await this.readRemotes(String(repo.path));
     container.innerHTML = remotes.map(remote => this.renderRemoteRow(remote)).join('')
       || `<div class="settings-empty">${this.esc(t('settings.noRemotes'))}</div>`;
     this.bindRemotes(repo);
@@ -686,7 +687,7 @@ export class SettingsView {
         elements.name.value = '';
         elements.url.value = '';
         await this.refreshRemotesList(repo);
-        this.app.components.branchList?.load(repo.path);
+        this.app.components.branchList?.load(String(repo.path));
         this.app.showToast(t('settings.remoteAdded', { remote: name }), 'success');
       };
     }
@@ -698,7 +699,7 @@ export class SettingsView {
           if (action === 'remove') {
             const confirmed = await this.app.confirmDialog(
               t('settings.removeRemoteTitle'),
-              t('settings.removeRemoteConfirm', { remote: name }),
+              t('settings.removeRemoteConfirm', { remote: name ?? '' }),
               t('settings.removeRemote'),
               true
             );
@@ -709,14 +710,13 @@ export class SettingsView {
               return;
             }
             await this.refreshRemotesList(repo);
-            this.app.components.branchList?.load(repo.path);
+            this.app.components.branchList?.load(String(repo.path));
             this.app.showToast(t('settings.remoteRemoved', { remote: name }), 'success');
           } else if (action === 'rename') {
             const nextName = await this.remotePrompt(
               t('settings.renameRemote'),
               t('settings.remoteName'),
-              name
-            );
+              String(name)            );
             if (!nextName || nextName === name) return;
             const result = await window.gitTree.renameRemote(repo.path, name, nextName) as { error?: string };
             if (result?.error) {
@@ -724,7 +724,7 @@ export class SettingsView {
               return;
             }
             await this.refreshRemotesList(repo);
-            this.app.components.branchList?.load(repo.path);
+            this.app.components.branchList?.load(String(repo.path));
             this.app.showToast(t('settings.remoteRenamed', { remote: nextName }), 'success');
           } else if (action === 'url') {
             const url = await this.remotePrompt(
@@ -784,17 +784,17 @@ export class SettingsView {
       overlay.addEventListener('mousedown', (event: MouseEvent) => {
         if (event.target === overlay) finish(null);
       });
-      overlay.querySelector<HTMLElement>('[data-action="cancel"]').onclick = () => finish(null);
-      overlay.querySelector('form').onsubmit = event => {
+      overlay!.querySelector<HTMLElement>('[data-action="cancel"]')!.onclick = () => finish(null);
+      overlay.querySelector('form')!.onsubmit = event => {
         event.preventDefault();
         const input = overlay.querySelector<HTMLInputElement>('input');
-        const resultValue = input.value.trim();
+        const resultValue = input!.value.trim();
         if (!resultValue) return;
         finish(resultValue);
       };
       document.addEventListener('keydown', keydown);
-      overlay.querySelector<HTMLInputElement>('input').focus();
-      overlay.querySelector<HTMLInputElement>('input').select();
+      overlay!.querySelector<HTMLInputElement>('input')!.focus();
+      overlay!.querySelector<HTMLInputElement>('input')!.select();
     });
   }
 
@@ -810,7 +810,7 @@ export class SettingsView {
     const selected = sections.some(item => item.dataset.settingsSection === section)
       ? section
       : sections[0].dataset.settingsSection;
-    this.activeSection = selected;
+    this.activeSection = selected ?? null;
     sections.forEach(item => {
       const active = item.dataset.settingsSection === selected;
       item.classList.toggle('is-active', active);
@@ -889,7 +889,7 @@ export class SettingsView {
   bindSettingsEvents(repo: { path?: string } | null): void {
     (this.dialog.querySelector('[data-settings-close]') as HTMLElement).onclick = () => this.close();
     this.dialog.querySelectorAll<HTMLElement>('[data-settings-nav]').forEach(button => {
-      button.onclick = () => this.selectSection(button.dataset.settingsNav);
+      button.onclick = () => this.selectSection(String(button.dataset.settingsNav));
     });
     this.overlay.onclick = event => {
       if (event.target === this.overlay) this.close();
@@ -915,7 +915,7 @@ export class SettingsView {
     const vaultResetButton = this.dialog.querySelector('#settings-vault-reset') as HTMLButtonElement | null;
     if (vaultResetButton) {
       vaultResetButton.onclick = async () => {
-        if (!await this.confirmVaultReset()) return;
+        if (!(await this.confirmVaultReset?.())) return;
         const result = await window.gitTree.resetHostingVault() as { error?: string };
         if (result?.error) { this.app.showToast(result.error, 'error'); return; }
         this.app.showToast(t('settings.vaultResetDone'), 'success');
@@ -924,7 +924,7 @@ export class SettingsView {
 
     this.dialog.querySelectorAll<HTMLElement>('[data-theme-choice]').forEach(button => {
       button.onclick = () => {
-        Theme.apply((button as HTMLElement).dataset.themeChoice, true);
+        Theme.apply(String((button as HTMLElement).dataset.themeChoice), true);
         this.syncAppearanceState();
         this.app.pushInspectorPayload?.();
       };
@@ -932,7 +932,7 @@ export class SettingsView {
     this.dialog.querySelectorAll<HTMLElement>('[data-tone-choice]').forEach(button => {
       button.onclick = () => {
         const toneTheme = (button as HTMLElement).dataset.toneTheme;
-        Theme.setTone(toneTheme, (button as HTMLElement).dataset.toneChoice);
+        Theme.setTone(String(toneTheme), String((button as HTMLElement).dataset.toneChoice ?? ''));
         if (document.documentElement.dataset.theme !== toneTheme) {
           Theme.apply(toneTheme, true);
         }
@@ -944,7 +944,7 @@ export class SettingsView {
     this.dialog.querySelectorAll<HTMLInputElement>('[data-toolbar-toggle]').forEach(input => {
       input.onchange = () => {
         const visibility = this.app.readToolbarVisibility();
-        visibility[input.dataset.toolbarToggle] = input.checked;
+        visibility[String(input.dataset.toolbarToggle)] = input.checked;
         localStorage.setItem('gittree.settings.toolbar', JSON.stringify(visibility));
         this.app.applyToolbarVisibility();
       };
@@ -955,9 +955,9 @@ export class SettingsView {
     const projectRemote = this.dialog.querySelector('[data-auto-fetch-project-remote]');
     const saveProject = () => this.saveProjectSchedule(
       repo,
-      (projectRemote as HTMLSelectElement | null)?.value,
-      (projectToggle as HTMLInputElement | null)?.checked,
-      (projectInterval as HTMLSelectElement | null)?.value
+      (projectRemote as HTMLSelectElement | null)?.value ?? '',
+      Boolean((projectToggle as HTMLInputElement | null)?.checked),
+      ((projectInterval as HTMLSelectElement | null)?.value ?? '15')
     );
     if (projectToggle) (projectToggle as HTMLInputElement).onchange = saveProject;
     if (projectInterval) (projectInterval as HTMLSelectElement).onchange = saveProject;
@@ -992,7 +992,7 @@ export class SettingsView {
       agentsEnabled.onchange = async () => {
         const result = await window.gitTree.setAgentSessionsEnabled(agentsEnabled.checked) as { error?: string };
         if (result?.error) {
-          agentsEnabled.checked = !agentsEnabled.checked;
+          (agentsEnabled as HTMLInputElement).checked = !(agentsEnabled as HTMLInputElement).checked;
           this.app.showToast(result.error, 'error');
           return;
         }
@@ -1023,7 +1023,7 @@ export class SettingsView {
           return;
         }
         const assignments = this.readObject(this.assignmentsStorageKey);
-        assignments[repo.path] = profile.id;
+        assignments[String(repo.path)] = profile.id;
         localStorage.setItem(this.assignmentsStorageKey, JSON.stringify(assignments));
         this.app.showToast(t('settings.profileApplied'), 'success');
         await this.open();
@@ -1059,7 +1059,7 @@ export class SettingsView {
           return;
         }
         checkUpdateBtn.disabled = true;
-        checkUpdateStatus.textContent = t('settings.checking');
+        checkUpdateStatus!.textContent = t('settings.checking');
         const result = await window.gitTree.checkForUpdates() as { state?: Record<string, unknown>; error?: string };
         this.handleUpdateState(result?.state || { status: 'error', error: result?.error });
       };
@@ -1258,7 +1258,7 @@ export class SettingsView {
     if (!repo || !remote) return;
     const schedules: Record<string, unknown> = this.readObject(this.autoFetchStorageKey);
     const minutes = Math.min(60, Math.max(1, Number(intervalMinutes) || 15));
-    schedules[repo.path] = {
+    schedules[String(repo.path)] = {
       enabled: Boolean(enabled),
       intervalMinutes: minutes,
       remote,
@@ -1323,7 +1323,7 @@ export class SettingsView {
     const refreshedRepositories = new Set<string>();
     for (const [repoPath, rawSchedule] of Object.entries(schedules)) {
       const schedule = rawSchedule as { enabled?: boolean; nextRunAt?: number; intervalMinutes?: number; remote?: string } | undefined;
-      if (!schedule || !schedule.enabled || schedule.nextRunAt > now) continue;
+      if (!schedule || !schedule.enabled || (schedule.nextRunAt ?? Infinity) > now) continue;
       const key = repoPath;
       if (this.inFlight.has(key)) continue;
       this.inFlight.add(key);
@@ -1338,7 +1338,7 @@ export class SettingsView {
           this.app.showToast((error as Error).message, 'error');
         }
       } finally {
-        schedule.nextRunAt = Date.now() + (schedule.intervalMinutes * 60000);
+        schedule.nextRunAt = Date.now() + ((schedule.intervalMinutes ?? 15) * 60000);
         this.inFlight.delete(key);
         changed = true;
       }

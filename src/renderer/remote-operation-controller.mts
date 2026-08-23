@@ -47,7 +47,7 @@ export interface RemoteOperationDependencies {
     setSyncBusy: (repoPath: string, busy: boolean) => void;
     refreshAllSync: () => Promise<void>;
   };
-  createLoadSession: (repoPath: string) => RemoteLoadSession;
+  createLoadSession: (repoPath: string) => unknown;
   views: {
     refreshGraph: (repoPath: string, options?: Record<string, unknown>) => Promise<void>;
     refreshBranches: (repoPath: string, loadSession: RemoteLoadSession, options?: Record<string, unknown>) => Promise<void>;
@@ -71,7 +71,7 @@ export class RemoteOperationController {
   getCurrentRepository: () => { path?: string } | null;
   isCurrentRepository: (repoPath?: string) => boolean;
   repoTabs: RemoteOperationDependencies['repoTabs'];
-  createLoadSession: (repoPath: string) => RemoteLoadSession;
+  createLoadSession: (repoPath: string) => unknown;
   views: RemoteOperationDependencies['views'];
   currentOperation: CurrentOperation | null;
   visualGeneration: number;
@@ -113,7 +113,7 @@ export class RemoteOperationController {
     this.currentOperation = operation;
     this.visualGeneration += 1;
     this.syncUI();
-    this.repoTabs.setSyncBusy(repo.path, true);
+    this.repoTabs.setSyncBusy(String(repo.path), true);
     this.notify(this.translate(config.progressKey));
 
     let outcome = 'error';
@@ -124,16 +124,16 @@ export class RemoteOperationController {
         this.notify(result.error, 'error');
         return result;
       }
-      await this.refreshAfter(action, repo.path);
+      await this.refreshAfter(action, String(repo.path));
       this.notify(this.translate(config.successKey), 'success');
       outcome = 'success';
       return result;
     } catch (error) {
       result = { error: (error as Error).message || String(error) };
-      this.notify(result.error, 'error');
+      this.notify(String(result.error), 'error');
       return result;
     } finally {
-      this.repoTabs.setSyncBusy(repo.path, false);
+      this.repoTabs.setSyncBusy(String(repo.path), false);
       if (this.currentOperation === operation) this.currentOperation = null;
       this.syncUI();
       if (this.isCurrentRepository(repo.path)) {
@@ -147,7 +147,7 @@ export class RemoteOperationController {
       await this.repoTabs.refreshAllSync();
       return;
     }
-    const loadSession = this.createLoadSession(repoPath);
+    const loadSession = this.createLoadSession(repoPath) as RemoteLoadSession;
     const tasks = [
       this.views.refreshGraph(repoPath, { preserveViewport: true }),
       this.views.refreshBranches(repoPath, loadSession, { background: true }),
@@ -191,7 +191,7 @@ export class RemoteOperationController {
       button.dataset.operationState = active ? 'running' : 'idle';
       button.setAttribute('aria-busy', String(active));
       if (icon) {
-        icon.className = active ? 'ph ph-circle-notch' : icon.dataset.originalIcon;
+        icon.className = active ? 'ph ph-circle-notch' : (icon.dataset.originalIcon ?? icon.className);
       }
     }
   }
@@ -213,7 +213,7 @@ export class RemoteOperationController {
     if (generation !== this.visualGeneration || this.currentOperation) return;
     button.classList.remove('is-complete', 'is-error');
     button.dataset.operationState = 'idle';
-    icon.className = icon.dataset.originalIcon;
+    icon.className = icon.dataset.originalIcon ?? 'ph';
   }
 }
 

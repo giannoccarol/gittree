@@ -65,48 +65,48 @@ export class ChangesView {
     const ChangesFileListCtor = (window as unknown as { ChangesFileList: typeof ChangesFileList }).ChangesFileList;
     this.fileLists = {
       unstaged: new ChangesFileListCtor(
-        document.getElementById('unstaged-files'),
+        document.getElementById('unstaged-files')!,
         { rowHeight: this.rowHeight, overscan: this.overscan }
       ),
       staged: new ChangesFileListCtor(
-        document.getElementById('staged-files'),
+        document.getElementById('staged-files')!,
         { rowHeight: this.rowHeight, overscan: this.overscan }
       )
     };
     this.fileLists.unstaged.mount();
     this.fileLists.staged.mount();
     this.elements = {
-      unstaged: document.getElementById('unstaged-files'),
-      staged: document.getElementById('staged-files'),
-      unstagedCount: document.getElementById('unstaged-count'),
-      stagedCount: document.getElementById('staged-count'),
-      modeCount: document.getElementById('workspace-changes-count'),
-      stageAll: document.getElementById('btn-stage-all'),
-      unstageAll: document.getElementById('btn-unstage-all'),
-      discardAll: document.getElementById('btn-discard-all'),
-      submoduleBar: document.getElementById('submodule-bar'),
-      submodulesInit: document.getElementById('btn-submodules-init'),
-      submodulesUpdate: document.getElementById('btn-submodules-update'),
-      composer: document.getElementById('commit-composer'),
-      summary: document.getElementById('commit-summary'),
-      body: document.getElementById('commit-body'),
-      amend: document.getElementById('commit-amend'),
-      signoff: document.getElementById('commit-signoff'),
-      signing: document.getElementById('commit-signing'),
-      signingLabel: document.getElementById('commit-signing-label'),
-      authorToggle: document.getElementById('commit-author-toggle'),
-      authorFields: document.getElementById('commit-author-fields'),
-      authorName: document.getElementById('commit-author-name'),
-      authorEmail: document.getElementById('commit-author-email'),
-      identityStatus: document.getElementById('commit-identity-status'),
-      identityButton: document.getElementById('btn-commit-identity'),
-      aiCommit: document.getElementById('btn-ai-commit'),
-      aiExplain: document.getElementById('btn-ai-explain'),
-      explanation: document.getElementById('ai-explanation'),
-      explanationTitle: document.getElementById('ai-explanation-title'),
-      explanationBody: document.getElementById('ai-explanation-body'),
-      explanationClose: document.getElementById('btn-ai-explanation-close'),
-      commitButton: document.getElementById('btn-commit')
+      unstaged: document.getElementById('unstaged-files')!,
+      staged: document.getElementById('staged-files')!,
+      unstagedCount: document.getElementById('unstaged-count')!,
+      stagedCount: document.getElementById('staged-count')!,
+      modeCount: document.getElementById('workspace-changes-count')!,
+      stageAll: document.getElementById('btn-stage-all')!,
+      unstageAll: document.getElementById('btn-unstage-all')!,
+      discardAll: document.getElementById('btn-discard-all')!,
+      submoduleBar: document.getElementById('submodule-bar')!,
+      submodulesInit: document.getElementById('btn-submodules-init')!,
+      submodulesUpdate: document.getElementById('btn-submodules-update')!,
+      composer: document.getElementById('commit-composer')!,
+      summary: document.getElementById('commit-summary')!,
+      body: document.getElementById('commit-body')!,
+      amend: document.getElementById('commit-amend')!,
+      signoff: document.getElementById('commit-signoff')!,
+      signing: document.getElementById('commit-signing')!,
+      signingLabel: document.getElementById('commit-signing-label')!,
+      authorToggle: document.getElementById('commit-author-toggle')!,
+      authorFields: document.getElementById('commit-author-fields')!,
+      authorName: document.getElementById('commit-author-name')!,
+      authorEmail: document.getElementById('commit-author-email')!,
+      identityStatus: document.getElementById('commit-identity-status')!,
+      identityButton: document.getElementById('btn-commit-identity')!,
+      aiCommit: document.getElementById('btn-ai-commit')!,
+      aiExplain: document.getElementById('btn-ai-explain')!,
+      explanation: document.getElementById('ai-explanation')!,
+      explanationTitle: document.getElementById('ai-explanation-title')!,
+      explanationBody: document.getElementById('ai-explanation-body')!,
+      explanationClose: document.getElementById('btn-ai-explanation-close')!,
+      commitButton: document.getElementById('btn-commit')!
     };
     this.bind();
   }
@@ -174,7 +174,7 @@ export class ChangesView {
   }
 
   syncPolling(): void {
-    clearInterval(this.pollTimer);
+    if (this.pollTimer) clearInterval(this.pollTimer);
     this.pollTimer = null;
     if (this.active && this.repoPath && document.hasFocus()) {
       this.pollTimer = setInterval(() => this.refresh(), 2000);
@@ -446,7 +446,7 @@ export class ChangesView {
     if (!confirmed) return;
     const result = await window.gitTree.discardPaths(
       this.repoPath,
-      this.snapshot.snapshotId,
+      this.snapshot!.snapshotId,
       paths
     ) as { error?: string; snapshot?: WorkingTreeSnapshot };
     if (result?.error) {
@@ -454,10 +454,10 @@ export class ChangesView {
       await this.refresh(true);
       return;
     }
-    this.snapshot = result.snapshot;
+    this.snapshot = result.snapshot ?? null;
     this.render();
     if (this.selected) {
-      const file = this.snapshot.files.find(item => item.path === this.selected.path);
+      const file = this.snapshot!.files.find(item => item.path === this.selected?.path);
       if (file) await this.selectFile({ path: file.path }, Boolean(file.staged));
       else this.app.components.diffViewer.clear();
     }
@@ -486,7 +486,7 @@ export class ChangesView {
     const api = unstage ? window.gitTree.unstagePaths : window.gitTree.stagePaths;
     const result = await api(
       this.repoPath,
-      this.snapshot.snapshotId,
+      this.snapshot!.snapshotId,
       files.map(file => file.path)
     ) as { error?: string; snapshot?: WorkingTreeSnapshot };
     if (result?.error) {
@@ -494,10 +494,10 @@ export class ChangesView {
       await this.refresh(true);
       return;
     }
-    this.snapshot = result.snapshot;
+    this.snapshot = result.snapshot ?? null;
     this.render();
     if (this.selected) {
-      const file = this.snapshot.files.find(item => item.path === this.selected.path);
+      const file = this.snapshot!.files.find(item => item.path === this.selected?.path);
       if (file) await this.selectFile({ path: file.path }, Boolean(file.staged));
       else this.app.components.diffViewer.clear();
     }
@@ -507,10 +507,10 @@ export class ChangesView {
     this.selected = { path: file.path, staged };
     this.render();
     const request = ++this.diffRequest;
-    const title = document.getElementById('detail-title');
-    title.textContent = file.path.split('/').pop();
+    const title = document.getElementById('detail-title')!;
+    title.textContent = file.path.split('/').pop() || '';
     title.title = file.path;
-    const body = document.getElementById('detail-body');
+    const body = document.getElementById('detail-body')!;
     body.innerHTML = '';
     const loading = document.createElement('div');
     loading.className = 'diff-placeholder';
@@ -528,6 +528,7 @@ export class ChangesView {
       loading.textContent = diff.error;
       return;
     }
+    if (!diff) return;
     this.renderWorkingDiff(diff, staged);
     this.app.pushInspectorPayload?.();
   }
@@ -536,7 +537,7 @@ export class ChangesView {
     diff: { noDiff?: boolean; binary?: boolean; hunks?: Array<NumberableHunk & { header: string; id?: string }>; path?: string },
     staged: boolean
   ): void {
-    const body = document.getElementById('detail-body');
+    const body = document.getElementById('detail-body')!;
     body.innerHTML = '';
     if (diff.noDiff) {
       const empty = document.createElement('div');
@@ -582,7 +583,7 @@ export class ChangesView {
       action.type = 'button';
       action.className = 'btn btn-small';
       action.textContent = t(staged ? 'changes.unstageHunk' : 'changes.stageHunk');
-      action.onclick = () => this.mutateHunk(diff.path, staged, hunk.id);
+      action.onclick = () => this.mutateHunk(String(diff.path), staged, String(hunk.id));
       header.append(code, action);
       section.appendChild(header);
       lines.forEach(line => {
@@ -609,7 +610,7 @@ export class ChangesView {
     const api = staged ? window.gitTree.unstageHunks : window.gitTree.stageHunks;
     const result = await api(
       this.repoPath,
-      this.snapshot.snapshotId,
+      this.snapshot!.snapshotId,
       filePath,
       [hunkId]
     ) as { error?: string; snapshot?: WorkingTreeSnapshot };
@@ -618,10 +619,10 @@ export class ChangesView {
       await this.refresh(true);
       return;
     }
-    this.snapshot = result.snapshot;
+    this.snapshot = result.snapshot ?? null;
     this.render();
     const targetStaged = !staged;
-    const file = this.snapshot.files.find(item => item.path === filePath);
+    const file = this.snapshot!.files.find(item => item.path === filePath);
     if (file && (targetStaged ? file.staged : file.unstaged)) {
       await this.selectFile(file, targetStaged);
     } else {
@@ -654,7 +655,7 @@ export class ChangesView {
   restoreComposer(): void {
     let draft: Record<string, unknown> = {};
     try {
-      draft = JSON.parse(localStorage.getItem(this.composerKey())) || {};
+      draft = JSON.parse(localStorage.getItem(this.composerKey()) ?? 'null') || {};
     } catch { /* invalid draft falls back to empty */ }
     (this.elements.summary as HTMLInputElement).value = (draft.summary as string) || '';
     (this.elements.body as HTMLTextAreaElement).value = (draft.body as string) || '';
@@ -701,7 +702,7 @@ export class ChangesView {
       this.app.showToast(result.error, 'error');
       return false;
     }
-    this.identity = result.identity;
+    this.identity = result.identity ?? null;
     await this.refreshIdentity();
     return true;
   }

@@ -11,8 +11,8 @@ interface MainWindowLike {
 }
 
 interface AgentHandlerDependencies {
-  registerHandler: (channel: string, handler: (...args: unknown[]) => unknown) => void;
-  registerManagedRepoHandler: (channel: string, handler: (...args: unknown[]) => unknown) => void;
+  registerHandler: (channel: string, handler: (...args: never[]) => unknown) => void;
+  registerManagedRepoHandler: (channel: string, handler: (...args: never[]) => unknown) => void;
   agentSessionService: AgentSessionService;
   repositoryWorkspace: RepositoryWorkspace;
   consumeAuthorizedDirectory?: (value: unknown) => unknown;
@@ -31,7 +31,7 @@ export function registerAgentHandlers({
 }: AgentHandlerDependencies) {
   registerHandler('agent:settings', () => agentSessionService.getSettings());
   registerHandler('agent:root-select', async () => {
-    const result = await showOpenDialog(getMainWindow(), {
+    const result = await showOpenDialog!(getMainWindow?.() ?? null, {
       title: 'Choose agent worktree root',
       properties: ['openDirectory', 'createDirectory']
     });

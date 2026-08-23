@@ -24,7 +24,7 @@ interface ConflictFileState {
   snapshotId?: string;
 }
 
-interface OperationStateInfo {
+export interface OperationStateInfo {
   type?: string;
   conflicts?: string[];
   error?: unknown;
@@ -70,7 +70,7 @@ export class ConflictResolver {
 
   constructor(app: GitTreeApp) {
     this.app = app;
-    this.container = document.getElementById('merge-workspace-overlay');
+    this.container = document.getElementById('merge-workspace-overlay')!;
     this.state = null;
     this.allFiles = [];
     this.currentPath = null;
@@ -123,7 +123,7 @@ export class ConflictResolver {
     this.undoStack = [];
     this.fileFilter = '';
     this.render();
-    this.container.classList.remove('is-hidden');
+    this.container!.classList.remove('is-hidden');
     if (this.currentPath) await this.loadFile(this.currentPath);
   }
 
@@ -144,11 +144,11 @@ export class ConflictResolver {
     const resolved = this.allFiles.length - conflicts.length;
     const total = this.allFiles.length;
     const conflictsSum = this.unresolvedCount();
-    this.container.innerHTML = `
+    this.container!.innerHTML = `
       <div class="conflict-workspace">
         <header class="conflict-header">
           <div class="conflict-header-title">
-            <span class="eyebrow">${this.esc(t('conflicts.operation', { operation: this.state.type }))}</span>
+            <span class="eyebrow">${this.esc(t('conflicts.operation', { operation: String(this.state!.type ?? '') }))}</span>
             <h2>${this.esc(t('conflicts.title'))}</h2>
             <span class="conflict-progress">${this.esc(t('conflicts.filesResolved', { resolved, total }))}</span>
           </div>
@@ -158,7 +158,7 @@ export class ConflictResolver {
               : ''}
             <span class="badge ${conflicts.length ? 'badge-conflict' : 'badge-head'}">${conflicts.length} ${this.esc(t('conflicts.remaining'))}</span>
             <button class="btn" id="conflict-abort"><i class="ph ph-x-circle" aria-hidden="true"></i><span>${this.esc(t('conflicts.abort'))}</span></button>
-            ${['rebase', 'cherry-pick'].includes(this.state.type) ? `
+            ${['rebase', 'cherry-pick'].includes(String(this.state!.type)) ? `
               <button class="btn" id="conflict-skip"><i class="ph ph-skip-forward" aria-hidden="true"></i><span>${this.esc(t('conflicts.skip'))}</span></button>
             ` : ''}
             <button class="btn btn-primary" id="conflict-continue" ${conflicts.length ? 'disabled' : ''}>
@@ -185,15 +185,15 @@ export class ConflictResolver {
         </div>
       </div>`;
 
-    (document.getElementById('conflict-abort') as HTMLElement).onclick = () => this.abort();
+    (document.getElementById('conflict-abort')! as HTMLElement).onclick = () => this.abort();
     document.getElementById('conflict-skip')?.addEventListener('click', () => this.skip());
-    (document.getElementById('conflict-continue') as HTMLElement).onclick = () => this.continue();
-    const filterInput = document.getElementById('conflict-file-filter') as HTMLInputElement | null;
+    (document.getElementById('conflict-continue')! as HTMLElement).onclick = () => this.continue();
+    const filterInput = document.getElementById('conflict-file-filter')! as HTMLInputElement | null;
     if (filterInput) {
       filterInput.value = this.fileFilter;
       filterInput.oninput = () => {
         this.fileFilter = filterInput.value;
-        const clearButton = document.getElementById('conflict-file-filter-clear');
+        const clearButton = document.getElementById('conflict-file-filter-clear')!;
         if (clearButton) clearButton.classList.toggle('is-hidden', !this.fileFilter);
         this.refreshFileList();
       };
@@ -205,10 +205,10 @@ export class ConflictResolver {
           this.refreshFileList();
         }
       };
-      (document.getElementById('conflict-file-filter-clear') as HTMLElement).onclick = () => {
+      (document.getElementById('conflict-file-filter-clear')! as HTMLElement).onclick = () => {
         filterInput.value = '';
         this.fileFilter = '';
-        document.getElementById('conflict-file-filter-clear').classList.add('is-hidden');
+        document.getElementById('conflict-file-filter-clear')!.classList.add('is-hidden');
         this.refreshFileList();
       };
     }
@@ -225,14 +225,14 @@ export class ConflictResolver {
         const isActive = file === this.currentPath;
         const blockCount = this.blockCounts.get(file);
         const binary = this.binaryMap.get(file);
-        const showCount = !isResolved && Number.isInteger(blockCount) && blockCount > 0;
+        const showCount = !isResolved && Number.isInteger(blockCount) && (blockCount ?? 0) > 0;
         return `
           <button class="conflict-file-item${isActive ? ' active' : ''}${isResolved ? ' is-resolved' : ''}"
             data-file="${this.esc(file)}" ${isResolved ? 'disabled' : ''} title="${this.esc(file)}">
             <i class="ph ${isResolved ? 'ph-check-circle' : 'ph-warning-circle'} conflict-file-status" aria-hidden="true"></i>
             <span class="conflict-file-name">${this.esc(file)}</span>
             ${this.dirty && file === this.currentPath ? `<i class="ph ph-dot-outline conflict-file-unsaved" aria-hidden="true" title="${this.esc(t('conflicts.unsaved'))}"></i>` : ''}
-            ${showCount ? `<span class="badge badge-conflict conflict-file-count" title="${this.esc(t('conflicts.blockCountTitle', { count: blockCount }))}">${blockCount}</span>` : ''}
+            ${showCount ? `<span class="badge badge-conflict conflict-file-count" title="${this.esc(t('conflicts.blockCountTitle', { count: blockCount }))}">${Number(blockCount ?? 0)}</span>` : ''}
             ${binary ? `<span class="badge conflict-file-binary">${this.esc(t('conflicts.binary'))}</span>` : ''}
           </button>`;
       });
@@ -242,13 +242,13 @@ export class ConflictResolver {
   }
 
   refreshFileList(): void {
-    const scroll = document.getElementById('conflict-file-scroll');
+    const scroll = document.getElementById('conflict-file-scroll')!;
     if (!scroll) return;
     scroll.innerHTML = this.renderFileList();
     scroll.querySelectorAll<HTMLElement>('[data-file]').forEach(button => {
       button.onclick = async () => {
         if (!await this.confirmDiscard()) return;
-        await this.loadFile((button as HTMLElement).dataset.file);
+        await this.loadFile(String((button as HTMLElement).dataset.file ?? ''));
       };
     });
   }
@@ -262,8 +262,8 @@ export class ConflictResolver {
       this.app.showToast(this.current.error, 'error');
       return;
     }
-    this.resultContent = this.current.result;
-    this.blocks = (this.current.blocks || []).map(block => ({ ...block }));
+    this.resultContent = String(this.current!.result ?? '');
+    this.blocks = (this.current!.blocks || []).map(block => ({ ...block }));
     this.activeBlockIndex = 0;
     this.aiExplanation = null;
     this.pendingBinaryStrategy = null;
@@ -271,14 +271,14 @@ export class ConflictResolver {
     this.dirty = false;
     this.undoStack = [];
     this.blockCounts.set(filePath, this.blocks.length);
-    if (this.current.binary) this.binaryMap.set(filePath, true);
+    if (this.current!.binary) this.binaryMap.set(filePath, true);
     this.refreshFileList();
     this.renderEditor();
   }
 
   renderEditor(): void {
     if (!this.current) return;
-    const editor = document.getElementById('conflict-editor');
+    const editor = document.getElementById('conflict-editor')!;
     if (!editor) return;
     const file = this.current;
     const blockCount = this.blocks.length;
@@ -322,7 +322,7 @@ export class ConflictResolver {
 
     editor.querySelectorAll<HTMLElement>('[data-binary]').forEach(button => {
       button.onclick = () => {
-        this.pendingBinaryStrategy = (button as HTMLElement).dataset.binary;
+        this.pendingBinaryStrategy = String((button as HTMLElement).dataset.binary ?? '');
         this.dirty = true;
         editor.querySelectorAll('[data-binary]').forEach(item => {
           item.classList.toggle('active', item === button);
@@ -331,9 +331,9 @@ export class ConflictResolver {
       };
     });
     editor.querySelectorAll<HTMLElement>('[data-whole]').forEach(button => {
-      button.onclick = () => this.useWholeFile((button as HTMLElement).dataset.whole);
+      button.onclick = () => this.useWholeFile(String((button as HTMLElement).dataset.whole));
     });
-    const resolveAllButton = document.getElementById('conflict-resolve-all');
+    const resolveAllButton = document.getElementById('conflict-resolve-all')!;
     if (resolveAllButton) {
       resolveAllButton.onclick = event => {
         event.stopPropagation();
@@ -343,7 +343,7 @@ export class ConflictResolver {
       editor.querySelectorAll<HTMLElement>('.conflict-resolve-all-item').forEach(item => {
         item.onclick = () => {
           document.querySelector('.conflict-resolve-all-menu')?.classList.add('is-hidden');
-          this.applyToAll((item as HTMLElement).dataset.all);
+          this.applyToAll(String((item as HTMLElement).dataset.all));
         };
       });
       if (this.closeResolveAllMenu) {
@@ -364,7 +364,7 @@ export class ConflictResolver {
     document.getElementById('conflict-mark-resolved')?.addEventListener('click', () => this.markResolved());
     document.getElementById('conflict-ai-explain')?.addEventListener('click', () => this.explainBlock());
     document.getElementById('conflict-ai-delegate')?.addEventListener('click', () => this.delegateToAgent());
-    const resultEditor = document.getElementById('conflict-result-editor') as HTMLTextAreaElement | null;
+    const resultEditor = document.getElementById('conflict-result-editor')! as HTMLTextAreaElement | null;
     if (resultEditor) resultEditor.value = this.resultContent;
     this.bindTextEditor();
     this.renderAiPanel();
@@ -400,7 +400,7 @@ export class ConflictResolver {
   }
 
   setBlockExplainBusy(busy: boolean): void {
-    const button = document.getElementById('conflict-ai-explain') as HTMLButtonElement | null;
+    const button = document.getElementById('conflict-ai-explain')! as HTMLButtonElement | null;
     if (!button) return;
     const icon = button.querySelector('i') as HTMLElement;
     const label = button.querySelector('span') as HTMLElement;
@@ -415,7 +415,7 @@ export class ConflictResolver {
   }
 
   renderAiPanel(): void {
-    const panel = document.getElementById('conflict-ai-panel');
+    const panel = document.getElementById('conflict-ai-panel')!;
     if (!panel) return;
     const matches = this.aiExplanation
       && this.aiExplanation.blockIndex === this.activeBlockIndex;
@@ -423,10 +423,10 @@ export class ConflictResolver {
       panel.classList.add('is-hidden');
       return;
     }
-    document.getElementById('conflict-ai-title').textContent = this.aiExplanation.summary;
-    document.getElementById('conflict-ai-body').textContent = this.aiExplanation.body;
+    (document.getElementById('conflict-ai-title') as HTMLElement).textContent = String(this.aiExplanation!.summary);
+    (document.getElementById('conflict-ai-body') as HTMLElement).textContent = String(this.aiExplanation!.body);
     panel.classList.remove('is-hidden');
-    (document.getElementById('conflict-ai-close') as HTMLElement).onclick = () => {
+    (document.getElementById('conflict-ai-close')! as HTMLElement).onclick = () => {
       panel.classList.add('is-hidden');
     };
   }
@@ -479,8 +479,8 @@ export class ConflictResolver {
 
   renderTextEditor(): string {
     const active = this.blocks[this.activeBlockIndex] || null;
-    const currentRanges = this.blocks.map(block => this.locateLines(this.current.current, block.current));
-    const incomingRanges = this.blocks.map(block => this.locateLines(this.current.incoming, block.incoming));
+    const currentRanges = this.blocks.map(block => this.locateLines(String(this.current!.current ?? ''), String(block.current ?? '')));
+    const incomingRanges = this.blocks.map(block => this.locateLines(String(this.current!.incoming), String(block.incoming ?? '')));
     return `
       <div class="conflict-block-toolbar">
         <div class="conflict-navigation">
@@ -528,11 +528,11 @@ export class ConflictResolver {
       </div>
       <details class="conflict-base">
         <summary>${this.esc(t('conflicts.base'))}</summary>
-        ${this.codePane(this.current.base, 'base', false, null, [])}
+        ${this.codePane(String(this.current!.base ?? ''), 'base', false, null, [])}
       </details>
       <div class="conflict-merge-grid is-${this.layout}">
-        ${this.sourcePane(t('conflicts.incoming'), this.current.incoming, 'incoming', incomingRanges, this.activeBlockIndex)}
-        ${this.sourcePane(t('conflicts.current'), this.current.current, 'current', currentRanges, this.activeBlockIndex)}
+        ${this.sourcePane(t('conflicts.incoming'), String(this.current!.incoming ?? ''), 'incoming', incomingRanges, this.activeBlockIndex)}
+        ${this.sourcePane(t('conflicts.current'), String(this.current!.current ?? ''), 'current', currentRanges, this.activeBlockIndex)}
         <section class="conflict-pane conflict-result-pane">
           <div class="conflict-pane-header result">${this.esc(t('conflicts.result'))}</div>
           <div class="conflict-result-editor" id="conflict-result-stack">
@@ -576,7 +576,7 @@ export class ConflictResolver {
   }
 
   buildResultLayer(): void {
-    const layer = document.getElementById('conflict-highlight-layer');
+    const layer = document.getElementById('conflict-highlight-layer')!;
     if (!layer) return;
     const rows = ConflictHighlight.buildHighlightLines(this.resultContent, this.blocks);
     layer.innerHTML = rows.map(row => {
@@ -586,7 +586,7 @@ export class ConflictResolver {
     }).join('');
     this.highlightRows = rows;
 
-    const textarea = document.getElementById('conflict-result-editor') as HTMLTextAreaElement | null;
+    const textarea = document.getElementById('conflict-result-editor')! as HTMLTextAreaElement | null;
     if (textarea) {
       this.refreshResultGutter(textarea, document.querySelector('.conflict-result-gutter'));
       this.syncHighlightScroll(textarea);
@@ -595,8 +595,8 @@ export class ConflictResolver {
   }
 
   positionActionBar(): void {
-    const bar = document.getElementById('conflict-action-bar');
-    const stack = document.getElementById('conflict-result-stack');
+    const bar = document.getElementById('conflict-action-bar')!;
+    const stack = document.getElementById('conflict-result-stack')!;
     if (!bar || !stack) return;
     const block = this.blocks[this.activeBlockIndex];
     if (!block || this.current?.binary) {
@@ -606,7 +606,7 @@ export class ConflictResolver {
     const rowIndex = Math.max(0, block.startLine - 1);
     const lineHeight = 21;
     const paddingTop = 8;
-    const top = paddingTop + rowIndex * lineHeight - ((document.getElementById('conflict-result-editor') as HTMLTextAreaElement | null)?.scrollTop || 0);
+    const top = paddingTop + rowIndex * lineHeight - ((document.getElementById('conflict-result-editor')! as HTMLTextAreaElement | null)?.scrollTop || 0);
     stack.style.setProperty('--action-bar-top', `${top}px`);
     bar.innerHTML = `
       <span class="conflict-action-bar-label"><i class="ph ph-warning-circle" aria-hidden="true"></i>${this.esc(t('conflicts.blockCount', {
@@ -620,15 +620,15 @@ export class ConflictResolver {
     `;
     bar.classList.remove('is-hidden');
     bar.querySelectorAll<HTMLElement>('[data-choice]').forEach(button => {
-      button.onclick = () => this.applyBlockChoice((button as HTMLElement).dataset.choice);
+      button.onclick = () => this.applyBlockChoice((button as HTMLElement).dataset.choice ?? '');
     });
   }
 
   syncHighlightScroll(textarea: HTMLTextAreaElement): void {
-    const layer = document.getElementById('conflict-highlight-layer');
+    const layer = document.getElementById('conflict-highlight-layer')!;
     const gutter = document.querySelector('.conflict-result-gutter');
-    const stack = document.getElementById('conflict-result-stack');
-    const bar = document.getElementById('conflict-action-bar');
+    const stack = document.getElementById('conflict-result-stack')!;
+    const bar = document.getElementById('conflict-action-bar')!;
     if (layer) layer.scrollTop = textarea.scrollTop;
     if (gutter) gutter.scrollTop = textarea.scrollTop;
     if (stack) {
@@ -642,7 +642,7 @@ export class ConflictResolver {
     document.getElementById('conflict-previous')?.addEventListener('click', () => this.jumpToBlock(this.activeBlockIndex - 1));
     document.getElementById('conflict-next')?.addEventListener('click', () => this.jumpToBlock(this.activeBlockIndex + 1));
     document.querySelectorAll<HTMLElement>('[data-choice]').forEach(button => {
-      button.onclick = () => this.applyBlockChoice((button as HTMLElement).dataset.choice);
+      button.onclick = () => this.applyBlockChoice((button as HTMLElement).dataset.choice ?? '');
     });
 
     this.bindResultEditor();
@@ -650,7 +650,7 @@ export class ConflictResolver {
   }
 
   bindResultEditor(): void {
-    const textarea = document.getElementById('conflict-result-editor') as HTMLTextAreaElement | null;
+    const textarea = document.getElementById('conflict-result-editor')! as HTMLTextAreaElement | null;
     if (!textarea) return;
     this.buildResultLayer();
     const active = this.blocks[this.activeBlockIndex];
@@ -721,12 +721,12 @@ export class ConflictResolver {
     const pane = document.querySelector<HTMLElement>('.conflict-code-scroll[data-pane="current"]') ||
       document.querySelector<HTMLElement>('.conflict-code-scroll[data-pane="incoming"]');
     if (pane) {
-      pane.parentElement.querySelectorAll<HTMLElement>('.conflict-pane-row[data-pane-line]').forEach(row => {
+      pane.parentElement!.querySelectorAll<HTMLElement>('.conflict-pane-row[data-pane-line]').forEach(row => {
         row.addEventListener('click', () => {
           const line = Number(row.dataset.paneLine);
           const ranges = pane.dataset.pane === 'current'
-            ? this.blocks.map(block => this.locateLines(this.current.current, block.current))
-            : this.blocks.map(block => this.locateLines(this.current.incoming, block.incoming));
+            ? this.blocks.map(block => this.locateLines(String(this.current!.current ?? ''), String(block.current ?? '')))
+            : this.blocks.map(block => this.locateLines(String(this.current!.incoming), String(block.incoming ?? '')));
           const index = ranges.findIndex(range => range && line >= range.start && line <= range.end);
           if (index !== -1) this.jumpToBlock(index);
         });
@@ -751,19 +751,19 @@ export class ConflictResolver {
   }
 
   blockPaneRange(block: ConflictBlock): { start: number; end: number } | null {
-    return this.locateLines(this.current?.current || '', block.current);
+    return this.locateLines(this.current?.current || '', String(block.current ?? ''));
   }
 
   scheduleReparse(): void {
-    clearTimeout(this.reparseTimer);
+    if (this.reparseTimer) clearTimeout(this.reparseTimer);
     this.reparseTimer = setTimeout(async () => {
       const repo = this.app.state.repo;
-      if (!repo || !this.currentPath || this.container.classList.contains('is-hidden')) return;
+      if (!repo || !this.currentPath || this.container!.classList.contains('is-hidden')) return;
       const result = await window.gitTree.parseConflictBlocks(repo.path, this.resultContent) as { error?: string } | ConflictBlock[];
       if ((result as { error?: string })?.error) return;
       this.blocks = ((result as ConflictBlock[]) || []).map(block => ({ ...block }));
       this.activeBlockIndex = Math.min(this.activeBlockIndex, Math.max(0, this.blocks.length - 1));
-      this.blockCounts.set(this.currentPath, this.blocks.length);
+      this.blockCounts.set(this.currentPath!, this.blocks.length);
       this.updateMarkButton();
       this.buildResultLayer();
       this.refreshFileList();
@@ -772,25 +772,27 @@ export class ConflictResolver {
 
   useWholeFile(kind: string): void {
     this.snapshot();
-    this.resultContent = kind === 'current' ? this.current.current : this.current.incoming;
+    this.resultContent = String(kind === 'current' ? this.current!.current : this.current!.incoming ?? '');
     this.blocks = [];
     this.activeBlockIndex = 0;
     this.manualEdited = false;
     this.dirty = true;
-    this.blockCounts.set(this.currentPath, 0);
+    this.blockCounts.set(this.currentPath!, 0);
     this.renderEditor();
   }
 
   applyToAll(choice: string): void {
     if (!this.blocks.length) return;
     this.snapshot();
-    const eol = this.current.eol === 'crlf' ? '\r\n' : '\n';
+    const eol = this.current!.eol === 'crlf' ? '\r\n' : '\n';
     for (const block of [...this.blocks]) {
-      let replacement;
-      if (choice === 'current') replacement = block.current;
-      else if (choice === 'incoming') replacement = block.incoming;
-      else replacement = `${block.current}${block.current.endsWith(eol) || !block.current ? '' : eol}${block.incoming}`;
-      if (replacement === null || replacement === undefined) continue;
+      const currentStr: string | null = block.current ?? null;
+      const incomingStr: string | null = block.incoming ?? null;
+      let replacement: string | null;
+      if (choice === 'current') replacement = currentStr;
+      else if (choice === 'incoming') replacement = incomingStr;
+      else replacement = `${currentStr}${(currentStr?.endsWith(eol) || !currentStr) ? '' : eol}${incomingStr}`;
+      if (replacement === null) continue;
       this.resultContent =
         this.resultContent.slice(0, block.startOffset) +
         replacement +
@@ -806,7 +808,7 @@ export class ConflictResolver {
     this.blocks = [];
     this.activeBlockIndex = 0;
     this.dirty = true;
-    this.blockCounts.set(this.currentPath, 0);
+    this.blockCounts.set(this.currentPath!, 0);
     this.renderEditor();
   }
 
@@ -817,7 +819,7 @@ export class ConflictResolver {
       activeBlockIndex: this.activeBlockIndex
     });
     if (this.undoStack.length > 30) this.undoStack.shift();
-    const undoButton = document.getElementById('conflict-undo') as HTMLButtonElement | null;
+    const undoButton = document.getElementById('conflict-undo')! as HTMLButtonElement | null;
     if (undoButton) undoButton.disabled = false;
   }
 
@@ -829,8 +831,8 @@ export class ConflictResolver {
     this.activeBlockIndex = Math.min(snapshot.activeBlockIndex, Math.max(0, this.blocks.length - 1));
     this.manualEdited = false;
     this.dirty = true;
-    this.blockCounts.set(this.currentPath, this.blocks.length);
-    const undoButton = document.getElementById('conflict-undo') as HTMLButtonElement | null;
+    this.blockCounts.set(this.currentPath!, this.blocks.length);
+    const undoButton = document.getElementById('conflict-undo')! as HTMLButtonElement | null;
     if (undoButton) undoButton.disabled = this.undoStack.length === 0;
     this.renderEditor();
   }
@@ -843,13 +845,15 @@ export class ConflictResolver {
       return;
     }
     this.snapshot();
-    const eol = this.current.eol === 'crlf' ? '\r\n' : '\n';
-    let replacement;
-    if (choice === 'current') replacement = block.current;
-    else if (choice === 'incoming') replacement = block.incoming;
-    else if (choice === 'smart') replacement = block.smartCombination;
-    else replacement = `${block.current}${block.current.endsWith(eol) || !block.current ? '' : eol}${block.incoming}`;
-    if (replacement === null || replacement === undefined) return;
+    const eol = this.current!.eol === 'crlf' ? '\r\n' : '\n';
+    const currentStr = block.current ?? null;
+    const incomingStr = block.incoming ?? null;
+    let replacement: string | null;
+    if (choice === 'current') replacement = currentStr;
+    else if (choice === 'incoming') replacement = incomingStr;
+    else if (choice === 'smart') replacement = block.smartCombination ?? null;
+    else replacement = `${currentStr ?? ''}${(currentStr?.endsWith(eol)) ? eol : ''}${incomingStr ?? ''}`;
+    if (replacement === null) return;
 
     const removedLength = block.endOffset - block.startOffset;
     this.resultContent =
@@ -864,7 +868,7 @@ export class ConflictResolver {
     }
     this.activeBlockIndex = Math.min(this.activeBlockIndex, Math.max(0, this.blocks.length - 1));
     this.dirty = true;
-    this.blockCounts.set(this.currentPath, this.blocks.length);
+    this.blockCounts.set(this.currentPath!, this.blocks.length);
     this.renderEditor();
   }
 
@@ -875,7 +879,7 @@ export class ConflictResolver {
 
   canMarkResolved(): boolean {
     if (!this.current) return false;
-    if (this.current.binary) return Boolean(this.pendingBinaryStrategy);
+    if (this.current!.binary) return Boolean(this.pendingBinaryStrategy);
     return (this.blocks.length === 0 || this.manualEdited) && !this.hasConflictMarkers();
   }
 
@@ -884,7 +888,7 @@ export class ConflictResolver {
   }
 
   updateMarkButton(): void {
-    const button = document.getElementById('conflict-mark-resolved') as HTMLButtonElement | null;
+    const button = document.getElementById('conflict-mark-resolved')! as HTMLButtonElement | null;
     if (button) button.disabled = !this.canMarkResolved();
   }
 
@@ -894,7 +898,7 @@ export class ConflictResolver {
       return;
     }
     if (!await this.confirm(t('conflicts.markResolved'), t('conflicts.markResolvedConfirm'))) return;
-    const strategy = this.current.binary ? this.pendingBinaryStrategy : 'manual';
+    const strategy = this.current!.binary ? (this.pendingBinaryStrategy ?? 'manual') : 'manual';
     await this.resolve(strategy, this.resultContent);
   }
 
@@ -903,7 +907,7 @@ export class ConflictResolver {
     if (!repo || !this.currentPath) return;
     const result = await window.gitTree.resolveConflict(repo.path, this.currentPath, {
       strategy,
-      snapshotId: this.current.snapshotId,
+      snapshotId: this.current!.snapshotId,
       ...(strategy === 'manual' ? { content } : {})
     }) as { error?: string; state?: OperationStateInfo };
     if (result?.error) {
@@ -918,7 +922,7 @@ export class ConflictResolver {
       if (!this.blockCounts.has(file)) this.blockCounts.set(file, null);
     }
     this.blockCounts.set(resolvedPath, 0);
-    this.state = result.state;
+    this.state = result.state ?? null;
     this.currentPath = nextConflicts[0] || null;
     this.current = null;
     this.dirty = false;
@@ -939,10 +943,10 @@ export class ConflictResolver {
   async continue(): Promise<void> {
     if (this.state?.conflicts?.length) return;
     const repo = this.app.state.repo;
-    const result = await window.gitTree.continueOperation(repo.path) as { error?: string };
+    const result = await window.gitTree.continueOperation(repo!.path) as { error?: string };
     if (result?.error) {
       this.app.showToast(result.error, 'error');
-      const state = await window.gitTree.getOperationState(repo.path) as OperationStateInfo;
+      const state = await window.gitTree.getOperationState(repo!.path) as OperationStateInfo;
       if (state?.type) await this.open(state);
       return;
     }
@@ -954,7 +958,7 @@ export class ConflictResolver {
   async abort(): Promise<void> {
     if (!await this.confirm(t('conflicts.abortTitle'), t('conflicts.abortConfirm'))) return;
     const repo = this.app.state.repo;
-    const result = await window.gitTree.abortOperation(repo.path) as { error?: string };
+    const result = await window.gitTree.abortOperation(repo!.path) as { error?: string };
     if (result?.error) {
       this.app.showToast(result.error, 'error');
       return;
@@ -966,7 +970,7 @@ export class ConflictResolver {
   async skip(): Promise<void> {
     if (!await this.confirm(t('conflicts.skipTitle'), t('conflicts.skipConfirm'))) return;
     const repo = this.app.state.repo;
-    const result = await window.gitTree.skipOperation(repo.path) as { error?: string; state?: OperationStateInfo };
+    const result = await window.gitTree.skipOperation(repo!.path) as { error?: string; state?: OperationStateInfo };
     if (result?.error) {
       this.app.showToast(result.error, 'error');
       return;
@@ -986,7 +990,7 @@ export class ConflictResolver {
     this.globalKeysHandler = event => {
       if (event.altKey && (event.key === 'ArrowUp' || event.key === 'ArrowDown')) {
         const target = event.target;
-        if (target === document.getElementById('conflict-result-editor')) return;
+        if (target === document.getElementById('conflict-result-editor')!) return;
         event.preventDefault();
         const direction = event.key === 'ArrowUp' ? -1 : 1;
         this.jumpToBlock(this.activeBlockIndex + direction);
@@ -1018,12 +1022,12 @@ export class ConflictResolver {
   }
 
   hide(): void {
-    this.container.classList.add('is-hidden');
-    this.container.innerHTML = '';
+    this.container!.classList.add('is-hidden');
+    this.container!.innerHTML = '';
     this.state = null;
     this.current = null;
     this.dirty = false;
-    clearTimeout(this.reparseTimer);
+    if (this.reparseTimer) clearTimeout(this.reparseTimer);
     if (this.globalKeysHandler) {
       document.removeEventListener('keydown', this.globalKeysHandler);
       this.globalKeysHandler = null;

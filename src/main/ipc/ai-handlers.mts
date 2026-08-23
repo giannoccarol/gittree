@@ -1,8 +1,8 @@
 import type { AiService } from '../ai/ai-service.mts';
 
 export function registerAiHandlers({ registerHandler, registerManagedRepoHandler, aiService }: {
-  registerHandler: (channel: string, handler: (...args: unknown[]) => unknown) => void;
-  registerManagedRepoHandler: (channel: string, handler: (...args: unknown[]) => unknown) => void;
+  registerHandler: (channel: string, handler: (...args: never[]) => unknown) => void;
+  registerManagedRepoHandler: (channel: string, handler: (...args: never[]) => unknown) => void;
   aiService: AiService;
 }) {
   registerHandler('ai:settings-get', () => aiService.getSettings());

@@ -1,7 +1,7 @@
 import type { GitService } from '../git-service.mts';
 
 interface GitHandlerDependencies {
-  registerManagedRepoHandler: (channel: string, implementation: (...args: unknown[]) => unknown) => void;
+  registerManagedRepoHandler: (channel: string, implementation: (...args: never[]) => unknown) => void;
   getGitService: (repoPath: unknown) => GitService;
   consumeAuthorizedDirectory?: (directoryPath: unknown) => unknown;
   authorizeCreatedRepository?: (repoPath: unknown) => unknown;
@@ -9,7 +9,7 @@ interface GitHandlerDependencies {
   sendToRenderer?: (channel: string, payload: unknown) => void;
 }
 
-async function runWithConflictState(git: GitService, operation: () => Promise<any>) {
+async function runWithConflictState(git: GitService, operation: () => Promise<unknown>) {
   try {
     return await operation();
   } catch (error) {
@@ -178,7 +178,7 @@ export function registerGitHandlers({
   const registerConflictOperation = (
     channel: string,
     method: GitMethod,
-    logMessage: (result: any, ...args: unknown[]) => string
+    logMessage: (result: unknown, ...args: unknown[]) => string
   ) => {
     registerManagedRepoHandler(channel, async (repoPath: string, ...args: unknown[]) => {
       const git = getGitService(repoPath);

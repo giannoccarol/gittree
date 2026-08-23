@@ -119,36 +119,40 @@ interface InspectorPayloadSource {
   diffText?: unknown;
 }
 
-function sanitizeInspectorPayload(payload: InspectorPayloadSource | null | undefined) {
-  const theme = typeof payload?.theme === 'string' ? payload.theme : '';
+function sanitizeInspectorPayload(payload: unknown) {
+  // Payloads cross the IPC seam untyped; every field is re-validated below.
+  const source = (typeof payload === 'object' && payload !== null
+    ? payload
+    : null) as InspectorPayloadSource | null;
+  const theme = typeof source?.theme === 'string' ? source.theme : '';
   return {
-    title: typeof payload?.title === 'string' && payload.title.length <= 200
-      ? payload.title
+    title: typeof source?.title === 'string' && source.title.length <= 200
+      ? source.title
       : 'Inspector',
-    meta: typeof payload?.meta === 'string' && payload.meta.length <= 400
-      ? payload.meta
+    meta: typeof source?.meta === 'string' && source.meta.length <= 400
+      ? source.meta
       : '',
     theme: ['light', 'dark'].includes(theme) ? theme : 'light',
-    tone: typeof payload?.tone === 'string' && /^[a-z]{1,32}$/.test(payload.tone)
-      ? payload.tone
+    tone: typeof source?.tone === 'string' && /^[a-z]{1,32}$/.test(source.tone)
+      ? source.tone
       : '',
-    mode: payload?.mode === 'split' ? 'split' : 'unified',
-    eyebrow: typeof payload?.eyebrow === 'string' && payload.eyebrow.length <= 80
-      ? payload.eyebrow
+    mode: source?.mode === 'split' ? 'split' : 'unified',
+    eyebrow: typeof source?.eyebrow === 'string' && source.eyebrow.length <= 80
+      ? source.eyebrow
       : 'Inspector',
-    modeLabel: typeof payload?.modeLabel === 'string' && payload.modeLabel.length <= 80
-      ? payload.modeLabel
-      : (payload?.mode === 'split' ? 'Split' : 'Unified'),
-    wordLevel: payload?.wordLevel === true,
-    graph: sanitizeGraphPayload(payload?.graph),
-    files: sanitizeFilesPayload(payload?.files),
-    selectedFile: boundedString(payload?.selectedFile, 4000) || null,
-    filesOpen: payload?.filesOpen !== false,
-    html: typeof payload?.html === 'string' && payload.html.length <= 2_000_000
-      ? payload.html
+    modeLabel: typeof source?.modeLabel === 'string' && source.modeLabel.length <= 80
+      ? source.modeLabel
+      : (source?.mode === 'split' ? 'Split' : 'Unified'),
+    wordLevel: source?.wordLevel === true,
+    graph: sanitizeGraphPayload(source?.graph),
+    files: sanitizeFilesPayload(source?.files),
+    selectedFile: boundedString(source?.selectedFile, 4000) || null,
+    filesOpen: source?.filesOpen !== false,
+    html: typeof source?.html === 'string' && source.html.length <= 2_000_000
+      ? source.html
       : '',
-    diffText: typeof payload?.diffText === 'string' && payload.diffText.length <= 10_000_000
-      ? payload.diffText
+    diffText: typeof source?.diffText === 'string' && source.diffText.length <= 10_000_000
+      ? source.diffText
       : ''
   };
 }
@@ -209,7 +213,7 @@ export function createInspectorWindowController({
     lockDownWindow(inspectorWindow);
     inspectorWindow.loadFile(htmlPath);
     inspectorWindow.webContents.once('did-finish-load', () => {
-      inspectorWindow.webContents.send('inspector:render', safePayload);
+      inspectorWindow!.webContents.send('inspector:render', safePayload);
     });
     inspectorWindow.on('closed', () => {
       inspectorWindow = null;

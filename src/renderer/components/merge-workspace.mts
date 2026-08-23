@@ -99,8 +99,8 @@ export class MergeWorkspace {
   showLoading(): void {
     this.ensureContainer();
     this.bindEscape();
-    this.container.classList.remove('is-hidden');
-    this.container.innerHTML = `
+    this.container!.classList.remove('is-hidden');
+    this.container!.innerHTML = `
       <div class="merge-modal-card">
       <header class="merge-header">
         <div class="merge-heading">
@@ -118,11 +118,11 @@ export class MergeWorkspace {
 
   ensureContainer(): void {
     if (this.container) return;
-    this.container = document.getElementById('merge-preview-overlay');
+    this.container = document.getElementById('merge-preview-overlay')!;
     if (!this.container) {
       this.container = document.createElement('div');
       this.container.id = 'merge-preview-overlay';
-      document.getElementById('app').appendChild(this.container);
+      document.getElementById('app')!.appendChild(this.container);
     }
     this.container.className = 'merge-workspace-shell is-hidden';
   }
@@ -141,7 +141,7 @@ export class MergeWorkspace {
     const blockingSummary = this.blockingSummary(d.status, changedFiles);
     const conflictList = conflictFiles.slice(0, 6).join(', ');
 
-    this.container.innerHTML = `
+    this.container!.innerHTML = `
       <div class="merge-modal-card">
       <header class="merge-header">
         <div class="merge-heading">
@@ -285,14 +285,14 @@ export class MergeWorkspace {
     document.getElementById('merge-cancel-btn')!.onclick = () => this.hide();
     document.getElementById('merge-only-btn')!.onclick = () => this.executeMerge(false);
     document.getElementById('merge-push-btn')!.onclick = () => this.executeMerge(true);
-    const viewChangesButton = document.getElementById('merge-view-changes-btn');
+    const viewChangesButton = document.getElementById('merge-view-changes-btn')!;
     if (viewChangesButton) {
       viewChangesButton.onclick = () => {
         this.hide();
         this.app.setWorkspaceMode('changes');
       };
     }
-    const stashButton = document.getElementById('merge-stash-btn');
+    const stashButton = document.getElementById('merge-stash-btn')!;
     if (stashButton) stashButton.onclick = () => this.stashAndReload();
 
     document.querySelectorAll<HTMLElement>('.merge-strategy-option').forEach(button => {
@@ -304,7 +304,7 @@ export class MergeWorkspace {
       };
     });
 
-    this.container.classList.remove('is-hidden');
+    this.container!.classList.remove('is-hidden');
   }
 
   renderDiff(diffText: string): string {
@@ -355,7 +355,7 @@ export class MergeWorkspace {
     }
     this.app.showToast(t('mergeWorkspace.mergeStarted'));
 
-    const result = await window.gitTree.merge(repo.path, this.mergeData.source, this.strategy) as {
+    const result = await window.gitTree.merge(repo.path, this.mergeData!.source, this.strategy) as {
       error?: string;
       conflictState?: { type?: string };
     };
@@ -378,12 +378,12 @@ export class MergeWorkspace {
     this.setPushing(true);
     const metadata = this.app.components.branchList.metadata;
     const targetBranch = (metadata?.branches || []).find(
-      branch => branch.name === this.mergeData.target && branch.kind === 'local'
+      branch => branch.name === this.mergeData!.target && branch.kind === 'local'
     );
     const remoteName = targetBranch?.upstream?.split('/')[0]
       || metadata?.remotes?.[0]?.name
       || 'origin';
-    const pushResult = await window.gitTree.push(repo.path, remoteName, this.mergeData.target) as { error?: string };
+    const pushResult = await window.gitTree.push(repo.path, remoteName, this.mergeData!.target) as { error?: string };
     this.setPushing(false);
     this.hide();
     if (pushResult.error) {
@@ -396,10 +396,10 @@ export class MergeWorkspace {
 
   setPushing(pushing: boolean): void {
     if (!this.container) return;
-    this.container.querySelectorAll('.merge-confirm, #merge-cancel-btn').forEach(button => {
+    this.container!.querySelectorAll('.merge-confirm, #merge-cancel-btn').forEach(button => {
       (button as HTMLButtonElement).disabled = pushing;
     });
-    const pushButton = this.container.querySelector('#merge-push-btn');
+    const pushButton = this.container!.querySelector('#merge-push-btn');
     if (pushButton && pushing) {
       pushButton.innerHTML = `<i class="ph ph-circle-notch merge-pushing-spinner" aria-hidden="true"></i> ${this.esc(t('mergeWorkspace.pushing'))}`;
     }
@@ -425,8 +425,8 @@ export class MergeWorkspace {
     if (this.onKeydown) return;
     this.onKeydown = event => {
       if (event.key !== 'Escape') return;
-      if (!this.container || this.container.classList.contains('is-hidden')) return;
-      const cancel = document.getElementById('merge-cancel-btn') as HTMLButtonElement | null;
+      if (!this.container || this.container!.classList.contains('is-hidden')) return;
+      const cancel = document.getElementById('merge-cancel-btn')! as HTMLButtonElement | null;
       if (!cancel || cancel.disabled) return;
       this.hide();
     };
@@ -438,7 +438,7 @@ export class MergeWorkspace {
       document.removeEventListener('keydown', this.onKeydown);
       this.onKeydown = null;
     }
-    if (this.container) this.container.classList.add('is-hidden');
+    if (this.container) this.container!.classList.add('is-hidden');
   }
 
   hasPendingChanges(status: MergeStatus | null | undefined = {}): boolean {
@@ -465,15 +465,15 @@ export class MergeWorkspace {
 
   localFiles(status: MergeStatus | null | undefined = {}): string[] {
     const values = [
-      ...(status.files || []).map(file => file.path),
-      ...(status.modified || []),
-      ...(status.not_added || []),
-      ...(status.created || []),
-      ...(status.deleted || []),
-      ...(status.staged || []),
-      ...(status.conflicted || []),
-      ...(status.renamed || []).flatMap(file => [file.from, file.to])
-    ].filter(Boolean);
+      ...(status!.files || []).map(file => file.path),
+      ...(status!.modified || []),
+      ...(status!.not_added || []),
+      ...(status!.created || []),
+      ...(status!.deleted || []),
+      ...(status!.staged || []),
+      ...(status!.conflicted || []),
+      ...(status!.renamed || []).flatMap(file => [file.from, file.to])
+    ].filter((value): value is string => typeof value === 'string' && value.length > 0);
     return [...new Set(values)];
   }
 

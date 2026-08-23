@@ -93,9 +93,10 @@ export function createApplicationRuntime({
       focusMainWindow();
       dispatchDeepLink(findDeepLink(secondArgv));
     });
-    listen('open-url', (event: { preventDefault(): void }, url: string) => {
+    listen('open-url', (...args: unknown[]) => {
+      const event = args[0] as { preventDefault(): void };
       event.preventDefault();
-      dispatchDeepLink(url);
+      dispatchDeepLink(String(args[1] ?? ''));
     });
     listen('window-all-closed', () => {
       if (platform !== 'darwin') host.quit();

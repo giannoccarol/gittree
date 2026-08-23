@@ -59,7 +59,7 @@ export class BranchCompare {
   showCompareView(): void {
     if (!this.data) return;
 
-    const mainView = document.getElementById('merge-workspace-overlay');
+    const mainView = document.getElementById('merge-workspace-overlay')!;
     mainView.innerHTML = `
       <div class="branch-compare">
         <div class="compare-header">
@@ -114,7 +114,7 @@ export class BranchCompare {
     const repo = this.app.state.repo;
     if (!repo || branches.length < 2) return;
 
-    const mainView = document.getElementById('merge-workspace-overlay');
+    const mainView = document.getElementById('merge-workspace-overlay')!;
     mainView.classList.remove('is-hidden');
     mainView.innerHTML = `<div class="empty-state"><i class="ph ph-circle-notch"></i>${t('common.loading')}</div>`;
 
@@ -165,7 +165,7 @@ export class BranchCompare {
                         if (i === j) return '<td class="compare-matrix-self">\u2014</td>';
                         const cell = matrix[i][j];
                         if (cell?.error) return `<td class="compare-matrix-error">!</td>`;
-                        return `<td class="compare-matrix-cell" data-row="${i}" data-col="${j}">${cell.commits}</td>`;
+                        return `<td class="compare-matrix-cell" data-row="${i}" data-col="${j}">${cell!.commits}</td>`;
                       }).join('')}
                     </tr>
                   `).join('')}

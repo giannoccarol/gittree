@@ -140,8 +140,8 @@ export class AgentSessionService {
     now = () => new Date().toISOString(),
     nowMs = () => Date.now(),
     adapterDetectionTtl = 60_000,
-    setInterval: setIntervalFn = setInterval,
-    clearInterval: clearIntervalFn = clearInterval,
+    setInterval: setIntervalFn = ((fn: () => void, ms?: number) => setInterval(fn, ms)) as typeof setInterval,
+    clearInterval: clearIntervalFn = (timer => clearInterval(timer as ReturnType<typeof setInterval>)) as (timer: unknown) => void,
     fileSystem = fs,
     pathModule = nodePath,
     execute,
@@ -272,12 +272,12 @@ export class AgentSessionService {
     let repositoryKey = repositoryPath ? canonical(repositoryPath, this.path) : '';
     if (repositoryKey) {
       const linkedTask = [...this.tasks.values()].find(task => (
-        canonical(task.worktreePath, this.path) === repositoryKey
+        canonical(String(task.worktreePath), this.path) === repositoryKey
       ));
-      if (linkedTask) repositoryKey = canonical(linkedTask.repositoryPath, this.path);
+      if (linkedTask) repositoryKey = canonical(String(linkedTask.repositoryPath), this.path);
     }
     const tasks = [...this.tasks.values()]
-      .filter(task => !repositoryKey || canonical(task.repositoryPath, this.path) === repositoryKey)
+      .filter(task => !repositoryKey || canonical(String(task.repositoryPath), this.path) === repositoryKey)
       .sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)));
     return tasks.map(publicTask);
   }
@@ -289,13 +289,13 @@ export class AgentSessionService {
   }
 
   getActiveCount() {
-    return [...this.tasks.values()].filter(task => ACTIVE_STATUSES.has(task.status)).length;
+    return [...this.tasks.values()].filter(task => ACTIVE_STATUSES.has(String(task.status))).length;
   }
 
   assertWorktreeRemovable(worktreePath: string): boolean {
     const target = canonical(worktreePath, this.path);
     const active = [...this.tasks.values()].find(task => (
-      ACTIVE_STATUSES.has(String(task.status)) && canonical(String(task.worktreePath), this.path) === target
+      ACTIVE_STATUSES.has(String(task.status)) && canonical(String(String(task.worktreePath)), this.path) === target
     ));
     if (active) throw new Error('Stop the active agent before removing this worktree');
     return true;
@@ -357,12 +357,12 @@ export class AgentSessionService {
   }
 
   _createTaskRecord(input: Record<string, unknown>) {
-    this._assertWorktreeAvailable(input.worktreePath as string);
+    this._assertWorktreeAvailable(String(input.worktreePath) as string);
     const timestamp = this.now();
     const task = {
       id: String(input.id),
-      repositoryPath: this.path.resolve(String(input.repositoryPath)),
-      worktreePath: this.path.resolve(String(input.worktreePath)),
+      repositoryPath: this.path.resolve(String(String(input.repositoryPath))),
+      worktreePath: this.path.resolve(String(String(input.worktreePath))),
       title: String(input.title ?? ''),
       branch: String(input.branch || ''),
       baseRef: String(input.baseRef || 'HEAD'),
@@ -423,7 +423,7 @@ export class AgentSessionService {
   _assertWorktreeAvailable(worktreePath: string, ignoreTaskId?: string) {
     const target = canonical(worktreePath, this.path);
     for (const task of this.tasks.values()) {
-      if (task.id !== ignoreTaskId && ACTIVE_STATUSES.has(task.status) && canonical(task.worktreePath, this.path) === target) {
+      if (task.id !== ignoreTaskId && ACTIVE_STATUSES.has(String(task.status)) && canonical(String(task.worktreePath), this.path) === target) {
         throw new Error('This worktree already has an active agent task');
       }
     }
@@ -433,9 +433,9 @@ export class AgentSessionService {
     if (this.shuttingDown) return;
     while (this.active.size < this.settings.maxConcurrent && this.queue.length > 0) {
       const id = this.queue.shift();
-      const task = this.tasks.get(id);
+      const task = this.tasks.get(String(id));
       if (!task || task.status !== 'queued') continue;
-      this.active.set(id, { pty: null, stopRequested: false });
+      this.active.set(String(id), { pty: null, stopRequested: false });
       this._start(task).catch(error => this._failStart(task, error));
     }
     this._emitQueue();
@@ -443,7 +443,7 @@ export class AgentSessionService {
 
   async _start(task: AgentTask): Promise<void> {
     if (task.setupRecipeId) {
-      const recipe = detectSetupRecipe(task.worktreePath, { fileSystem: this.fs });
+      const recipe = detectSetupRecipe(String(task.worktreePath), { fileSystem: this.fs });
       if (!recipe || recipe.id !== task.setupRecipeId) throw new Error('Requested setup recipe is not available');
       task.status = 'preparing';
       this._record(task, 'preparing');
@@ -454,8 +454,8 @@ export class AgentSessionService {
     const args = task._resume ? adapter.resumeArgs() : adapter.createArgs(String(task._prompt));
     const executable = this.resolveExecutable(adapter.command);
     if (!executable) throw new Error(`${adapter.label} CLI was not found on PATH`);
-    const pty = this.createPty(executable, args, this._ptyOptions(String(task.worktreePath)));
-    const active = this.active.get(task.id);
+    const pty = this.createPty(executable, args, this._ptyOptions(String(String(task.worktreePath))));
+    const active = this.active.get(String(task.id!));
     if (!active) return;
     active.pty = pty;
     task.status = 'running';
@@ -468,8 +468,8 @@ export class AgentSessionService {
 
   _runSetup(task: AgentTask, recipe: SetupRecipe): Promise<void> {
     return new Promise<void>((resolve, reject) => {
-      const pty = this.createPty(recipe.command as string, recipe.args as string[], this._ptyOptions(String(task.worktreePath)));
-      const active = this.active.get(task.id);
+      const pty = this.createPty(recipe.command as string, recipe.args as string[], this._ptyOptions(String(String(task.worktreePath))));
+      const active = this.active.get(String(task.id!));
       if (!active) return reject(new Error('Task was stopped'));
       active.pty = pty;
       const dataSubscription = pty.onData(data => this._handleTerminalData(task, data));
@@ -496,9 +496,9 @@ export class AgentSessionService {
     const dataSubscription = pty.onData(data => this._handleTerminalData(task, data));
     pty.onExit(({ exitCode, signal }) => {
       dataSubscription?.dispose?.();
-      const active = this.active.get(task.id);
+      const active = this.active.get(String(task.id!));
       if (!active || active.pty !== pty) return;
-      this.active.delete(task.id);
+      this.active.delete(String(task.id));
       task.status = active.forceInterrupted || (this.shuttingDown && active.stopRequested)
         ? 'interrupted'
         : (active.stopRequested ? 'stopped' : (exitCode === 0 ? 'completed' : 'failed'));
@@ -524,9 +524,9 @@ export class AgentSessionService {
   }
 
   _failStart(task: AgentTask, error: Error): void {
-    const active = this.active.get(task.id);
+    const active = this.active.get(String(task.id!));
     if (!active) return;
-    this.active.delete(task.id);
+    this.active.delete(String(task.id));
     task.status = active.stopRequested
       ? (this.shuttingDown ? 'interrupted' : 'stopped')
       : 'failed';
@@ -589,12 +589,12 @@ export class AgentSessionService {
     this._assertAgentsEnabled();
     const task = this.tasks.get(taskId);
     if (!task) throw new Error('Unknown agent task');
-    if (ACTIVE_STATUSES.has(task.status)) throw new Error('Agent task is already active');
-    this._assertWorktreeAvailable(task.worktreePath, task.id);
+    if (ACTIVE_STATUSES.has(String(task.status))) throw new Error('Agent task is already active');
+    this._assertWorktreeAvailable(String(task.worktreePath), task.id);
     task.status = 'queued';
     task._resume = true;
     task.needsAttention = false;
-    this.queue.push(task.id);
+    this.queue.push(String(task.id));
     this._record(task, 'queued');
     this._persist();
     this._emitTask(task);
@@ -605,7 +605,7 @@ export class AgentSessionService {
   archiveTask(taskId: string): Record<string, unknown> {
     const task = this.tasks.get(taskId);
     if (!task) throw new Error('Unknown agent task');
-    if (ACTIVE_STATUSES.has(task.status)) throw new Error('Stop the agent task before archiving it');
+    if (ACTIVE_STATUSES.has(String(task.status))) throw new Error('Stop the agent task before archiving it');
     task.status = 'archived';
     this._record(task, 'archived');
     this._persist();
@@ -615,9 +615,9 @@ export class AgentSessionService {
 
   async _pollGit() {
     for (const task of this.tasks.values()) {
-      if (!ACTIVE_STATUSES.has(task.status)) continue;
+      if (!ACTIVE_STATUSES.has(String(task.status))) continue;
       try {
-        const status = await this.repositoryWorkspace.getGitService(task.worktreePath).getStatus();
+        const status = await this.repositoryWorkspace.getGitService(String(task.worktreePath)).getStatus();
         const next = {
           wip: Array.isArray(status.files) ? status.files.length : 0,
           ahead: Number(status.ahead) || 0,

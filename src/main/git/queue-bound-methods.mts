@@ -7,7 +7,7 @@
  * getters and the constructor are left untouched.
  */
 export function bindMethodsToQueue(instance: {
-  runExclusive: (operation: () => unknown) => unknown;
+  runExclusive: (operation: () => never) => unknown;
 }): void {
   const proto = Object.getPrototypeOf(instance) as Record<string, unknown>;
   for (const name of Object.getOwnPropertyNames(proto)) {
@@ -21,7 +21,9 @@ export function bindMethodsToQueue(instance: {
       writable: true,
       configurable: true,
       value: function queuedMethod(...args: unknown[]): unknown {
-        return instance.runExclusive(() => original.apply(instance, args));
+        return instance.runExclusive(
+          (() => original.apply(instance, args)) as () => never
+        );
       }
     });
   }
