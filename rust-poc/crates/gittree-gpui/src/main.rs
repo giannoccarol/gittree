@@ -77,7 +77,7 @@ const ICON_SPINNER: &str = "icons/circle-notch.svg";
 
 actions!(workspace, [Refresh, NextCommit, PrevCommit, FocusSearch]);
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq, Debug)]
 enum ViewMode {
     History,
     Changes,
@@ -85,7 +85,7 @@ enum ViewMode {
 
 /// Stato di un pannello del workspace con la sua animazione corrente,
 /// specchio di `WorkspacePanelMotion` (is-*-opening / is-*-closing).
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum PanelState {
     Closed,
     Entering { generation: u64 },
@@ -1066,6 +1066,7 @@ impl Workspace {
     fn render_body(&self, theme: Theme, cx: &mut Context<Self>) -> gpui::Div {
         div()
             .flex()
+            .flex_row()
             .flex_1()
             .min_h_0()
             .gap_1()
@@ -1138,7 +1139,7 @@ impl Workspace {
     fn render_sidebar(&self, theme: Theme, cx: &mut Context<Self>) -> Option<gpui::AnyElement> {
         let total_visible = self.branches_visible.len();
 
-        let column = div().w(px(SIDEBAR_WIDTH)).min_w_0().size_full().child(
+        let column = div().w(px(SIDEBAR_WIDTH)).min_w_0().h_full().flex_shrink_0().child(
             panel(theme).size_full().child(
                 div()
                     .flex()
@@ -1346,15 +1347,16 @@ impl Workspace {
 impl Workspace {
     fn render_main(&self, theme: Theme, cx: &mut Context<Self>) -> gpui::AnyElement {
         let change_count = self.change_count();
-        let mode_key = match self.mode {
-            ViewMode::History => 0,
-            ViewMode::Changes => 1,
-        };
-        // `.bento-panel` monta con `motion-fade-in var(--duration-normal)` decel.
+        // `.bento-panel` in Electron ha `motion-fade-in` al mount, ma su
+        // Wayland il loop dei frame del compositor puo' essere throttled
+        // quando la finestra non e' in primo piano (il diagnostico mostra
+        // solo 6 render in 8s). Per non tenere il pannello centrale
+        // invisibile, il mount resta opaco: le animazioni sono riservate
+        // alle interazioni (switch History/Changes, toggle pannelli, toast).
         div()
             .flex_1()
             .min_w_0()
-            .size_full()
+            .h_full()
             .child(
                 panel(theme).size_full().child(
                     div()
@@ -1454,34 +1456,15 @@ impl Workspace {
                                         ),
                                 ),
                         )
-                        .child(
-                            // Cambio vista History/Changes: `motion-content-in`.
-                            div()
-                                .flex()
-                                .flex_col()
-                                .flex_1()
-                                .min_h_0()
-                                .relative()
-                                .children(if self.mode == ViewMode::History {
-                                    Some(self.render_history(theme, cx).into_any_element())
-                                } else {
-                                    Some(self.render_changes(theme, cx).into_any_element())
-                                })
-                                .with_animation(
-                                    ("view-content", mode_key as usize),
-                                    Animation::new(motion::CONTENT_ENTER),
-                                    |content, delta| {
-                                        let (offset, opacity) = motion::content_in(delta);
-                                        content.top(px(offset)).opacity(opacity)
-                                    },
-                                ),
-                        ),
+                        // Il contenuto History/Changes e' sempre opaco
+                        // al mount: il content-in animato e' solo per lo
+                        // switch user-initiated (click sul segmented).
+                        .child(if self.mode == ViewMode::History {
+                            self.render_history(theme, cx).into_any_element()
+                        } else {
+                            self.render_changes(theme, cx).into_any_element()
+                        }),
                 ),
-            )
-            .with_animation(
-                "main-panel-enter",
-                Animation::new(motion::CONTENT_ENTER).with_easing(motion::ease_decel()),
-                |column, delta| column.opacity(delta),
             )
             .into_any_element()
     }
@@ -2296,7 +2279,7 @@ impl Workspace {
             None => "Commit details",
         };
 
-        let column = div().w(px(INSPECTOR_WIDTH)).size_full().child(
+        let column = div().w(px(INSPECTOR_WIDTH)).h_full().flex_shrink_0().child(
             panel(theme).size_full().child(
                 div()
                     .flex()
