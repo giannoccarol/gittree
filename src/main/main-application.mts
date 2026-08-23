@@ -7,8 +7,9 @@ const __dirname = path.dirname(__filename);
 
 function resolvePreloadPath(base: string): string {
   const candidates = [
+    // Sandboxed renderers only support CommonJS preload scripts.
+    path.join(__dirname, '..', `${base}.cjs`),
     path.join(__dirname, '..', `${base}.mjs`),
-    path.join(__dirname, '..', `${base}.mts`),
     path.join(__dirname, '..', `${base}.js`)
   ];
   for (const candidate of candidates) {

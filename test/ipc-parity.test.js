@@ -20,9 +20,11 @@ function readIpcFile(name) {
 }
 
 test('every preload invoke has exactly one registered main-process handler', () => {
-  const preloadPath = fs.existsSync(path.join(root, 'src', 'preload.mts'))
-    ? path.join(root, 'src', 'preload.mts')
-    : path.join(root, 'src', 'preload.js');
+  const preloadPath = fs.existsSync(path.join(root, 'src', 'preload.cts'))
+    ? path.join(root, 'src', 'preload.cts')
+    : fs.existsSync(path.join(root, 'src', 'preload.mts'))
+      ? path.join(root, 'src', 'preload.mts')
+      : path.join(root, 'src', 'preload.js');
   const preload = fs.readFileSync(preloadPath, 'utf8');
   const mainPath = fs.existsSync(path.join(root, 'src', 'main', 'main.mts'))
     ? path.join(root, 'src', 'main', 'main.mts')
@@ -67,9 +69,11 @@ test('shared IPC channel contract matches the preload invoke surface', () => {
   const declared = [...new Set(
     matches(shared, /['"]([a-z]+:[^'"]+)['"]/g)
   )];
-  const preloadPath = fs.existsSync(path.join(root, 'src', 'preload.mts'))
-    ? path.join(root, 'src', 'preload.mts')
-    : path.join(root, 'src', 'preload.js');
+  const preloadPath = fs.existsSync(path.join(root, 'src', 'preload.cts'))
+    ? path.join(root, 'src', 'preload.cts')
+    : fs.existsSync(path.join(root, 'src', 'preload.mts'))
+      ? path.join(root, 'src', 'preload.mts')
+      : path.join(root, 'src', 'preload.js');
   const preload = fs.readFileSync(preloadPath, 'utf8');
   const invoked = matches(preload, /ipcRenderer\.invoke\(\s*'([^']+)'/g);
 
@@ -79,9 +83,11 @@ test('shared IPC channel contract matches the preload invoke surface', () => {
 });
 
 test('all managed Git channels use the validating registrar', () => {
-  const preloadPath = fs.existsSync(path.join(root, 'src', 'preload.mts'))
-    ? path.join(root, 'src', 'preload.mts')
-    : path.join(root, 'src', 'preload.js');
+  const preloadPath = fs.existsSync(path.join(root, 'src', 'preload.cts'))
+    ? path.join(root, 'src', 'preload.cts')
+    : fs.existsSync(path.join(root, 'src', 'preload.mts'))
+      ? path.join(root, 'src', 'preload.mts')
+      : path.join(root, 'src', 'preload.js');
   const preload = fs.readFileSync(preloadPath, 'utf8');
   const gitHandlers = readIpcFile('git-handlers');
   const managedGitChannels = matches(preload, /ipcRenderer\.invoke\(\s*'(git:[^']+)'/g)

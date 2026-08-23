@@ -9,10 +9,11 @@ function matches(source, pattern) {
 }
 
 function resolvePreloadPath() {
+  const cts = path.resolve(__dirname, '..', 'src', 'preload.cts');
   const mts = path.resolve(__dirname, '..', 'src', 'preload.mts');
-  const js = path.resolve(__dirname, '..', 'src', 'preload.js');
+  if (fs.existsSync(cts)) return cts;
   if (fs.existsSync(mts)) return mts;
-  return js;
+  return path.resolve(__dirname, '..', 'src', 'preload.js');
 }
 
 function loadBridge() {
@@ -34,7 +35,7 @@ function loadBridge() {
   };
   const preloadPath = resolvePreloadPath();
   let source = fs.readFileSync(preloadPath, 'utf8');
-  const isMts = preloadPath.endsWith('.mts');
+  const isMts = preloadPath.endsWith('.mts') || preloadPath.endsWith('.cts');
   if (isMts) {
     const ts = require('typescript');
     const transpiled = ts.transpileModule(source, {

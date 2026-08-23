@@ -65,10 +65,17 @@ function ensureRendererAssets() {
       fs.copyFileSync(srcPath, destPath);
     }
   }
+  // i18n.js is the documented classic-script exception (ADR-0008): it must be
+  // shipped verbatim so its globals (window.I18n, window.t) stay intact.
   copyRecursiveSync(
     path.join(projectRoot, 'src', 'renderer', 'styles'),
     path.join(distRenderer, 'styles')
   );
+  const i18nSource = path.join(projectRoot, 'src', 'renderer', 'i18n.js');
+  const i18nDest = path.join(distRenderer, 'i18n.js');
+  if (fs.existsSync(i18nSource)) {
+    fs.copyFileSync(i18nSource, i18nDest);
+  }
   const iconDest = path.join(projectRoot, 'dist', 'icon.png');
   if (!fs.existsSync(iconDest) && fs.existsSync(source)) {
     fs.copyFileSync(source, iconDest);

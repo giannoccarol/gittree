@@ -1,6 +1,10 @@
 import * as electron from 'electron';
-import * as electronUpdater from 'electron-updater';
+import { createRequire } from 'node:module';
 import type { UpdateInfo } from 'builder-util-runtime';
+
+// electron-updater is CommonJS: resolve it through require so the real
+// `autoUpdater` binding is available from this ESM module.
+const require = createRequire(import.meta.url);
 
 interface DownloadProgress {
   percent: number;
@@ -75,7 +79,7 @@ export class UpdateService {
     });
     this.app = dependencies.app || (electron as unknown as { app: ElectronAppLike }).app;
     this.autoUpdater = dependencies.autoUpdater
-      || (electronUpdater as unknown as { autoUpdater: AutoUpdaterLike }).autoUpdater;
+      || (require('electron-updater') as { autoUpdater: AutoUpdaterLike }).autoUpdater;
     this.timers = {
       setTimeout: dependencies.setTimeout || setTimeout,
       setInterval: dependencies.setInterval || setInterval,
