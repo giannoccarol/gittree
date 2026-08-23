@@ -46,7 +46,12 @@ export class ToastService {
       container,
       translate,
       encode,
-      timers = { setTimeout, clearTimeout }
+      // Timers must keep `window` as receiver: detached, Electron's sandboxed
+      // renderer throws "Illegal invocation" and every toast breaks.
+      timers = {
+        setTimeout: window.setTimeout.bind(window),
+        clearTimeout: window.clearTimeout.bind(window)
+      }
     } = dependencies ?? {};
     this.container = container as HTMLElement;
     this.translate = translate ?? ((key: string) => key);

@@ -106,6 +106,34 @@ test('tracking, branch fetch and remote deletion use explicit validated refs', a
   assert.equal(repo.git('ls-remote', '--heads', 'origin', 'feature/topic'), '');
 });
 
+test('pull with no branch argument follows the tracked upstream branch', async t => {
+  const repo = createRepositoryWithRemote(t);
+  const service = new GitService(repo.repository);
+
+  const base = repo.git('rev-parse', 'HEAD');
+  repo.write('remote-work.txt', 'remote\n');
+  repo.git('add', '.');
+  repo.git('commit', '-m', 'remote work');
+  repo.git('push', 'origin', 'feature/topic');
+  const remoteCommit = repo.git('rev-parse', 'HEAD');
+  repo.git('reset', '--hard', base);
+  assert.notEqual(repo.git('rev-parse', 'HEAD'), remoteCommit);
+
+  const result = await service.pull();
+  assert.equal(result.success, true);
+  assert.equal(repo.git('rev-parse', 'HEAD'), remoteCommit);
+
+  repo.write('remote-more.txt', 'more\n');
+  repo.git('add', '.');
+  repo.git('commit', '-m', 'remote more');
+  repo.git('push', 'origin', 'feature/topic');
+  const nextCommit = repo.git('rev-parse', 'HEAD');
+
+  const explicit = await service.pull('origin', 'feature/topic');
+  assert.equal(explicit.success, true);
+  assert.equal(repo.git('rev-parse', 'HEAD'), nextCommit);
+});
+
 test('rebase requires a clean worktree and rebases the current branch onto the target', async t => {
   const repo = createRepository();
   t.after(() => repo.cleanup());

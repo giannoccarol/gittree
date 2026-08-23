@@ -1684,5 +1684,7 @@ const I18n = {
   }
 };
 
+window.I18n = I18n;
+
 /** @type {(key: string, options?: Record<string, unknown>) => string} */
 window.t = (key, options) => I18n.t(key, options);

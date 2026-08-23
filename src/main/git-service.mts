@@ -642,7 +642,9 @@ export class GitService {
     try {
       const result = await this.git.pull(
         remote,
-        String(branch),
+        // `branch === null` means "pull the tracked branch": pass undefined
+        // through to simple-git instead of coercing null into the string "null".
+        branch ?? undefined,
         options as GitTaskOptions
       );
       return { success: true, remote, branch, result };
