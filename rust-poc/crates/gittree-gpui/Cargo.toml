@@ -6,3 +6,4 @@ edition.workspace = true
 [dependencies]
 gittree-core = { path = "../gittree-core" }
 gpui = "0.2.2"
+unicode-segmentation = "1"

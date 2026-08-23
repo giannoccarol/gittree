@@ -1,545 +1,2460 @@
-//! Finestra GPUI del POC con il tema dark di GitTree (token reali di
-//! `src/renderer/styles/variables.css`) e lista commit virtualizzata.
+//! GitTree nativo con GPUI: replica il layout dell'app Electron
+//! (header, command bar, sidebar branches, history/changes, inspector,
+//! status bar) usando gittree-core per tutte le operazioni Git.
 //!
 //! Uso: gittree-gpui [percorso-repo]   (default: la directory corrente)
 
 use std::ops::Range;
+use std::sync::Arc;
 
-use gpui::{
-    actions, div, px, rgb, size, uniform_list, App, Application, Bounds, ClickEvent, Context,
-    KeyBinding, SharedString, UniformListScrollHandle, Window, WindowBounds, WindowOptions,
-};
 use gpui::prelude::*;
-use gpui::{FontWeight, StatefulInteractiveElement, Styled};
-use gittree_core::git::engine::GitEngine;
-use gittree_core::git::graph::{get_commit_diff, get_graph_page, GraphCommit};
+use gpui::{
+    Animation, AnimationExt, AnyElement, App, Application, Bounds, ClickEvent, Context,
+    FocusHandle, Focusable, InteractiveElement, KeyBinding, ParentElement, Render, SharedString,
+    Styled, UniformListScrollHandle, Window, WindowBounds, WindowOptions, actions, div, px, size,
+    uniform_list,
+};
 
-actions!(poc, [NextCommit, PrevCommit]);
+use crate::models::{CellKind, CommitRow, DiffModel, GraphRow, RefChipKind, build_rows};
+use crate::service::{GitService, Snapshot};
+use crate::theme::{Theme, ThemeChoice};
+use crate::ui::{
+    badge, btn_icon, btn_icon_sm, btn_primary, btn_toolbar, card, chip, icon, panel, pulsing_icon,
+    segmented, segmented_item,
+};
+use crate::widgets::text_field::TextField;
+use gittree_core::git::ops::CommitOptions;
+use gittree_core::git::status::StatusDetail;
 
-// Token del tema dark di GitTree (src/renderer/styles/variables.css).
-const CANVAS: u32 = 0x0f0f11;
-const SURFACE_SHELL: u32 = 0x151517;
-const SURFACE_PRIMARY: u32 = 0x18181a;
-const SURFACE_HOVER: u32 = 0x222226;
-const SURFACE_SELECTED: u32 = 0x1a2f38;
-const TEXT_PRIMARY: u32 = 0xf1f2f5;
-const TEXT_SECONDARY: u32 = 0x9aa0a6;
-const TEXT_TERTIARY: u32 = 0x6e7680;
-const TEXT_LINK: u32 = 0x8ab4f8;
-const BORDER_SUBTLE: u32 = 0x30363d;
-const CHIP_BG: u32 = 0x26272b;
+mod icons;
+mod models;
+mod motion;
+mod service;
+mod theme;
+mod ui;
+mod widgets;
 
-// --graph-lane-1..8 del tema dark.
-const LANE_COLORS: [u32; 8] = [
-    0x58a6ff, 0xf85149, 0x3fb950, 0xd29922, 0xa371f7, 0x34d4fe, 0xf778ba, 0xd29922,
-];
+const HISTORY_LIMIT: usize = 5_000;
+const COMMIT_ROW_HEIGHT: f32 = 36.0;
+const DIFF_ROW_HEIGHT: f32 = 20.0;
+const BRANCH_ROW_HEIGHT: f32 = 30.0;
+const GRAPH_COL_WIDTH: f32 = 84.0;
+const AUTHOR_COL_WIDTH: f32 = 150.0;
+const DATE_COL_WIDTH: f32 = 130.0;
+const HASH_COL_WIDTH: f32 = 64.0;
+const SIDEBAR_WIDTH: f32 = 250.0;
+const INSPECTOR_WIDTH: f32 = 400.0;
+const FILE_RAIL_WIDTH: f32 = 150.0;
+const TAGS_PREVIEW_LIMIT: usize = 24;
 
-// Token diff del tema dark.
-const DIFF_ADD_TEXT: u32 = 0x7ee787;
-const DIFF_DEL_TEXT: u32 = 0xff867f;
-const DIFF_ADD_BG: u32 = 0x0b2616;
-const DIFF_DEL_BG: u32 = 0x3b1518;
-const DIFF_HUNK_BG: u32 = 0x162435;
-const DIFF_HUNK_TEXT: u32 = 0x58a6ff;
+// Percorsi asset delle icone Phosphor regolari (crate::icons::EmbeddedIcons).
+const ICON_BRANCH: &str = "icons/git-branch.svg";
+const ICON_FETCH: &str = "icons/cloud-arrow-down.svg";
+const ICON_PULL: &str = "icons/download-simple.svg";
+const ICON_PUSH: &str = "icons/upload-simple.svg";
+const ICON_INSPECTOR: &str = "icons/sidebar-simple.svg";
+const ICON_SEARCH: &str = "icons/magnifying-glass.svg";
+const ICON_PLUS: &str = "icons/plus.svg";
+const ICON_MINUS: &str = "icons/minus.svg";
+const ICON_CARET_LEFT: &str = "icons/caret-left.svg";
+const ICON_CARET_RIGHT: &str = "icons/caret-right.svg";
+const ICON_CLOSE: &str = "icons/x.svg";
+const ICON_MOON: &str = "icons/moon.svg";
+const ICON_SUN: &str = "icons/sun.svg";
+const ICON_SPINNER: &str = "icons/circle-notch.svg";
 
-const ROW_HEIGHT: f32 = 36.0;
-const STATUSBAR_HEIGHT: f32 = 28.0;
+actions!(workspace, [Refresh, NextCommit, PrevCommit, FocusSearch]);
 
-#[derive(Clone, Copy)]
-enum LineKind {
-    Add,
-    Del,
-    Hunk,
-    Context,
-}
-
-struct DiffLine {
-    text: String,
-    kind: LineKind,
-}
-
-fn classify(line: &str) -> LineKind {
-    if line.starts_with("@@") {
-        LineKind::Hunk
-    } else if line.starts_with('+') && !line.starts_with("+++") {
-        LineKind::Add
-    } else if line.starts_with('-') && !line.starts_with("---") {
-        LineKind::Del
-    } else {
-        LineKind::Context
-    }
-}
-
-/// Etichetta relativa approssimativa dalla parte data di un ISO-8601 (`%aI`).
-fn relative_date(iso: &str) -> String {
-    let rest = iso.split('T').next().unwrap_or("");
-    let parts: Vec<&str> = rest.split('-').collect();
-    let (Some(year), Some(month), Some(day)) = (
-        parts.first().and_then(|v| v.parse::<i64>().ok()),
-        parts.get(1).and_then(|v| v.parse::<i64>().ok()),
-        parts.get(2).and_then(|v| v.parse::<i64>().ok()),
-    ) else {
-        return String::new();
-    };
-    // Numero seriale approssimato, sufficiente per un'etichetta relativa.
-    let serial = |y: i64, m: i64, d: i64| y * 372 + (m - 1) * 31 + d;
-    let secs = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs() as i64)
-        .unwrap_or(0);
-    let now_year = 1970 + secs / 31_557_600;
-    let today = serial(now_year, 8, 23);
-    match today - serial(year, month, day) {
-        n if n <= 0 => "oggi".into(),
-        1 => "ieri".into(),
-        n if n < 30 => format!("{n}g"),
-        n if n < 365 => format!("{}m", n / 30),
-        n => format!("{}a", n / 365),
-    }
-}
-
-
-/// Layout del grafo: assegna le lane come farebbe `git log --graph`.
 #[derive(Clone, Copy, PartialEq)]
-enum CellKind {
-    Node,
-    Pass,
-    Empty,
+enum ViewMode {
+    History,
+    Changes,
+}
+
+/// Stato di un pannello del workspace con la sua animazione corrente,
+/// specchio di `WorkspacePanelMotion` (is-*-opening / is-*-closing).
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum PanelState {
+    Closed,
+    Entering { gen: u64 },
+    Open,
+    Closing { gen: u64 },
+}
+
+impl PanelState {
+    fn is_visible(self) -> bool {
+        self != Self::Closed
+    }
+
+    fn is_active_toggle(self) -> bool {
+        matches!(self, Self::Open | Self::Entering { .. })
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum PanelSide {
+    Sidebar,
+    Inspector,
 }
 
 #[derive(Clone)]
-struct GraphRow {
-    lane: usize,
-    cells: Vec<(CellKind, usize)>, // (tipo cella, indice colore lane)
+enum DiffSource {
+    Commit(String),
+    Worktree(String),
 }
 
-fn compute_graph_rows(commits_newest_first: &[GraphCommit]) -> Vec<GraphRow> {
-    let mut ascending: Vec<&GraphCommit> = commits_newest_first.iter().collect();
-    ascending.reverse();
-
-    let mut lanes: Vec<Option<String>> = Vec::new();
-    let mut rows = vec![
-        GraphRow { lane: 0, cells: Vec::new() };
-        commits_newest_first.len()
-    ];
-
-    for (order, commit) in ascending.iter().enumerate() {
-        let index = commits_newest_first.len() - 1 - order;
-        let existing = lanes
-            .iter()
-            .position(|tip| tip.as_deref() == Some(commit.hash.as_str()));
-        let col = match existing {
-            Some(col) => col,
-            None => lanes
-                .iter()
-                .position(|tip| tip.is_none())
-                .unwrap_or(lanes.len()),
-        };
-        while lanes.len() <= col {
-            lanes.push(None);
-        }
-
-        let mut cells: Vec<(CellKind, usize)> = Vec::new();
-        let width = lanes.len().max(col + 1);
-        for column in 0..width {
-            if column == col {
-                cells.push((CellKind::Node, column));
-            } else if lanes.get(column).map_or(false, |tip| tip.is_some()) {
-                cells.push((CellKind::Pass, column));
-            } else {
-                cells.push((CellKind::Empty, column));
-            }
-        }
-        rows[index] = GraphRow { lane: col, cells };
-
-        // Il primo genitore subentra alla lane del nodo; gli altri occupano lane libere.
-        let mut extra_parents = commit.parents.clone();
-        lanes[col] = extra_parents.first().cloned();
-        for parent in extra_parents.drain(..).skip(1) {
-            if !lanes.contains(&Some(parent.clone())) {
-                match lanes.iter().position(|tip| tip.is_none()) {
-                    Some(free) => lanes[free] = Some(parent),
-                    None => lanes.push(Some(parent)),
-                }
-            }
+impl PartialEq for DiffSource {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (DiffSource::Commit(a), DiffSource::Commit(b)) => a == b,
+            (DiffSource::Worktree(a), DiffSource::Worktree(b)) => a == b,
+            _ => false,
         }
     }
-    rows
 }
 
-struct PocApp {
-    repo_label: SharedString,
-    branch: String,
-    commits: Vec<GraphCommit>,
+struct BranchItem {
+    name: SharedString,
+    haystack: String,
+    is_current: bool,
+}
+
+struct Inspector {
+    source: Option<DiffSource>,
+    model: DiffModel,
+    visible_file: Option<usize>,
+    scroll: UniformListScrollHandle,
+}
+
+struct Workspace {
+    service: Arc<GitService>,
+    repo_name: SharedString,
+    theme_choice: ThemeChoice,
+    palette: Theme,
+    mode: ViewMode,
+    sidebar: PanelState,
+    inspector_motion: PanelState,
+    panel_gen: u64,
+    busy: usize,
+    message: SharedString,
+    message_seq: u64,
+    error: Option<SharedString>,
+    pending_discard: bool,
+    first_load_done: bool,
+
+    rows: Vec<CommitRow>,
     graph_rows: Vec<GraphRow>,
-    diff_lines: Vec<DiffLine>,
-    selected: usize,
+    filtered: Vec<usize>,
+    history_query: String,
+    selected_hash: Option<String>,
     list_scroll: UniformListScrollHandle,
-    status_line: SharedString,
+
+    branches: Vec<BranchItem>,
+    branches_visible: Vec<usize>,
+    tags: Vec<SharedString>,
+    status: Option<StatusDetail>,
+    branch_query: String,
+
+    amend: bool,
+    signoff: bool,
+    summary_non_empty: bool,
+    changes_selected: Option<String>,
+
+    new_branch_open: bool,
+
+    branch_filter: gpui::Entity<TextField>,
+    history_filter: gpui::Entity<TextField>,
+    new_branch_field: gpui::Entity<TextField>,
+    summary_field: gpui::Entity<TextField>,
+    body_field: gpui::Entity<TextField>,
+
+    inspector: Inspector,
+    focus: FocusHandle,
 }
 
-impl PocApp {
-    fn load(repo_path: &str) -> Self {
-        let engine = GitEngine::default();
-        let repo = std::path::Path::new(repo_path);
-        let branch = gittree_core::git::status::get_status(&engine, repo)
-            .map(|snapshot| snapshot.branch)
-            .unwrap_or_default();
-        match get_graph_page(&engine, repo, 0, 5_000) {
-            Ok(page) => {
-                let mut commits = page.commits;
-                commits.reverse(); // dal piu recente in giu, come il grafo di GitTree
-                let selected = commits.len().saturating_sub(1);
-                let mut state = Self {
-                    repo_label: repo_path.to_owned().into(),
-                    branch,
-                    graph_rows: compute_graph_rows(&commits),
-                    diff_lines: Vec::new(),
-                    list_scroll: UniformListScrollHandle::new(),
-                    status_line: format!(
-                        "{} commit · {} refs · GPUI",
-                        commits.len(),
-                        page.refs.len()
-                    )
-                    .into(),
-                    commits,
-                    selected,
-                };
-                state.refresh_diff(&engine, repo);
-                state
-            }
-            Err(error) => Self {
-                repo_label: repo_path.to_owned().into(),
-                branch,
-                commits: Vec::new(),
-                graph_rows: Vec::new(),
-                diff_lines: vec![DiffLine {
-                    text: format!("errore git: {}", error.message),
-                    kind: LineKind::Context,
-                }],
-                selected: 0,
-                list_scroll: UniformListScrollHandle::new(),
-                status_line: "nessun dato".into(),
+impl Focusable for Workspace {
+    fn focus_handle(&self, _: &App) -> FocusHandle {
+        self.focus.clone()
+    }
+}
+
+impl Workspace {
+    fn new(repo_path: &str, cx: &mut Context<Self>) -> Self {
+        let path = std::path::PathBuf::from(repo_path);
+        let repo_name = path
+            .file_name()
+            .map(|name| name.to_string_lossy().to_string())
+            .unwrap_or_else(|| repo_path.to_string());
+
+        let branch_filter = cx.new(|cx| TextField::new(cx).placeholder("Filter branches"));
+        let history_filter = cx.new(|cx| TextField::new(cx).placeholder("Filter commits"));
+        let new_branch_field = cx.new(|cx| TextField::new(cx).placeholder("New branch name"));
+        let summary_field = cx.new(|cx| TextField::new(cx).placeholder("Commit summary"));
+        let body_field = cx.new(|cx| {
+            TextField::new(cx)
+                .placeholder("Description (optional)")
+                .multiline(true)
+        });
+
+        cx.observe(&branch_filter, |this, _, cx| this.sync_fields(cx))
+            .detach();
+        cx.observe(&history_filter, |this, _, cx| this.sync_fields(cx))
+            .detach();
+        cx.observe(&summary_field, |this, _, cx| this.sync_fields(cx))
+            .detach();
+
+        let mut workspace = Self {
+            service: Arc::new(GitService::new(path)),
+            repo_name: repo_name.into(),
+            theme_choice: ThemeChoice::Dark,
+            palette: Theme::new(ThemeChoice::Dark),
+            mode: ViewMode::History,
+            sidebar: PanelState::Open,
+            inspector_motion: PanelState::Open,
+            panel_gen: 0,
+            busy: 0,
+            message: SharedString::from("Loading repository…"),
+            message_seq: 0,
+            error: None,
+            pending_discard: false,
+            first_load_done: false,
+            rows: Vec::new(),
+            graph_rows: Vec::new(),
+            filtered: Vec::new(),
+            history_query: String::new(),
+            selected_hash: None,
+            list_scroll: UniformListScrollHandle::new(),
+            branches: Vec::new(),
+            branches_visible: Vec::new(),
+            tags: Vec::new(),
+            status: None,
+            branch_query: String::new(),
+            amend: false,
+            signoff: false,
+            summary_non_empty: false,
+            changes_selected: None,
+            new_branch_open: false,
+            branch_filter,
+            history_filter,
+            new_branch_field,
+            summary_field,
+            body_field,
+            inspector: Inspector {
+                source: None,
+                model: DiffModel::empty(),
+                visible_file: None,
+                scroll: UniformListScrollHandle::new(),
             },
+            focus: cx.focus_handle(),
+        };
+        workspace.refresh(false, cx);
+        workspace
+    }
+
+    // -- Sync dai campi testo -------------------------------------------
+
+    fn sync_fields(&mut self, cx: &mut Context<Self>) {
+        let mut changed = false;
+        let query = self.history_filter.read(cx).value().trim().to_lowercase();
+        if query != self.history_query {
+            self.history_query = query;
+            self.apply_history_filter();
+            changed = true;
         }
-    }
-
-    fn refresh_diff(&mut self, engine: &GitEngine, repo: &std::path::Path) {
-        self.diff_lines = self
-            .commits
-            .get(self.selected)
-            .map(|commit| get_commit_diff(engine, repo, &commit.hash, None))
-            .unwrap_or_else(|| Ok(String::new()))
-            .unwrap_or_else(|error| format!("diff non disponibile: {}", error.message))
-            .lines()
-            .map(|line| DiffLine {
-                text: line.to_string(),
-                kind: classify(line),
-            })
-            .collect();
-    }
-
-    fn select(&mut self, delta: isize, cx: &mut Context<Self>) {
-        let total = self.commits.len() as isize;
-        if total == 0 {
-            return;
+        let query = self.branch_filter.read(cx).value().trim().to_lowercase();
+        if query != self.branch_query {
+            self.branch_query = query;
+            self.apply_branch_filter();
+            changed = true;
         }
-        self.selected = (self.selected as isize + delta).clamp(0, total - 1) as usize;
-        let repo_path = self.repo_label.to_string();
-        self.refresh_diff(&GitEngine::default(), std::path::Path::new(&repo_path));
-        self.status_line =
-            format!("commit {} di {}", self.selected + 1, self.commits.len()).into();
-        cx.notify();
-    }
-
-    fn pick(&mut self, index: usize, cx: &mut Context<Self>) {
-        if index < self.commits.len() && index != self.selected {
-            self.selected = index;
-            let repo_path = self.repo_label.to_string();
-            self.refresh_diff(&GitEngine::default(), std::path::Path::new(&repo_path));
-            self.status_line =
-                format!("commit {} di {}", index + 1, self.commits.len()).into();
+        let summary_filled = !self.summary_field.read(cx).is_empty();
+        if summary_filled != self.summary_non_empty {
+            self.summary_non_empty = summary_filled;
+            changed = true;
+        }
+        if changed {
             cx.notify();
         }
     }
-}
 
-impl Render for PocApp {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let total = self.commits.len();
-        let branch_label = if self.branch.is_empty() {
-            None
+    fn apply_history_filter(&mut self) {
+        if self.history_query.is_empty() {
+            self.filtered = (0..self.rows.len()).collect();
         } else {
-            Some(SharedString::from(format!(" {}", self.branch)))
-        };
-        let list_scroll = self.list_scroll.clone();
+            let query = &self.history_query;
+            self.filtered = self
+                .rows
+                .iter()
+                .enumerate()
+                .filter(|(_, row)| row.haystack.contains(query.as_str()))
+                .map(|(index, _)| index)
+                .collect();
+        }
+    }
 
-        div()
-            .flex()
-            .flex_col()
-            .size_full()
-            .bg(rgb(CANVAS))
-            .text_size(px(13.0))
-            .text_color(rgb(TEXT_PRIMARY))
-            .on_action(cx.listener(|this, _: &NextCommit, _window, cx| this.select(1, cx)))
-            .on_action(cx.listener(|this, _: &PrevCommit, _window, cx| this.select(-1, cx)))
-            // Barra superiore: wordmark + repo + chip branch.
-            .child(
-                div()
-                    .flex()
-                    .items_center()
-                    .gap_3()
-                    .px_3()
-                    .h(px(40.0))
-                    .bg(rgb(SURFACE_SHELL))
-                    .border_b_1()
-                    .border_color(rgb(BORDER_SUBTLE))
-                    .child(div().font_weight(FontWeight::SEMIBOLD).child(SharedString::from("GitTree")))
-                    .child(
-                        div()
-                            .flex_1()
-                            .min_w_0()
-                            .truncate()
-                            .text_color(rgb(TEXT_TERTIARY))
-                            .child(self.repo_label.clone()),
-                    )
-                    .when_some(branch_label, |bar, label| {
-                        bar.child(
-                            div()
-                                .rounded_md()
-                                .px_2()
-                                .py_0p5()
-                                .bg(rgb(CHIP_BG))
-                                .font_family(SharedString::from("monospace"))
-                                .text_color(rgb(TEXT_LINK))
-                                .child(label),
-                        )
-                    }),
-            )
-            // Corpo: due pannelli bento arrotondati.
-            .child(
-                div()
-                    .flex()
-                    .flex_1()
-                    .min_h_0()
-                    .gap_1()
-                    .p_1()
-                    // Sinistra: lista commit virtualizzata.
-                    .child(if total == 0 {
-                        div()
-                            .flex_1()
-                            .min_w_0()
-                            .flex()
-                            .items_center()
-                            .justify_center()
-                            .rounded_lg()
-                            .bg(rgb(SURFACE_PRIMARY))
-                            .border_1()
-                            .border_color(rgb(BORDER_SUBTLE))
-                            .text_color(rgb(TEXT_TERTIARY))
-                            .child(SharedString::from("Nessun commit nel repository"))
-                            .into_any_element()
-                    } else {
-                        div()
-                            .flex_1()
-                            .min_w_0()
-                            .flex()
-                            .flex_col()
-                            .rounded_lg()
-                            .overflow_hidden()
-                            .bg(rgb(SURFACE_PRIMARY))
-                            .border_1()
-                            .border_color(rgb(BORDER_SUBTLE))
-                            .child(
-                                uniform_list("commit-list", total, cx.processor(
-                                    |this, visible: Range<usize>, _window, cx| {
-                                        visible
-                                            .map(|index| this.render_commit_row(index, cx))
-                                            .collect::<Vec<_>>()
-                                    },
-                                ))
-                                .track_scroll(list_scroll)
-                                .flex_1()
-                                .h_full(),
-                            )
-                            .into_any_element()
-                    })
-                    // Destra: diff del commit selezionato.
-                    .child(self.render_diff_panel()),
-            )
-            // Status bar (28px come --statusbar-height).
-            .child(
-                div()
-                    .flex()
-                    .items_center()
-                    .gap_3()
-                    .px_3()
-                    .h(px(STATUSBAR_HEIGHT))
-                    .bg(rgb(SURFACE_SHELL))
-                    .border_t_1()
-                    .border_color(rgb(BORDER_SUBTLE))
-                    .text_size(px(11.0))
-                    .text_color(rgb(TEXT_SECONDARY))
-                    .child(self.status_line.clone())
-                    .child(div().flex_1())
-                    .child(
-                        div()
-                            .text_color(rgb(TEXT_TERTIARY))
-                            .child(SharedString::from("Rust · GPUI POC")),
-                    ),
-            )
+    fn apply_branch_filter(&mut self) {
+        let query = self.branch_query.to_lowercase();
+        self.branches_visible = self
+            .branches
+            .iter()
+            .enumerate()
+            .filter(|(_, branch)| query.is_empty() || branch.haystack.contains(&query))
+            .map(|(index, _)| index)
+            .collect();
+    }
+
+    // -- Messaggi --------------------------------------------------------
+
+    fn set_message(&mut self, message: impl Into<SharedString>) {
+        self.message = message.into();
+        self.message_seq += 1;
+        self.error = None;
+    }
+
+    fn set_error(&mut self, error: impl Into<SharedString>) {
+        self.error = Some(error.into());
+        self.message_seq += 1;
+        self.message = "Operation failed".into();
+    }
+
+    // -- Motion dei pannelli ----------------------------------------------
+
+    fn toggle_panel(&mut self, side: PanelSide, cx: &mut Context<Self>) {
+        let current = match side {
+            PanelSide::Sidebar => self.sidebar_motion,
+            PanelSide::Inspector => self.inspector_motion,
+        };
+        let opening = !current.is_active_toggle();
+        self.panel_gen += 1;
+        let gen = self.panel_gen;
+        let next = if opening {
+            PanelState::Entering { gen }
+        } else {
+            PanelState::Closing { gen }
+        };
+        match side {
+            PanelSide::Sidebar => self.sidebar_motion = next,
+            PanelSide::Inspector => self.inspector_motion = next,
+        }
+        let this = cx.weak_entity();
+        cx.spawn(async move |_, async_cx| {
+            async_cx
+                .background_executor()
+                .timer(motion::PANEL_CHANGE)
+                .await;
+            this.update(async_cx, |workspace, cx| workspace.settle_panel(side, gen, cx))
+                .ok();
+        })
+        .detach();
+        cx.notify();
+    }
+
+    /// Normalizza lo stato a fine animazione: `Entering → Open`,
+    /// `Closing → Closed`. Le generazioni vecchie vengono ignorate.
+    fn settle_panel(&mut self, side: PanelSide, gen: u64, cx: &mut Context<Self>) {
+        let settled = match (side, self.panel_state(side)) {
+            (_, PanelState::Entering { gen: g }) if g == gen => Some(PanelState::Open),
+            (_, PanelState::Closing { gen: g }) if g == gen => Some(PanelState::Closed),
+            _ => None,
+        };
+        if let Some(state) = settled {
+            match side {
+                PanelSide::Sidebar => self.sidebar_motion = state,
+                PanelSide::Inspector => self.inspector_motion = state,
+            }
+            cx.notify();
+        }
+    }
+
+    fn panel_state(&self, side: PanelSide) -> PanelState {
+        match side {
+            PanelSide::Sidebar => self.sidebar_motion,
+            PanelSide::Inspector => self.inspector_motion,
+        }
+    }
+
+    // -- Esecuzione asincrona delle operazioni Git -----------------------
+
+    fn run_git<R>(
+        &mut self,
+        cx: &mut Context<Self>,
+        work: impl FnOnce(&GitService) -> Result<R, String> + Send + 'static,
+        done: impl FnOnce(&mut Self, Result<R, String>, &mut Context<Self>) + 'static,
+    ) where
+        R: Send + 'static,
+    {
+        self.busy += 1;
+        cx.notify();
+        let service = self.service.clone();
+        cx.spawn(async move |this: gpui::WeakEntity<Workspace>, async_cx| {
+            let result = async_cx
+                .background_spawn(async move { work(&service) })
+                .await;
+            this.update(async_cx, move |workspace, cx| {
+                workspace.busy = workspace.busy.saturating_sub(1);
+                done(workspace, result, cx);
+                cx.notify();
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    fn refresh(&mut self, keep_selection: bool, cx: &mut Context<Self>) {
+        self.busy += 1;
+        cx.notify();
+        let service = self.service.clone();
+        let previous = if keep_selection {
+            self.selected_hash.clone()
+        } else {
+            None
+        };
+        cx.spawn(async move |this: gpui::WeakEntity<Workspace>, async_cx| {
+            let snapshot = async_cx
+                .background_spawn(async move { service.snapshot(HISTORY_LIMIT) })
+                .await;
+            this.update(async_cx, |workspace, cx| {
+                workspace.busy = workspace.busy.saturating_sub(1);
+                match snapshot {
+                    Ok(snapshot) => workspace.apply_snapshot(snapshot, previous),
+                    Err(error) => workspace.set_error(format!("git: {error}")),
+                }
+                workspace.load_commit_diff(cx);
+                cx.notify();
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    fn apply_snapshot(&mut self, snapshot: Snapshot, previous_selected: Option<String>) {
+        let models = build_rows(&snapshot.page.commits, &snapshot.page.refs);
+        self.rows = models.commits;
+        self.graph_rows = models.graph_rows;
+
+        if let Some(detail) = snapshot.status.as_ref() {
+            let current = (!detail.detached).then_some(detail.branch.as_str());
+            self.branches = snapshot
+                .page
+                .refs
+                .iter()
+                .filter(|reference| reference.full_name.starts_with("refs/heads/"))
+                .map(|reference| BranchItem {
+                    is_current: Some(reference.short_name.as_str()) == current,
+                    haystack: reference.short_name.to_lowercase(),
+                    name: SharedString::from(reference.short_name.clone()),
+                })
+                .collect();
+            self.tags = snapshot
+                .page
+                .refs
+                .iter()
+                .filter(|reference| reference.full_name.starts_with("refs/tags/"))
+                .map(|reference| SharedString::from(reference.short_name.clone()))
+                .collect();
+            self.tags.sort_unstable();
+        } else {
+            self.branches.clear();
+            self.tags.clear();
+        }
+        self.status = snapshot.status;
+        if let Some(error) = snapshot.status_error {
+            self.set_error(format!("status: {error}"));
+        }
+
+        self.apply_history_filter();
+        self.apply_branch_filter();
+
+        self.selected_hash =
+            previous_selected.filter(|hash| self.rows.iter().any(|row| row.hash == *hash));
+        if self.selected_hash.is_none() {
+            self.selected_hash = self
+                .filtered
+                .first()
+                .map(|index| self.rows[*index].hash.clone());
+        }
+
+        if !self.first_load_done {
+            self.first_load_done = true;
+            self.set_message(format!(
+                "{} commits · {} refs · {} branches",
+                self.rows.len(),
+                snapshot.page.refs.len(),
+                self.branches.len()
+            ));
+        }
+    }
+
+    fn load_commit_diff(&mut self, cx: &mut Context<Self>) {
+        let Some(hash) = self.selected_hash.clone() else {
+            return;
+        };
+        let source = DiffSource::Commit(hash);
+        self.inspector.source = Some(source.clone());
+        self.inspector.visible_file = None;
+        let expected = source.clone();
+        self.run_git(
+            cx,
+            move |service| match &source {
+                DiffSource::Commit(hash) => service
+                    .commit_diff(hash, None)
+                    .map(|raw| DiffModel::parse(&raw)),
+                DiffSource::Worktree(_) => Ok(DiffModel::empty()),
+            },
+            move |workspace, result, _cx| {
+                if workspace.inspector.source == Some(expected) {
+                    match result {
+                        Ok(model) => workspace.inspector.model = model,
+                        Err(error) => {
+                            workspace.inspector.model = DiffModel::empty();
+                            workspace.set_error(format!("diff: {error}"));
+                        }
+                    }
+                }
+            },
+        );
+    }
+
+    fn load_worktree_diff(&mut self, path: String, cx: &mut Context<Self>) {
+        let source = DiffSource::Worktree(path);
+        self.changes_selected = source.worktree_path().map(str::to_string);
+        self.inspector.source = Some(source.clone());
+        self.inspector.visible_file = None;
+        let expected = source.clone();
+        let expected_path = match &source {
+            DiffSource::Worktree(path) => path.clone(),
+            DiffSource::Commit(_) => String::new(),
+        };
+        self.run_git(
+            cx,
+            move |service| {
+                let path = expected_path.clone();
+                service.file_diff(&path).map(|raw| DiffModel::parse(&raw))
+            },
+            move |workspace, result, _cx| {
+                if workspace.inspector.source == Some(expected) {
+                    match result {
+                        Ok(model) => workspace.inspector.model = model,
+                        Err(error) => workspace.set_error(format!("diff: {error}")),
+                    }
+                }
+            },
+        );
+    }
+
+    // -- Azioni utente ----------------------------------------------------
+
+    fn pick_visible_index(&mut self, visible_index: usize, cx: &mut Context<Self>) {
+        let Some(row_index) = self.filtered.get(visible_index).copied() else {
+            return;
+        };
+        let Some(row) = self.rows.get(row_index) else {
+            return;
+        };
+        let hash = row.hash.clone();
+        if self.selected_hash.as_deref() == Some(hash.as_str()) {
+            return;
+        }
+        self.changes_selected = None;
+        self.mode = ViewMode::History;
+        self.selected_hash = Some(hash);
+        self.load_commit_diff(cx);
+        cx.notify();
+    }
+
+    fn step_selection(&mut self, delta: isize, cx: &mut Context<Self>) {
+        if self.filtered.is_empty() {
+            return;
+        }
+        let current = self
+            .selected_hash
+            .as_deref()
+            .and_then(|hash| {
+                self.filtered
+                    .iter()
+                    .position(|index| self.rows[*index].hash == hash)
+            })
+            .unwrap_or(0);
+        let next = (current as isize + delta).clamp(0, self.filtered.len() as isize - 1) as usize;
+        self.pick_visible_index(next, cx);
+    }
+
+    fn stage_paths(&mut self, paths: Vec<String>, cx: &mut Context<Self>) {
+        if paths.is_empty() {
+            return;
+        }
+        self.pending_discard = false;
+        self.run_git(
+            cx,
+            move |service| service.stage(paths).map(|_| ()),
+            move |workspace, result, cx| match result {
+                Ok(()) => {
+                    workspace.set_message("Staged changes");
+                    workspace.refresh(true, cx);
+                }
+                Err(error) => workspace.set_error(format!("stage: {error}")),
+            },
+        );
+    }
+
+    fn unstage_paths(&mut self, paths: Vec<String>, cx: &mut Context<Self>) {
+        if paths.is_empty() {
+            return;
+        }
+        self.run_git(
+            cx,
+            move |service| service.unstage(paths).map(|_| ()),
+            move |workspace, result, cx| match result {
+                Ok(()) => {
+                    workspace.set_message("Unstaged changes");
+                    workspace.refresh(true, cx);
+                }
+                Err(error) => workspace.set_error(format!("unstage: {error}")),
+            },
+        );
+    }
+
+    fn discard_all(&mut self, cx: &mut Context<Self>) {
+        let paths: Vec<String> = self
+            .status
+            .as_ref()
+            .map(|detail| {
+                detail
+                    .unstaged
+                    .iter()
+                    .filter(|file| file.worktree_code != '?')
+                    .map(|file| file.path.clone())
+                    .collect()
+            })
+            .unwrap_or_default();
+        if paths.is_empty() {
+            self.set_error("No local changes to discard");
+            cx.notify();
+            return;
+        }
+        if !self.pending_discard {
+            self.pending_discard = true;
+            self.set_message("Click Discard all again to confirm");
+            cx.notify();
+            return;
+        }
+        self.pending_discard = false;
+        self.run_git(
+            cx,
+            move |service| service.discard(paths).map(|_| ()),
+            move |workspace, result, cx| match result {
+                Ok(()) => {
+                    workspace.set_message("Discarded working tree changes");
+                    workspace.refresh(false, cx);
+                }
+                Err(error) => workspace.set_error(format!("discard: {error}")),
+            },
+        );
+    }
+
+    fn submit_commit(&mut self, cx: &mut Context<Self>) {
+        let staged_count = self
+            .status
+            .as_ref()
+            .map(|detail| detail.staged.len())
+            .unwrap_or(0);
+        if staged_count == 0 && !self.amend {
+            self.set_error("Stage at least one file to commit");
+            cx.notify();
+            return;
+        }
+        let summary = self.summary_field.read(cx).value().trim().to_string();
+        if summary.is_empty() {
+            self.set_error("Commit summary is required");
+            cx.notify();
+            return;
+        }
+        let body = self.body_field.read(cx).value().trim().to_string();
+        let message = if body.is_empty() {
+            summary
+        } else {
+            format!("{summary}\n\n{body}")
+        };
+        let options = CommitOptions {
+            amend: self.amend,
+            signoff: self.signoff,
+        };
+        self.run_git(
+            cx,
+            move |service| service.commit(message, options),
+            move |workspace, result, cx| match result {
+                Ok(output) => {
+                    let short: String = output.trim().chars().take(7).collect();
+                    workspace.set_message(format!("Committed {short}"));
+                    workspace
+                        .summary_field
+                        .update(cx, |field, cx| field.clear(cx));
+                    workspace.body_field.update(cx, |field, cx| field.clear(cx));
+                    workspace.amend = false;
+                    workspace.signoff = false;
+                    workspace.refresh(false, cx);
+                }
+                Err(error) => workspace.set_error(format!("commit: {error}")),
+            },
+        );
+    }
+
+    fn checkout_branch(&mut self, name: String, cx: &mut Context<Self>) {
+        if self
+            .branches
+            .iter()
+            .any(|branch| branch.is_current && branch.name.as_ref() == name.as_str())
+        {
+            return;
+        }
+        if self
+            .status
+            .as_ref()
+            .map(|detail| !detail.clean)
+            .unwrap_or(false)
+        {
+            self.set_error("Commit or discard your changes before switching branches");
+            cx.notify();
+            return;
+        }
+        self.run_git(
+            cx,
+            move |service| service.checkout(name.clone()).map(|_| name),
+            move |workspace, result, cx| match result {
+                Ok(name) => {
+                    workspace.set_message(format!("Checked out {name}"));
+                    workspace.selected_hash = None;
+                    workspace.refresh(false, cx);
+                }
+                Err(error) => workspace.set_error(format!("checkout: {error}")),
+            },
+        );
+    }
+
+    fn submit_new_branch(&mut self, name: String, cx: &mut Context<Self>) {
+        let name = name.trim().to_string();
+        if name.is_empty() {
+            self.set_error("Branch name is required");
+            cx.notify();
+            return;
+        }
+        self.new_branch_open = false;
+        let start_point = self
+            .status
+            .as_ref()
+            .map(|detail| detail.branch.clone())
+            .filter(|branch| !branch.is_empty());
+        self.run_git(
+            cx,
+            move |service| {
+                service.create_branch(name.clone(), start_point)?;
+                service.checkout(name.clone()).map(|_| name)
+            },
+            move |workspace, result, cx| match result {
+                Ok(name) => {
+                    workspace.set_message(format!("Created and checked out {name}"));
+                    workspace.selected_hash = None;
+                    workspace.refresh(false, cx);
+                }
+                Err(error) => workspace.set_error(format!("branch: {error}")),
+            },
+        );
+    }
+
+    fn remote_action(&mut self, action: RemoteAction, cx: &mut Context<Self>) {
+        let refresh_after_pull = matches!(action, RemoteAction::Pull);
+        self.run_git(
+            cx,
+            move |service| match action {
+                RemoteAction::Fetch => service.fetch().map(|_| "Fetched from remotes"),
+                RemoteAction::Pull => service.pull().map(|_| "Pull completed"),
+                RemoteAction::Push => service.push().map(|_| "Push completed"),
+            },
+            move |workspace, result: Result<&'static str, String>, cx| match result {
+                Ok(message) => {
+                    workspace.set_message(message);
+                    if refresh_after_pull {
+                        workspace.refresh(false, cx);
+                    }
+                }
+                Err(error) => workspace.set_error(error),
+            },
+        );
     }
 }
 
-impl PocApp {
-    fn render_commit_row(&self, index: usize, cx: &mut Context<Self>) -> gpui::AnyElement {
-        let Some(commit) = self.commits.get(index) else {
-            return div().h(px(ROW_HEIGHT)).into_any_element();
-        };
-        let is_selected = index == self.selected;
-        let graph_cells = self.graph_rows.get(index);
-        let hash = SharedString::from(commit.hash.chars().take(7).collect::<String>());
-        let subject = SharedString::from(commit.subject.clone());
-        let author = SharedString::from(commit.author_name.clone());
-        let date = SharedString::from(relative_date(&commit.date));
+impl DiffSource {
+    fn worktree_path(&self) -> Option<&str> {
+        match self {
+            DiffSource::Worktree(path) => Some(path),
+            DiffSource::Commit(_) => None,
+        }
+    }
+}
 
+#[derive(Clone, Copy)]
+enum RemoteAction {
+    Fetch,
+    Pull,
+    Push,
+}
+
+// -- Render --------------------------------------------------------------
+
+impl Workspace {
+    fn input_shell(
+        &self,
+        theme: Theme,
+        field: &gpui::Entity<TextField>,
+        height: f32,
+        leading_icon: Option<&'static str>,
+    ) -> gpui::Div {
         div()
-            .id(("commit-row", index))
+            .flex()
+            .flex_1()
+            .min_w_0()
+            .items_center()
+            .gap_1p5()
+            .h(px(height))
+            .px_2p5()
+            .rounded_full()
+            .bg(theme.surface_input)
+            .border_1()
+            .border_color(theme.border_subtle)
+            .overflow_hidden()
+            .children(leading_icon.map(|icon_name| icon(icon_name, 12.0, theme.text_tertiary)))
+            .child(field.clone())
+    }
+
+    fn sync_badge(
+        &self,
+        theme: Theme,
+        icon_name: &'static str,
+        key: &'static str,
+        count: usize,
+    ) -> Option<gpui::AnyElement> {
+        if count == 0 {
+            return None;
+        }
+        let icon_color = theme.text_secondary;
+        Some(
+            div()
+                .relative()
+                .with_animation(
+                    (SharedString::from(format!("badge-pop-{key}")), count),
+                    Animation::new(motion::BADGE_POP),
+                    move |badge, delta| {
+                        let (offset, opacity) = motion::item_reveal(delta);
+                        badge.top(px(offset)).opacity(opacity)
+                    },
+                )
+                .child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .min_h(px(18.0))
+                        .px_1p5()
+                        .gap_0p5()
+                        .rounded_md()
+                        .text_size(px(11.0))
+                        .text_color(theme.text_secondary)
+                        .bg(theme.surface_secondary)
+                        .border_1()
+                        .border_color(theme.border_subtle)
+                        .child(icon(icon_name, 10.0, icon_color))
+                        .child(SharedString::from(count.to_string())),
+                )
+                .into_any_element(),
+        )
+    }
+
+    fn render_header(&self, theme: Theme, cx: &Context<Self>) -> gpui::Div {
+        div()
             .flex()
             .items_center()
             .gap_2()
             .px_3()
-            .h(px(ROW_HEIGHT))
-            .w_full()
-            .when(is_selected, |row| row.bg(rgb(SURFACE_SELECTED)))
-            .hover(|row| row.bg(rgb(SURFACE_HOVER)))
-            .on_click(cx.listener(move |this, _: &ClickEvent, _window, cx| {
-                this.pick(index, cx);
-            }))
+            .h(px(38.0))
+            .bg(theme.surface_shell)
+            .border_b_1()
+            .border_color(theme.border_subtle)
             .child(
-                // Colonna grafo: lane reali derivate dai parent dei commit.
                 div()
                     .flex()
                     .items_center()
-                    .font_family(SharedString::from("monospace"))
-                    .children(graph_cells.map(|row| {
-                        row.cells.iter().map(|(kind, color_index)| {
-                            let glyph = match kind {
-                                CellKind::Node => "\u{25cf}",
-                                CellKind::Pass => "\u{2502}",
-                                CellKind::Empty => " ",
+                    .gap_2()
+                    .max_w(px(280.0))
+                    .h(px(28.0))
+                    .px_3()
+                    .rounded_t_md()
+                    .bg(theme.surface_primary)
+                    .text_size(px(12.0))
+                    .font_weight(gpui::FontWeight::MEDIUM)
+                    .child(div().truncate().child(self.repo_name.clone())),
+            )
+            .child(btn_icon("add-tab", theme, ICON_PLUS))
+            .child(div().flex_1())
+            .child(
+                btn_toolbar("theme-toggle", theme, false)
+                    .on_click(cx.listener(|this, _: &ClickEvent, _window, cx| {
+                        this.theme_choice = match this.theme_choice {
+                            ThemeChoice::Dark => ThemeChoice::Light,
+                            ThemeChoice::Light => ThemeChoice::Dark,
+                        };
+                        cx.notify();
+                    }))
+                    .child(icon(
+                        match self.theme_choice {
+                            ThemeChoice::Dark => ICON_SUN,
+                            ThemeChoice::Light => ICON_MOON,
+                        },
+                        13.0,
+                        theme.text_secondary,
+                    ))
+                    .child(SharedString::from(match self.theme_choice {
+                        ThemeChoice::Dark => "Light",
+                        ThemeChoice::Light => "Dark",
+                    })),
+            )
+    }
+
+    fn render_command_bar(&self, theme: Theme, cx: &Context<Self>) -> gpui::Div {
+        let busy = self.busy > 0;
+        let (ahead, behind) = self
+            .status
+            .as_ref()
+            .map(|detail| (detail.ahead, detail.behind))
+            .unwrap_or((0, 0));
+        let clean = self
+            .status
+            .as_ref()
+            .map(|detail| detail.clean)
+            .unwrap_or(true);
+
+        div()
+            .flex()
+            .items_center()
+            .justify_between()
+            .px_4()
+            .py_1()
+            .min_h(px(46.0))
+            .bg(theme.canvas)
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap_1p5()
+                    .child(
+                        btn_toolbar("toggle-sidebar", theme, self.sidebar_motion.is_active_toggle())
+                            .on_click(cx.listener(|this, _: &ClickEvent, _window, cx| {
+                                this.toggle_panel(PanelSide::Sidebar, cx);
+                            }))
+                            .child(icon(
+                                ICON_BRANCH,
+                                13.0,
+                                if self.sidebar_motion.is_active_toggle() {
+                                    theme.text_primary
+                                } else {
+                                    theme.text_secondary
+                                },
+                            ))
+                            .child("Branches"),
+                    )
+                    .child(
+                        btn_toolbar("fetch", theme, false)
+                            .when(busy, |button| button.opacity(0.6))
+                            .on_click(cx.listener(|this, _: &ClickEvent, _window, cx| {
+                                this.remote_action(RemoteAction::Fetch, cx);
+                            }))
+                            .child(icon(ICON_FETCH, 13.0, theme.text_secondary))
+                            .child("Fetch"),
+                    )
+                    .child(
+                        btn_toolbar("pull", theme, false)
+                            .font_weight(gpui::FontWeight::SEMIBOLD)
+                            .when(busy, |button| button.opacity(0.6))
+                            .on_click(cx.listener(|this, _: &ClickEvent, _window, cx| {
+                                this.remote_action(RemoteAction::Pull, cx);
+                            }))
+                            .child(icon(ICON_PULL, 13.0, theme.text_secondary))
+                            .child("Pull")
+                            .children(self.sync_badge(theme, ICON_PULL, "behind", behind)),
+                    )
+                    .child(
+                        btn_toolbar("push", theme, false)
+                            .font_weight(gpui::FontWeight::SEMIBOLD)
+                            .when(busy, |button| button.opacity(0.6))
+                            .on_click(cx.listener(|this, _: &ClickEvent, _window, cx| {
+                                this.remote_action(RemoteAction::Push, cx);
+                            }))
+                            .child(icon(ICON_PUSH, 13.0, theme.text_secondary))
+                            .child("Push")
+                            .children(self.sync_badge(theme, ICON_PUSH, "ahead", ahead)),
+                    ),
+            )
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap_2()
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap_1p5()
+                            .text_size(px(11.0))
+                            .text_color(if clean {
+                                theme.success_text
+                            } else {
+                                theme.warning_text
+                            })
+                            .child(
+                                div()
+                                    .w(px(7.0))
+                                    .h(px(7.0))
+                                    .rounded_full()
+                                    .bg(if clean {
+                                        theme.success_text
+                                    } else {
+                                        theme.warning_text
+                                    }),
+                            )
+                            .child(SharedString::from(if clean { "clean" } else { "changed" })),
+                    )
+                    .child(
+                        btn_toolbar("toggle-inspector", theme, self.inspector_motion.is_active_toggle())
+                            .on_click(cx.listener(|this, _: &ClickEvent, _window, cx| {
+                                this.toggle_panel(PanelSide::Inspector, cx);
+                            }))
+                            .child(icon(
+                                ICON_INSPECTOR,
+                                13.0,
+                                if self.inspector_motion.is_active_toggle() {
+                                    theme.text_primary
+                                } else {
+                                    theme.text_secondary
+                                },
+                            ))
+                            .child("Inspector"),
+                    ),
+            )
+    }
+
+    fn render_body(&self, theme: Theme, cx: &mut Context<Self>) -> gpui::Div {
+        div()
+            .flex()
+            .flex_1()
+            .min_h_0()
+            .gap_1()
+            .p_1()
+            .children(self.render_sidebar(theme, cx))
+            .child(self.render_main(theme, cx))
+            .children(self.render_inspector_panel(theme, cx))
+    }
+
+    /// Colonna del pannello con l'animazione corrente (`motion-panel-*`).
+    /// Il wrapper e' `relative`: gli offset `left` non spostano il layout
+    /// dei pannelli vicini, come `translate3d` nell'app Electron.
+    fn animated_panel_column(
+        element: gpui::Div,
+        state: PanelState,
+        side: PanelSide,
+        gen: u64,
+    ) -> Option<gpui::AnyElement> {
+        if !state.is_visible() {
+            return None;
+        }
+        let column = element.relative();
+        let enter_id = SharedString::from(match side {
+            PanelSide::Sidebar => "sidebar-enter",
+            PanelSide::Inspector => "inspector-enter",
+        });
+        let exit_id = SharedString::from(match side {
+            PanelSide::Sidebar => "sidebar-exit",
+            PanelSide::Inspector => "inspector-exit",
+        });
+        match state {
+            PanelState::Open => Some(column.into_any_element()),
+            PanelState::Entering { .. } => Some(
+                column
+                    .with_animation(
+                        (enter_id, gen),
+                        Animation::new(motion::PANEL_CHANGE),
+                        move |column, delta| {
+                            // L'ingresso da destra e' il mirror esatto di quello da sinistra.
+                            let slide = match side {
+                                PanelSide::Sidebar => motion::panel_slide_enter(delta),
+                                PanelSide::Inspector => -motion::panel_slide_enter(delta),
                             };
+                            column.opacity((delta / 0.72).clamp(0.0, 1.0)).left(px(slide))
+                        },
+                    )
+                    .into_any_element(),
+            ),
+            PanelState::Closing { .. } => Some(
+                column
+                    .with_animation(
+                        (exit_id, gen),
+                        Animation::new(motion::PANEL_CHANGE),
+                        move |column, delta| {
+                            let slide = match side {
+                                PanelSide::Sidebar => motion::panel_slide_exit_left(delta),
+                                PanelSide::Inspector => motion::panel_slide_exit_right(delta),
+                            };
+                            column.opacity(1.0 - delta).left(px(slide))
+                        },
+                    )
+                    .into_any_element(),
+            ),
+            PanelState::Closed => None,
+        }
+    }
+
+    fn render_sidebar(&self, theme: Theme, cx: &mut Context<Self>) -> Option<gpui::AnyElement> {
+        let total_visible = self.branches_visible.len();
+
+        let column = div().w(px(SIDEBAR_WIDTH)).min_w_0().size_full().child(
+            panel(theme).size_full().child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .size_full()
+                    .child(
+                        div()
+                            .flex()
+                            .items_start()
+                            .justify_between()
+                            .px_3()
+                            .pt_2()
+                            .pb_1()
+                            .child(
+                                div()
+                                    .child(
+                                        div()
+                                            .text_size(px(10.0))
+                                            .text_color(theme.text_tertiary)
+                                            .child("WORKSPACE"),
+                                    )
+                                    .child(
+                                        div()
+                                            .text_size(px(14.0))
+                                            .font_weight(gpui::FontWeight::SEMIBOLD)
+                                            .child("Branches"),
+                                    ),
+                            )
+                            .child(
+                                div()
+                                    .flex()
+                                    .items_center()
+                                    .gap_1()
+                                    .child(btn_icon("new-branch", theme, ICON_PLUS).on_click(
+                                        cx.listener(|this, _: &ClickEvent, window, cx| {
+                                            this.new_branch_open = !this.new_branch_open;
+                                            if this.new_branch_open {
+                                                window.focus(
+                                                    &this.new_branch_field.read(cx).handle(),
+                                                );
+                                            }
+                                            cx.notify();
+                                        }),
+                                    ))
+                                    .child(
+                                        btn_icon("collapse-sidebar", theme, ICON_CARET_LEFT)
+                                            .on_click(cx.listener(
+                                                |this, _: &ClickEvent, _window, cx| {
+                                                    this.toggle_panel(PanelSide::Sidebar, cx);
+                                                },
+                                            )),
+                                    ),
+                            ),
+                    )
+                    .when(self.new_branch_open, |sidebar| {
+                        sidebar.child(
                             div()
-                                .w(px(14.0))
-                                .text_center()
+                                .px_3()
+                                .pb_1()
+                                .h(px(32.0))
+                                .flex()
+                                .child(self.input_shell(
+                                    theme,
+                                    &self.new_branch_field,
+                                    28.0,
+                                    None,
+                                )),
+                        )
+                    })
+                    .child(
+                        div()
+                            .flex()
+                            .px_3()
+                            .pb_2()
+                            .h(px(36.0))
+                            .child(self.input_shell(
+                                theme,
+                                &self.branch_filter,
+                                30.0,
+                                Some(ICON_SEARCH),
+                            )),
+                    )
+                    .children(if total_visible == 0 {
+                        Some(
+                            div()
+                                .flex_1()
+                                .flex()
+                                .items_center()
+                                .justify_center()
                                 .text_size(px(12.0))
-                                .text_color(rgb(LANE_COLORS[color_index % LANE_COLORS.len()]))
-                                .child(SharedString::from(glyph))
-                        }).collect::<Vec<_>>()
-                    }).unwrap_or_default()),
+                                .text_color(theme.text_tertiary)
+                                .child("No branches")
+                                .into_any_element(),
+                        )
+                    } else {
+                        None
+                    })
+                    .when(total_visible > 0, |sidebar| {
+                        sidebar.child(
+                            uniform_list(
+                                "branch-list",
+                                total_visible,
+                                cx.processor(move |this, range: Range<usize>, _window, cx| {
+                                    range
+                                        .filter_map(|position| {
+                                            let branch_index =
+                                                *this.branches_visible.get(position)?;
+                                            Some(this.render_branch_row(
+                                                theme,
+                                                branch_index,
+                                                position,
+                                                cx,
+                                            ))
+                                        })
+                                        .collect::<Vec<_>>()
+                                }),
+                            )
+                            .track_scroll(UniformListScrollHandle::new())
+                            .flex_1(),
+                        )
+                    })
+                    .child(
+                        div()
+                            .px_3()
+                            .py_2()
+                            .border_t_1()
+                            .border_color(theme.border_subtle)
+                            .child(
+                                div()
+                                    .text_size(px(10.0))
+                                    .text_color(theme.text_tertiary)
+                                    .child(SharedString::from(format!(
+                                        "TAGS \u{00b7} {}",
+                                        self.tags.len()
+                                    ))),
+                            )
+                            .child(
+                                div().flex().flex_wrap().gap_1().pt_1().children(
+                                    self.tags
+                                        .iter()
+                                        .take(TAGS_PREVIEW_LIMIT)
+                                        .map(|tag| chip(theme, tag.clone()))
+                                        .collect::<Vec<_>>(),
+                                ),
+                            ),
+                    ),
+            ),
+        );
+        Self::animated_panel_column(column, self.sidebar_motion, PanelSide::Sidebar, self.panel_gen)
+    }
+
+    fn render_branch_row(
+        &self,
+        theme: Theme,
+        branch_index: usize,
+        position: usize,
+        cx: &mut Context<Self>,
+    ) -> gpui::AnyElement {
+        let branch = &self.branches[branch_index];
+        let is_current = branch.is_current;
+        let name = branch.name.clone();
+        let label = name.clone();
+        div()
+            .id(("branch-row", position))
+            .flex()
+            .items_center()
+            .gap_2()
+            .px_3()
+            .h(px(BRANCH_ROW_HEIGHT))
+            .cursor_pointer()
+            .when(is_current, |row| row.bg(theme.surface_selected))
+            .hover(move |style| style.bg(theme.surface_hover))
+            .on_click(cx.listener(move |this, _: &ClickEvent, _window, cx| {
+                this.checkout_branch(name.to_string(), cx);
+            }))
+            .child(
+                div()
+                    .w(px(10.0))
+                    .text_size(px(9.0))
+                    .text_color(theme.success_text)
+                    .child(if is_current { "\u{25cf}" } else { "" }),
             )
             .child(
                 div()
-                    .font_family(SharedString::from("monospace"))
-                    .text_color(rgb(TEXT_LINK))
-                    .child(hash),
-            )
-            .child(div().flex_1().min_w_0().truncate().child(subject))
-            .child(
-                div()
-                    .max_w(px(140.0))
+                    .flex_1()
+                    .min_w_0()
                     .truncate()
-                    .text_color(rgb(TEXT_SECONDARY))
-                    .child(author),
+                    .text_size(px(12.0))
+                    .text_color(if is_current {
+                        theme.text_primary
+                    } else {
+                        theme.text_secondary
+                    })
+                    .font_weight(if is_current {
+                        gpui::FontWeight::SEMIBOLD
+                    } else {
+                        gpui::FontWeight::NORMAL
+                    })
+                    .child(label),
             )
-            .child(div().text_color(rgb(TEXT_TERTIARY)).child(date))
+            .into_any_element()
+    }
+}
+
+impl Workspace {
+    fn render_main(&self, theme: Theme, cx: &mut Context<Self>) -> gpui::AnyElement {
+        let change_count = self.change_count();
+        let mode_key = match self.mode {
+            ViewMode::History => 0,
+            ViewMode::Changes => 1,
+        };
+        // `.bento-panel` monta con `motion-fade-in var(--duration-normal)` decel.
+        div()
+            .flex_1()
+            .min_w_0()
+            .size_full()
+            .with_animation(
+                "main-panel-enter",
+                Animation::new(motion::CONTENT_ENTER).with_easing(motion::ease_decel()),
+                |column, delta| column.opacity(delta),
+            )
+            .child(
+                panel(theme).size_full().child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .size_full()
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .justify_between()
+                            .gap_2()
+                            .px_4()
+                            .h(px(72.0))
+                            .border_b_1()
+                            .border_color(theme.border_subtle)
+                            .child(
+                                div()
+                                    .flex()
+                                    .items_center()
+                                    .gap_3()
+                                    .child(
+                                        div()
+                                            .child(
+                                                div()
+                                                    .text_size(px(10.0))
+                                                    .text_color(theme.text_tertiary)
+                                                    .child("REPOSITORY ACTIVITY"),
+                                            )
+                                            .child(
+                                                div()
+                                                    .text_size(px(14.0))
+                                                    .font_weight(gpui::FontWeight::SEMIBOLD)
+                                                    .child(SharedString::from(match self.mode {
+                                                        ViewMode::History => "Commit history",
+                                                        ViewMode::Changes => "Changes",
+                                                    })),
+                                            ),
+                                    )
+                                    .when(self.busy > 0, |title| {
+                                        title.child(
+                                            div()
+                                                .flex()
+                                                .items_center()
+                                                .gap_1p5()
+                                                .text_size(px(11.0))
+                                                .text_color(theme.text_tertiary)
+                                                .child(pulsing_icon(
+                                                    ICON_SPINNER,
+                                                    12.0,
+                                                    theme.text_tertiary,
+                                                ))
+                                                .child("Loading…"),
+                                        )
+                                    }),
+                            )
+                            .child(
+                                segmented(theme)
+                                    .child(
+                                        segmented_item(
+                                            "mode-history",
+                                            self.mode == ViewMode::History,
+                                            theme,
+                                        )
+                                        .on_click(cx.listener(
+                                            |this, _: &ClickEvent, _window, cx| {
+                                                this.mode = ViewMode::History;
+                                                cx.notify();
+                                            },
+                                        ))
+                                        .child("History"),
+                                    )
+                                    .child(
+                                        segmented_item(
+                                            "mode-changes",
+                                            self.mode == ViewMode::Changes,
+                                            theme,
+                                        )
+                                        .on_click(cx.listener(
+                                            |this, _: &ClickEvent, _window, cx| {
+                                                this.mode = ViewMode::Changes;
+                                                cx.notify();
+                                            },
+                                        ))
+                                        .child("Changes")
+                                        .children(revealed_badge(
+                                            theme,
+                                            format!("{change_count}"),
+                                            ("changes-count", change_count),
+                                        )),
+                                    ),
+                            )
+                            .child(
+                                div()
+                                    .w(px(220.0))
+                                    .h(px(28.0))
+                                    .flex()
+                                    .child(self.input_shell(
+                                        theme,
+                                        &self.history_filter,
+                                        26.0,
+                                        Some(ICON_SEARCH),
+                                    )),
+                            ),
+                    )
+                    .child(
+                        // Cambio vista History/Changes: `motion-content-in`.
+                        div()
+                            .flex()
+                            .flex_col()
+                            .flex_1()
+                            .min_h_0()
+                            .relative()
+                            .with_animation(
+                                ("view-content", mode_key),
+                                Animation::new(motion::CONTENT_ENTER),
+                                |content, delta| {
+                                    let (offset, opacity) = motion::content_in(delta);
+                                    content.top(px(offset)).opacity(opacity)
+                                },
+                            )
+                            .children(if self.mode == ViewMode::History {
+                                Some(self.render_history(theme, cx).into_any_element())
+                            } else {
+                                Some(self.render_changes(theme, cx).into_any_element())
+                            }),
+                    ),
+            ),
+        )
+        .into_any_element()
+    }
+
+    fn change_count(&self) -> usize {
+        self.status
+            .as_ref()
+            .map(|detail| detail.staged.len() + detail.unstaged.len())
+            .unwrap_or(0)
+    }
+
+    fn render_history(&self, theme: Theme, cx: &mut Context<Self>) -> gpui::Div {
+        if self.rows.is_empty() {
+            return div()
+                .flex_1()
+                .flex()
+                .flex_col()
+                .items_center()
+                .justify_center()
+                .gap_2()
+                .text_color(theme.text_tertiary)
+                .child(pulsing_icon(ICON_SPINNER, 24.0, theme.border_strong))
+                .child(if self.busy > 0 {
+                    "Loading history…"
+                } else {
+                    "No commits in this repository"
+                });
+        }
+        div()
+            .flex()
+            .flex_col()
+            .flex_1()
+            .min_h_0()
+            .child(self.render_graph_header(theme))
+            .child(
+                uniform_list(
+                    "commit-list",
+                    self.filtered.len(),
+                    cx.processor(move |this, visible: Range<usize>, _window, cx| {
+                        visible
+                            .map(|position| this.render_commit_row(theme, position, cx))
+                            .collect::<Vec<_>>()
+                    }),
+                )
+                .track_scroll(self.list_scroll.clone())
+                .flex_1(),
+            )
+    }
+
+    fn render_graph_header(&self, theme: Theme) -> gpui::Div {
+        div()
+            .flex()
+            .items_center()
+            .h(px(30.0))
+            .px_3()
+            .gap_2()
+            .border_b_1()
+            .border_color(theme.border_subtle)
+            .text_size(px(11.0))
+            .text_color(theme.text_tertiary)
+            .child(div().w(px(GRAPH_COL_WIDTH)).child("Graph"))
+            .child(div().flex_1().min_w_0().child("Message"))
+            .child(div().w(px(AUTHOR_COL_WIDTH)).child("Author"))
+            .child(div().w(px(DATE_COL_WIDTH)).child("Date"))
+            .child(div().w(px(HASH_COL_WIDTH)).child("Hash"))
+    }
+
+    fn render_commit_row(
+        &self,
+        theme: Theme,
+        position: usize,
+        cx: &mut Context<Self>,
+    ) -> gpui::AnyElement {
+        let Some(row_index) = self.filtered.get(position).copied() else {
+            return div().h(px(COMMIT_ROW_HEIGHT)).into_any_element();
+        };
+        let Some(row) = self.rows.get(row_index) else {
+            return div().h(px(COMMIT_ROW_HEIGHT)).into_any_element();
+        };
+        let graph_cells = self.graph_rows.get(row_index);
+        let is_selected = self.selected_hash.as_deref() == Some(row.hash.as_str());
+
+        let chips = row
+            .chips
+            .iter()
+            .take(3)
+            .map(|reference| {
+                let themed_chip = chip(theme, reference.label.clone());
+                match reference.kind {
+                    RefChipKind::Tag => themed_chip.text_color(theme.warning_text),
+                    RefChipKind::Remote => themed_chip.text_color(theme.text_secondary),
+                    RefChipKind::Branch => themed_chip,
+                }
+                .into_any_element()
+            })
+            .collect::<Vec<_>>();
+
+        div()
+            .id(("commit-row", position))
+            .flex()
+            .items_center()
+            .gap_2()
+            .px_3()
+            .h(px(COMMIT_ROW_HEIGHT))
+            .w_full()
+            .cursor_pointer()
+            .when(is_selected, |row| row.bg(theme.surface_selected))
+            .hover(move |style| style.bg(theme.surface_hover))
+            .on_click(cx.listener(move |this, _: &ClickEvent, _window, cx| {
+                this.pick_visible_index(position, cx);
+            }))
+            .child(
+                div()
+                    .w(px(GRAPH_COL_WIDTH))
+                    .flex()
+                    .items_center()
+                    .font_family(crate::theme::MONO)
+                    .text_size(px(11.0))
+                    .children(
+                        graph_cells
+                            .map(|graph_row| {
+                                graph_row
+                                    .cells
+                                    .iter()
+                                    .map(|(kind, lane)| {
+                                        let glyph = match kind {
+                                            CellKind::Node => "\u{25cf}",
+                                            CellKind::Pass => "\u{2502}",
+                                            CellKind::Empty => " ",
+                                        };
+                                        let color = if *kind == CellKind::Pass {
+                                            theme.graph_line
+                                        } else {
+                                            theme.lane_colors[lane % theme.lane_colors.len()]
+                                        };
+                                        div()
+                                            .w(px(14.0))
+                                            .text_center()
+                                            .text_color(color)
+                                            .child(glyph)
+                                    })
+                                    .collect::<Vec<_>>()
+                            })
+                            .unwrap_or_default(),
+                    ),
+            )
+            .child(
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .flex()
+                    .items_center()
+                    .overflow_hidden()
+                    .child(div().flex().items_center().min_w_0().children(chips))
+                    .child(div().min_w_0().truncate().child(row.subject.clone())),
+            )
+            .child(
+                div()
+                    .w(px(AUTHOR_COL_WIDTH))
+                    .truncate()
+                    .text_color(theme.text_secondary)
+                    .child(row.author.clone()),
+            )
+            .child(
+                div()
+                    .w(px(DATE_COL_WIDTH))
+                    .text_color(theme.text_tertiary)
+                    .child(row.date_rel.clone()),
+            )
+            .child(
+                div()
+                    .w(px(HASH_COL_WIDTH))
+                    .font_family(crate::theme::MONO)
+                    .text_size(px(11.0))
+                    .text_color(theme.text_link)
+                    .child(row.hash_short.clone()),
+            )
+            .into_any_element()
+    }
+}
+
+impl Workspace {
+    fn status_letter_color(&self, theme: Theme, code: char) -> gpui::Rgba {
+        match code {
+            'A' => theme.success_text,
+            'D' => theme.error_text,
+            'M' | 'R' | 'C' => theme.warning_text,
+            'U' => theme.error_text,
+            '?' => theme.text_tertiary,
+            _ => theme.text_secondary,
+        }
+    }
+
+    fn render_changes(&self, theme: Theme, cx: &mut Context<Self>) -> gpui::Div {
+        let empty = self
+            .status
+            .as_ref()
+            .map(|detail| detail.staged.is_empty() && detail.unstaged.is_empty())
+            .unwrap_or(true);
+
+        if empty {
+            return div()
+                .flex_1()
+                .flex()
+                .flex_col()
+                .items_center()
+                .justify_center()
+                .gap_2()
+                .text_color(theme.text_tertiary)
+                .child(pulsing_icon(ICON_SPINNER, 24.0, theme.border_strong))
+                .child(if self.busy > 0 {
+                    "Checking working tree…"
+                } else {
+                    "Working tree clean"
+                });
+        }
+
+        div()
+            .flex()
+            .flex_col()
+            .flex_1()
+            .min_h_0()
+            .p_2()
+            .gap_2()
+            .child(
+                div()
+                    .flex()
+                    .gap_2()
+                    .flex_1()
+                    .min_h_0()
+                    .child(self.render_file_section(theme, true, cx))
+                    .child(self.render_file_section(theme, false, cx)),
+            )
+            .child(self.render_composer(theme, cx))
+    }
+
+    fn render_file_section(
+        &self,
+        theme: Theme,
+        unstaged: bool,
+        cx: &mut Context<Self>,
+    ) -> gpui::Div {
+        let files: Vec<(char, String)> = self
+            .status
+            .as_ref()
+            .map(|detail| {
+                if unstaged {
+                    detail
+                        .unstaged
+                        .iter()
+                        .map(|file| (file.worktree_code, file.path.clone()))
+                        .collect()
+                } else {
+                    detail
+                        .staged
+                        .iter()
+                        .map(|file| (file.index_code, file.path.clone()))
+                        .collect()
+                }
+            })
+            .unwrap_or_default();
+
+        let title = if unstaged { "Unstaged" } else { "Staged" };
+        let section_id = if unstaged {
+            "unstaged-files"
+        } else {
+            "staged-files"
+        };
+
+        card(theme)
+            .flex_1()
+            .min_w_0()
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .justify_between()
+                    .px_3()
+                    .py_1p5()
+                    .border_b_1()
+                    .border_color(theme.border_subtle)
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap_2()
+                            .child(
+                                div()
+                                    .text_size(px(13.0))
+                                    .font_weight(gpui::FontWeight::SEMIBOLD)
+                                    .child(title),
+                            )
+                            .children(revealed_badge(
+                                theme,
+                                format!("{}", files.len()),
+                                (section_id, files.len()),
+                            )),
+                    )
+                    .children(if unstaged {
+                        Some(
+                            div()
+                                .flex()
+                                .gap_1()
+                                .child(
+                                    btn_toolbar("discard-all", theme, false)
+                                        .when(files.is_empty(), |button| button.opacity(0.5))
+                                        .on_click(cx.listener(
+                                            |this, _: &ClickEvent, _window, cx| {
+                                                this.discard_all(cx);
+                                            },
+                                        ))
+                                        .text_color(theme.error_text)
+                                        .child("Discard all"),
+                                )
+                                .child(
+                                    btn_toolbar("stage-all", theme, false)
+                                        .when(files.is_empty(), |button| button.opacity(0.5))
+                                        .on_click(cx.listener(
+                                            |this, _: &ClickEvent, _window, cx| {
+                                                let paths = this
+                                                    .status
+                                                    .as_ref()
+                                                    .map(|detail| {
+                                                        detail
+                                                            .unstaged
+                                                            .iter()
+                                                            .map(|file| file.path.clone())
+                                                            .collect()
+                                                    })
+                                                    .unwrap_or_default();
+                                                this.stage_paths(paths, cx);
+                                            },
+                                        ))
+                                        .child(icon(ICON_PLUS, 12.0, theme.text_secondary))
+                                        .child("Stage all"),
+                                )
+                                .into_any_element(),
+                        )
+                    } else {
+                        Some(
+                            btn_toolbar("unstage-all", theme, false)
+                                .when(files.is_empty(), |button| button.opacity(0.5))
+                                .on_click(cx.listener(|this, _: &ClickEvent, _window, cx| {
+                                    let paths = this
+                                        .status
+                                        .as_ref()
+                                        .map(|detail| {
+                                            detail.staged.iter().map(|f| f.path.clone()).collect()
+                                        })
+                                        .unwrap_or_default();
+                                    this.unstage_paths(paths, cx);
+                                }))
+                                .child(icon(ICON_MINUS, 12.0, theme.text_secondary))
+                                .child("Unstage all")
+                                .into_any_element(),
+                        )
+                    }),
+            )
+            .children(if files.is_empty() {
+                Some(
+                    div()
+                        .flex_1()
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .text_size(px(12.0))
+                        .text_color(theme.text_tertiary)
+                        .child(if unstaged {
+                            "No unstaged files"
+                        } else {
+                            "Nothing staged"
+                        })
+                        .into_any_element(),
+                )
+            } else {
+                Some(
+                    uniform_list(section_id, files.len(), {
+                        let files = files.clone();
+                        cx.processor(move |this, range: Range<usize>, _window, cx| {
+                            range
+                                .filter_map(|position| {
+                                    let (code, path) = files.get(position)?;
+                                    Some(this.render_file_row(unstaged, position, *code, path, cx))
+                                })
+                                .collect::<Vec<_>>()
+                        })
+                    })
+                    .track_scroll(UniformListScrollHandle::new())
+                    .flex_1()
+                    .into_any_element(),
+                )
+            })
+    }
+
+    fn render_file_row(
+        &self,
+        unstaged: bool,
+        position: usize,
+        code: char,
+        path: &str,
+        cx: &mut Context<Self>,
+    ) -> gpui::AnyElement {
+        let theme = self.palette;
+        let selected = self.changes_selected.as_deref() == Some(path);
+        let click_path = path.to_string();
+        let stage_path = path.to_string();
+        div()
+            .id(("file-row", position))
+            .flex()
+            .items_center()
+            .gap_2()
+            .px_3()
+            .h(px(28.0))
+            .cursor_pointer()
+            .when(selected, |row| row.bg(theme.surface_selected))
+            .hover(move |style| style.bg(theme.surface_hover))
+            .on_click(cx.listener(move |this, _: &ClickEvent, _window, cx| {
+                if unstaged {
+                    this.load_worktree_diff(click_path.clone(), cx);
+                } else {
+                    cx.notify();
+                }
+            }))
+            .child(
+                div()
+                    .w(px(14.0))
+                    .font_family(crate::theme::MONO)
+                    .text_size(px(11.0))
+                    .text_color(self.status_letter_color(theme, code))
+                    .child(code.to_string()),
+            )
+            .child(
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .truncate()
+                    .text_size(px(12.0))
+                    .text_color(theme.text_primary)
+                    .child(SharedString::from(path.to_string())),
+            )
+            .child(if unstaged {
+                btn_icon_sm(("stage-file", position), theme, ICON_PLUS)
+                    .on_click(cx.listener(move |this, _: &ClickEvent, _window, cx| {
+                        this.stage_paths(vec![stage_path.clone()], cx);
+                    }))
+                    .into_any_element()
+            } else {
+                btn_icon_sm(("unstage-file", position), theme, ICON_MINUS)
+                    .on_click(cx.listener(move |this, _: &ClickEvent, _window, cx| {
+                        this.unstage_paths(vec![stage_path.clone()], cx);
+                    }))
+                    .into_any_element()
+            })
             .into_any_element()
     }
 
-    fn render_diff_panel(&self) -> gpui::AnyElement {
-        let header = self
-            .commits
-            .get(self.selected)
-            .map(|commit| {
-                SharedString::from(format!(
-                    "{}  {}",
-                    commit.hash.chars().take(7).collect::<String>(),
-                    commit.subject
-                ))
-            })
-            .unwrap_or_else(|| SharedString::from("Diff"));
+    fn render_composer(&self, theme: Theme, cx: &mut Context<Self>) -> gpui::Div {
+        let staged_count = self
+            .status
+            .as_ref()
+            .map(|detail| detail.staged.len())
+            .unwrap_or(0);
+        let can_commit = staged_count > 0 || self.amend;
 
-        let rows: Vec<gpui::AnyElement> = self
-            .diff_lines
-            .iter()
-            .map(|line| {
-                let (fg, bg) = match line.kind {
-                    LineKind::Add => (DIFF_ADD_TEXT, DIFF_ADD_BG),
-                    LineKind::Del => (DIFF_DEL_TEXT, DIFF_DEL_BG),
-                    LineKind::Hunk => (DIFF_HUNK_TEXT, DIFF_HUNK_BG),
-                    LineKind::Context => (TEXT_SECONDARY, SURFACE_PRIMARY),
-                };
+        div()
+            .border_t_1()
+            .border_color(theme.border_subtle)
+            .px_3()
+            .py_2()
+            .gap_1p5()
+            .flex()
+            .flex_col()
+            .child(
                 div()
-                    .font_family(SharedString::from("monospace"))
-                    .text_size(px(12.0))
-                    .text_color(rgb(fg))
-                    .bg(rgb(bg))
-                    .whitespace_nowrap()
-                    .px_2()
-                    .child(SharedString::from(line.text.clone()))
-                    .into_any_element()
-            })
-            .collect();
+                    .flex()
+                    .items_center()
+                    .justify_between()
+                    .child(
+                        div()
+                            .text_size(px(13.0))
+                            .font_weight(gpui::FontWeight::SEMIBOLD)
+                            .child("Commit staged changes"),
+                    )
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap_2()
+                            .text_size(px(11.0))
+                            .child(
+                                ui::btn_toolbar("amend", theme, self.amend)
+                                    .on_click(cx.listener(|this, _: &ClickEvent, _window, cx| {
+                                        this.amend = !this.amend;
+                                        cx.notify();
+                                    }))
+                                    .child("Amend HEAD"),
+                            )
+                            .child(
+                                ui::btn_toolbar("signoff", theme, self.signoff)
+                                    .on_click(cx.listener(|this, _: &ClickEvent, _window, cx| {
+                                        this.signoff = !this.signoff;
+                                        cx.notify();
+                                    }))
+                                    .child("Sign-off"),
+                            ),
+                    ),
+            )
+            .child(div().flex().h(px(32.0)).child(self.input_shell(
+                theme,
+                &self.summary_field,
+                30.0,
+                None,
+            )))
+            .child(
+                div().h(px(64.0)).child(
+                    div()
+                        .size_full()
+                        .p_1()
+                        .rounded_lg()
+                        .bg(theme.surface_input)
+                        .border_1()
+                        .border_color(theme.border_subtle)
+                        .overflow_hidden()
+                        .child(self.body_field.clone()),
+                ),
+            )
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .justify_between()
+                    .child(
+                        div()
+                            .text_size(px(11.0))
+                            .text_color(theme.text_tertiary)
+                            .child(SharedString::from(format!("{staged_count} file(s) staged"))),
+                    )
+                    .child(
+                        btn_primary("commit", theme)
+                            .when(!can_commit && !self.summary_filled(), |button| {
+                                button.opacity(0.5)
+                            })
+                            .on_click(cx.listener(|this, _: &ClickEvent, _window, cx| {
+                                this.submit_commit(cx);
+                            }))
+                            .child("Commit"),
+                    ),
+            )
+    }
+
+    fn summary_filled(&self) -> bool {
+        self.summary_non_empty
+    }
+}
+
+impl Workspace {
+    fn render_inspector_panel(
+        &self,
+        theme: Theme,
+        cx: &mut Context<Self>,
+    ) -> Option<gpui::AnyElement> {
+        let model = &self.inspector.model;
+        let meta = match &self.inspector.source {
+            Some(DiffSource::Commit(hash)) => self
+                .rows
+                .iter()
+                .find(|row| &row.hash == hash)
+                .map(|row| format!("{}  {}  {}", row.hash_short, row.author, row.date_rel)),
+            Some(DiffSource::Worktree(path)) => Some(format!("worktree \u{00b7} {path}")),
+            None => None,
+        };
+        let title = match self.inspector.source {
+            Some(DiffSource::Commit(_)) => "Commit details",
+            Some(DiffSource::Worktree(_)) => "Working tree diff",
+            None => "Commit details",
+        };
+
+        let column = div().w(px(INSPECTOR_WIDTH)).size_full().child(
+            panel(theme).size_full().child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .size_full()
+                    .child(
+                        div()
+                            .flex()
+                            .items_start()
+                            .justify_between()
+                            .gap_2()
+                            .px_3()
+                            .pt_2()
+                            .pb_1()
+                            .child(
+                                div()
+                                    .min_w_0()
+                                    .flex_1()
+                                    .child(
+                                        div()
+                                            .text_size(px(10.0))
+                                            .text_color(theme.text_tertiary)
+                                            .child("INSPECTOR"),
+                                    )
+                                    .child(
+                                        div()
+                                            .text_size(px(14.0))
+                                            .font_weight(gpui::FontWeight::SEMIBOLD)
+                                            .child(title),
+                                    )
+                                    .children(meta.map(|meta| {
+                                        div()
+                                            .mt_0p5()
+                                            .font_family(crate::theme::MONO)
+                                            .text_size(px(11.0))
+                                            .text_color(theme.text_secondary)
+                                            .truncate()
+                                            .child(meta)
+                                    })),
+                            )
+                            .child(btn_icon("close-inspector", theme, ICON_CLOSE).on_click(
+                                cx.listener(|this, _: &ClickEvent, _window, cx| {
+                                    this.toggle_panel(PanelSide::Inspector, cx);
+                                }),
+                            )),
+                    )
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap_2()
+                            .px_3()
+                            .pb_2()
+                            .text_size(px(11.0))
+                            .children(revealed_badge(
+                                theme,
+                                format!("+{} \u{2212}{}", model.added, model.deleted),
+                                (
+                                    SharedString::from(format!(
+                                        "inspector-delta-{}-{}",
+                                        model.added, model.deleted
+                                    )),
+                                    model.added + model.deleted,
+                                ),
+                            ))
+                            .children(revealed_badge(
+                                theme,
+                                format!("{} files", model.files.len()),
+                                ("inspector-files", model.files.len()),
+                            )),
+                    )
+                    .child(if model.lines.is_empty() {
+                        div()
+                            .flex_1()
+                            .flex()
+                            .flex_col()
+                            .items_center()
+                            .justify_center()
+                            .gap_2()
+                            .p_4()
+                            .text_size(px(12.0))
+                            .text_color(theme.text_tertiary)
+                            .child(pulsing_icon(ICON_BRANCH, 24.0, theme.border_strong))
+                            .child("Select a commit to inspect its changes.")
+                            .into_any_element()
+                    } else {
+                        div()
+                            .flex()
+                            .flex_1()
+                            .min_h_0()
+                            .child(self.render_diff_pane(theme, cx))
+                            .child(self.render_files_rail(theme, cx))
+                            .into_any_element()
+                    }),
+            ),
+        );
+        Self::animated_panel_column(column, self.inspector_motion, PanelSide::Inspector, self.panel_gen)
+    }
+
+    fn render_diff_pane(&self, theme: Theme, cx: &mut Context<Self>) -> gpui::AnyElement {
+        let model = &self.inspector.model;
+        let visible_range = model.visible_range(self.inspector.visible_file);
+        let start = visible_range.start;
+        let count = visible_range.end.saturating_sub(visible_range.start);
 
         div()
             .flex_1()
             .min_w_0()
+            .border_r_1()
+            .border_color(theme.border_subtle)
+            .child(
+                uniform_list(
+                    "diff-lines",
+                    count.max(1),
+                    cx.processor(move |this, range: Range<usize>, _window, _cx| {
+                        range
+                            .map(|offset| this.render_diff_line(start + offset))
+                            .collect::<Vec<_>>()
+                    }),
+                )
+                .track_scroll(self.inspector.scroll.clone())
+                .size_full(),
+            )
+            .into_any_element()
+    }
+
+    fn render_diff_line(&self, index: usize) -> gpui::AnyElement {
+        use crate::models::LineKind as DiffLineKind;
+        let theme = self.palette;
+        let Some(line) = self.inspector.model.lines.get(index) else {
+            return div().h(px(DIFF_ROW_HEIGHT)).into_any_element();
+        };
+        let (fg, bg) = match line.kind {
+            DiffLineKind::Add => (theme.diff_add_text, theme.diff_add_bg),
+            DiffLineKind::Del => (theme.diff_del_text, theme.diff_del_bg),
+            DiffLineKind::Hunk => (theme.diff_hunk_text, theme.diff_hunk_bg),
+            DiffLineKind::Context => (theme.text_secondary, theme.surface_primary),
+        };
+        div()
+            .h(px(DIFF_ROW_HEIGHT))
+            .w_full()
+            .flex()
+            .items_center()
+            .font_family(crate::theme::MONO)
+            .text_size(px(12.0))
+            .text_color(fg)
+            .bg(bg)
+            .px_2()
+            .whitespace_nowrap()
+            .overflow_hidden()
+            .child(line.text.clone())
+            .into_any_element()
+    }
+
+    fn render_files_rail(&self, theme: Theme, cx: &mut Context<Self>) -> gpui::Div {
+        div()
+            .w(px(FILE_RAIL_WIDTH))
             .flex()
             .flex_col()
-            .rounded_lg()
-            .overflow_hidden()
-            .bg(rgb(SURFACE_PRIMARY))
-            .border_1()
-            .border_color(rgb(BORDER_SUBTLE))
+            .min_h_0()
             .child(
                 div()
-                    .flex()
-                    .items_center()
                     .px_3()
-                    .h(px(34.0))
-                    .bg(rgb(SURFACE_SHELL))
-                    .border_b_1()
-                    .border_color(rgb(BORDER_SUBTLE))
-                    .truncate()
-                    .child(header),
+                    .py_1p5()
+                    .text_size(px(10.0))
+                    .text_color(theme.text_tertiary)
+                    .child("CHANGED FILES"),
             )
             .child(
                 div()
-                    .id("diff-scroll")
+                    .id("files-rail")
                     .flex_1()
                     .min_h_0()
                     .overflow_y_scroll()
-                    .py_1()
-                    .children(rows),
+                    .children(
+                        self.inspector
+                            .model
+                            .files
+                            .iter()
+                            .enumerate()
+                            .take(MAX_FILE_RAIL_ENTRIES)
+                            .map(|(index, section)| {
+                                let selected = self.inspector.visible_file == Some(index);
+                                div()
+                                    .id(("inspector-file", index))
+                                    .px_3()
+                                    .py_1()
+                                    .cursor_pointer()
+                                    .when(selected, |row| row.bg(theme.surface_selected))
+                                    .hover(move |style| style.bg(theme.surface_hover))
+                                    .on_click(cx.listener(
+                                        move |this, _: &ClickEvent, _window, cx| {
+                                            this.inspector.visible_file =
+                                                if selected { None } else { Some(index) };
+                                            cx.notify();
+                                        },
+                                    ))
+                                    .child(
+                                        div()
+                                            .truncate()
+                                            .text_size(px(11.0))
+                                            .font_family(crate::theme::MONO)
+                                            .text_color(theme.text_secondary)
+                                            .child(section.path.clone()),
+                                    )
+                            })
+                            .collect::<Vec<_>>(),
+                    ),
             )
-            .into_any_element()
+    }
+
+    fn render_status_bar(&self, theme: Theme) -> gpui::Div {
+        let (branch, ahead, behind, detached) = self
+            .status
+            .as_ref()
+            .map(|detail| {
+                (
+                    detail.branch.clone(),
+                    detail.ahead,
+                    detail.behind,
+                    detail.detached,
+                )
+            })
+            .unwrap_or_default();
+        let mut info = self.message.clone();
+        if ahead > 0 || behind > 0 {
+            info = SharedString::from(format!("{info}   \u{2191}{ahead} \u{2193}{behind}"));
+        }
+        let branch_label = if detached {
+            SharedString::from("detached HEAD")
+        } else {
+            SharedString::from(branch)
+        };
+
+        let busy = self.busy > 0;
+        div()
+            .flex()
+            .items_center()
+            .gap_2()
+            .px_3()
+            .h(px(28.0))
+            .bg(theme.surface_shell)
+            .border_t_1()
+            .border_color(theme.border_subtle)
+            .text_size(px(11.0))
+            .text_color(theme.text_secondary)
+            .child(if busy {
+                pulsing_dot(self.status_dot_color())
+            } else {
+                div()
+                    .w(px(8.0))
+                    .h(px(8.0))
+                    .rounded_full()
+                    .bg(self.status_dot_color())
+                    .into_any_element()
+            })
+            .child(self.repo_name.clone())
+            .when(!branch_label.is_empty(), |bar| bar.child(branch_label))
+            .child(div().flex_1())
+            .children(self.error.clone().map(|error| {
+                div()
+                    .max_w(px(520.0))
+                    .truncate()
+                    .text_color(theme.error_text)
+                    .child(error)
+                    .into_any_element()
+            }))
+            // Esito operazioni come toast compatto: `motion-fade-in-up`.
+            .child(
+                div()
+                    .relative()
+                    .truncate()
+                    .with_animation(
+                        ("status-toast", self.message_seq),
+                        Animation::new(motion::CONTENT_ENTER),
+                        |toast, delta| {
+                            let (offset, opacity) = motion::fade_in_up(delta);
+                            toast.top(px(offset.min(12.0))).opacity(opacity.clamp(0.0, 1.0))
+                        },
+                    )
+                    .child(info),
+            )
+            .child(
+                div()
+                    .text_color(theme.text_tertiary)
+                    .child("Rust \u{00b7} GPUI"),
+            )
+    }
+
+    fn status_dot_color(&self) -> gpui::Rgba {
+        let theme = self.palette;
+        if self.error.is_some() {
+            theme.error_text
+        } else if self.status.as_ref().map(|s| s.clean).unwrap_or(false) {
+            theme.success_text
+        } else {
+            theme.warning_text
+        }
+    }
+}
+
+/// Dot di stato con respiro `motion-pulse-soft` mentre girano operazioni.
+fn pulsing_dot(color: gpui::Rgba) -> gpui::AnyElement {
+    div()
+        .with_animation(
+            "status-dot-busy",
+            Animation::new(motion::PULSE_SOFT)
+                .repeat()
+                .with_easing(gpui::pulsating_between(0.45, 1.0)),
+            move |dot, alpha| {
+                dot.w(px(8.0))
+                    .h(px(8.0))
+                    .rounded_full()
+                    .bg(color)
+                    .opacity(alpha)
+            },
+        )
+        .into_any_element()
+}
+
+const MAX_FILE_RAIL_ENTRIES: usize = 200;
+
+/// Badge contatore con la comparsa `motion-item-reveal` quando il valore
+/// cambia: l'id include il conteggio, quindi ogni nuovo valore riparte.
+fn revealed_badge(
+    theme: Theme,
+    text: impl Into<SharedString>,
+    key: impl Into<gpui::ElementId>,
+) -> gpui::AnyElement {
+    div()
+        .relative()
+        .with_animation(key.into(), Animation::new(motion::BADGE_POP), move |wrapper, delta| {
+            let (offset, opacity) = motion::item_reveal(delta);
+            wrapper.top(px(offset)).opacity(opacity)
+        })
+        .child(badge(theme, text))
+        .into_any_element()
+}
+
+impl Render for Workspace {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let theme = self.palette;
+        div()
+            .id("workspace-root")
+            .flex()
+            .flex_col()
+            .size_full()
+            .bg(crate::theme::canvas_gradient(self.theme_choice))
+            .font_family(crate::theme::SANS)
+            .text_color(theme.text_primary)
+            .text_size(px(13.0))
+            .on_action(cx.listener(|this, _: &Refresh, _window, cx| {
+                this.refresh(false, cx);
+            }))
+            .on_action(cx.listener(|this, _: &NextCommit, _window, cx| {
+                this.step_selection(1, cx);
+            }))
+            .on_action(cx.listener(|this, _: &PrevCommit, _window, cx| {
+                this.step_selection(-1, cx);
+            }))
+            .on_action(cx.listener(|this, _: &FocusSearch, window, cx| {
+                let handle = this.history_filter.read(cx).handle();
+                window.focus(&handle);
+            }))
+            .child(self.render_header(theme, cx))
+            .child(self.render_command_bar(theme, cx))
+            .child(self.render_body(theme, cx))
+            .child(self.render_status_bar(theme))
     }
 }
 
 fn main() {
     let repo_path = std::env::args().nth(1).unwrap_or_else(|| ".".to_string());
-    Application::new().run(move |app: &mut App| {
+    Application::new().with_assets(icons::EmbeddedIcons).run(move |app: &mut App| {
         app.bind_keys([
             KeyBinding::new("down", NextCommit, None),
             KeyBinding::new("up", PrevCommit, None),
+            KeyBinding::new("f5", Refresh, None),
+            KeyBinding::new("ctrl-p", FocusSearch, None),
         ]);
-        let bounds = Bounds::centered(None, size(px(1180.), px(760.)), app);
+        widgets::text_field::bind_keys(app);
+
+        let bounds = Bounds::centered(None, size(px(1280.), px(800.)), app);
         let result = app.open_window(
             WindowOptions {
                 window_bounds: Some(WindowBounds::Windowed(bounds)),
                 ..Default::default()
             },
-            |_, cx| cx.new(|_| PocApp::load(repo_path.as_str())),
+            move |_, cx| {
+                let workspace = cx.new(|cx| Workspace::new(repo_path.as_str(), cx));
+                let weak = workspace.downgrade();
+                workspace.update(cx, move |workspace, cx| {
+                    let weak_summary = weak.clone();
+                    workspace.summary_field.update(cx, move |field, _| {
+                        field.set_on_submit(move |_value, _window, cx| {
+                            if let Some(entity) = weak_summary.upgrade() {
+                                entity.update(cx, |workspace, cx| workspace.submit_commit(cx));
+                            }
+                        });
+                    });
+                    let weak_branch = weak;
+                    workspace.new_branch_field.update(cx, move |field, _| {
+                        field.set_on_submit(move |value, _window, cx| {
+                            if let Some(entity) = weak_branch.upgrade() {
+                                let value = value.to_string();
+                                entity.update(cx, |workspace, cx| {
+                                    workspace.submit_new_branch(value, cx)
+                                });
+                            }
+                        });
+                    });
+                });
+                workspace
+            },
         );
         if let Err(error) = result {
             eprintln!("impossibile aprire la finestra: {error}");

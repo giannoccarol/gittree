@@ -240,6 +240,21 @@ pub fn working_tree_diff(
     })
 }
 
+/// Diff combinato di un path tra HEAD e working tree (index + modifiche).
+pub fn head_diff(engine: &GitEngine, repo: &Path, file: &str) -> Result<String, GitError> {
+    let validated = validate_repository_path(file)?;
+    let args = vec![
+        "diff".to_string(),
+        "--no-ext-diff".to_string(),
+        "HEAD".to_string(),
+        "--".to_string(),
+        validated,
+    ];
+    engine.run(repo, &args).map_err(|error| GitError {
+        message: format!("Failed to get diff: {}", error.message),
+    })
+}
+
 /// Validazione difensiva dei path relativi al repository.
 pub fn validate_repository_path(path: &str) -> Result<String, GitError> {
     let candidate = std::path::Path::new(path);

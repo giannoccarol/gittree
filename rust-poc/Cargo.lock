@@ -1994,6 +1994,7 @@ version = "0.1.0"
 dependencies = [
  "gittree-core",
  "gpui",
+ "unicode-segmentation",
 ]
 
 [[package]]
