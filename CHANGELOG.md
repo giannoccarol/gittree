@@ -1,3 +1,10 @@
+## [0.22.1](https://github.com/giannoccarol/gittree/compare/v0.22.0...v0.22.1) (2026-08-23)
+
+
+### Bug Fixes
+
+* **release:** compile TypeScript and package the compiled output ([34d6cd7](https://github.com/giannoccarol/gittree/commit/34d6cd75121a8f12f1c0dc8f5473e98039ef9067))
+
 # [0.22.0](https://github.com/giannoccarol/gittree/compare/v0.21.4...v0.22.0) (2026-08-23)
 
 
