@@ -1,3 +1,10 @@
+## [0.22.3](https://github.com/giannoccarol/gittree/compare/v0.22.2...v0.22.3) (2026-08-23)
+
+
+### Bug Fixes
+
+* **git-service:** handle null branch argument in pull method and add test for tracked upstream branch pull ([2604130](https://github.com/giannoccarol/gittree/commit/2604130d38263696037b0b90448b7779f936120d))
+
 ## [0.22.2](https://github.com/giannoccarol/gittree/compare/v0.22.1...v0.22.2) (2026-08-23)
 
 
