@@ -9,13 +9,14 @@ use std::sync::Arc;
 
 use gpui::prelude::*;
 use gpui::{
-    Animation, AnimationExt, AnyElement, App, Application, Bounds, ClickEvent, Context,
-    FocusHandle, Focusable, InteractiveElement, KeyBinding, ParentElement, Render, SharedString,
-    Styled, UniformListScrollHandle, Window, WindowBounds, WindowOptions, actions, div, px, size,
-    uniform_list,
+    Animation, AnimationExt, App, Application, Bounds, ClickEvent, Context, FocusHandle, Focusable,
+    InteractiveElement, KeyBinding, ParentElement, Render, SharedString, Styled,
+    UniformListScrollHandle, Window, WindowBounds, WindowOptions, actions, canvas, div, point, px,
+    size, uniform_list,
 };
 
-use crate::models::{CellKind, CommitRow, DiffModel, GraphRow, RefChipKind, build_rows};
+use crate::models::{CommitRow, DiffModel, GraphRow, RefChipKind, build_rows};
+use crate::motion::breathing;
 use crate::service::{GitService, Snapshot};
 use crate::theme::{Theme, ThemeChoice};
 use crate::ui::{
@@ -35,9 +36,11 @@ mod ui;
 mod widgets;
 
 const HISTORY_LIMIT: usize = 5_000;
-const COMMIT_ROW_HEIGHT: f32 = 36.0;
+/// Altezza riga dell'app Electron (`.graph-row`, 38px).
+const COMMIT_ROW_HEIGHT: f32 = 38.0;
 const DIFF_ROW_HEIGHT: f32 = 20.0;
 const BRANCH_ROW_HEIGHT: f32 = 30.0;
+/// Colonna grafo di default (`.graph-view --graph-column-graph`).
 const GRAPH_COL_WIDTH: f32 = 84.0;
 const AUTHOR_COL_WIDTH: f32 = 150.0;
 const DATE_COL_WIDTH: f32 = 130.0;
@@ -47,8 +50,18 @@ const INSPECTOR_WIDTH: f32 = 400.0;
 const FILE_RAIL_WIDTH: f32 = 150.0;
 const TAGS_PREVIEW_LIMIT: usize = 24;
 
+// Geometria del grafo, identica a `createGraphSegments` (graph-layout.mts):
+// `x(lane) = 12 + lane * 18`, nodo a meta' riga (19px su righe da 38px).
+const LANE_X0: f32 = 12.0;
+const LANE_PITCH: f32 = 18.0;
+const GRAPH_STROKE: f32 = 1.65;
+const NODE_RADIUS: f32 = 4.0;
+const MERGE_NODE_RADIUS: f32 = 5.0;
+const HEAD_RING_RADIUS: f32 = 8.0;
+
 // Percorsi asset delle icone Phosphor regolari (crate::icons::EmbeddedIcons).
 const ICON_BRANCH: &str = "icons/git-branch.svg";
+const ICON_COMMIT: &str = "icons/git-commit.svg";
 const ICON_FETCH: &str = "icons/cloud-arrow-down.svg";
 const ICON_PULL: &str = "icons/download-simple.svg";
 const ICON_PUSH: &str = "icons/upload-simple.svg";
@@ -57,7 +70,6 @@ const ICON_SEARCH: &str = "icons/magnifying-glass.svg";
 const ICON_PLUS: &str = "icons/plus.svg";
 const ICON_MINUS: &str = "icons/minus.svg";
 const ICON_CARET_LEFT: &str = "icons/caret-left.svg";
-const ICON_CARET_RIGHT: &str = "icons/caret-right.svg";
 const ICON_CLOSE: &str = "icons/x.svg";
 const ICON_MOON: &str = "icons/moon.svg";
 const ICON_SUN: &str = "icons/sun.svg";
@@ -76,9 +88,9 @@ enum ViewMode {
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum PanelState {
     Closed,
-    Entering { gen: u64 },
+    Entering { generation: u64 },
     Open,
-    Closing { gen: u64 },
+    Closing { generation: u64 },
 }
 
 impl PanelState {
@@ -132,7 +144,7 @@ struct Workspace {
     theme_choice: ThemeChoice,
     palette: Theme,
     mode: ViewMode,
-    sidebar: PanelState,
+    sidebar_motion: PanelState,
     inspector_motion: PanelState,
     panel_gen: u64,
     busy: usize,
@@ -144,6 +156,7 @@ struct Workspace {
 
     rows: Vec<CommitRow>,
     graph_rows: Vec<GraphRow>,
+    graph_lane_count: usize,
     filtered: Vec<usize>,
     history_query: String,
     selected_hash: Option<String>,
@@ -187,7 +200,7 @@ impl Workspace {
             .unwrap_or_else(|| repo_path.to_string());
 
         let branch_filter = cx.new(|cx| TextField::new(cx).placeholder("Filter branches"));
-        let history_filter = cx.new(|cx| TextField::new(cx).placeholder("Filter commits"));
+        let history_filter = cx.new(|cx| TextField::new(cx).placeholder("Search commits"));
         let new_branch_field = cx.new(|cx| TextField::new(cx).placeholder("New branch name"));
         let summary_field = cx.new(|cx| TextField::new(cx).placeholder("Commit summary"));
         let body_field = cx.new(|cx| {
@@ -209,7 +222,7 @@ impl Workspace {
             theme_choice: ThemeChoice::Dark,
             palette: Theme::new(ThemeChoice::Dark),
             mode: ViewMode::History,
-            sidebar: PanelState::Open,
+            sidebar_motion: PanelState::Open,
             inspector_motion: PanelState::Open,
             panel_gen: 0,
             busy: 0,
@@ -220,6 +233,7 @@ impl Workspace {
             first_load_done: false,
             rows: Vec::new(),
             graph_rows: Vec::new(),
+            graph_lane_count: 1,
             filtered: Vec::new(),
             history_query: String::new(),
             selected_hash: None,
@@ -326,11 +340,11 @@ impl Workspace {
         };
         let opening = !current.is_active_toggle();
         self.panel_gen += 1;
-        let gen = self.panel_gen;
+        let generation = self.panel_gen;
         let next = if opening {
-            PanelState::Entering { gen }
+            PanelState::Entering { generation }
         } else {
-            PanelState::Closing { gen }
+            PanelState::Closing { generation }
         };
         match side {
             PanelSide::Sidebar => self.sidebar_motion = next,
@@ -342,8 +356,10 @@ impl Workspace {
                 .background_executor()
                 .timer(motion::PANEL_CHANGE)
                 .await;
-            this.update(async_cx, |workspace, cx| workspace.settle_panel(side, gen, cx))
-                .ok();
+            this.update(async_cx, |workspace, cx| {
+                workspace.settle_panel(side, generation, cx)
+            })
+            .ok();
         })
         .detach();
         cx.notify();
@@ -351,10 +367,14 @@ impl Workspace {
 
     /// Normalizza lo stato a fine animazione: `Entering → Open`,
     /// `Closing → Closed`. Le generazioni vecchie vengono ignorate.
-    fn settle_panel(&mut self, side: PanelSide, gen: u64, cx: &mut Context<Self>) {
+    fn settle_panel(&mut self, side: PanelSide, generation: u64, cx: &mut Context<Self>) {
         let settled = match (side, self.panel_state(side)) {
-            (_, PanelState::Entering { gen: g }) if g == gen => Some(PanelState::Open),
-            (_, PanelState::Closing { gen: g }) if g == gen => Some(PanelState::Closed),
+            (_, PanelState::Entering { generation: g }) if g == generation => {
+                Some(PanelState::Open)
+            }
+            (_, PanelState::Closing { generation: g }) if g == generation => {
+                Some(PanelState::Closed)
+            }
             _ => None,
         };
         if let Some(state) = settled {
@@ -431,6 +451,7 @@ impl Workspace {
         let models = build_rows(&snapshot.page.commits, &snapshot.page.refs);
         self.rows = models.commits;
         self.graph_rows = models.graph_rows;
+        self.graph_lane_count = models.graph_lane_count.max(1);
 
         if let Some(detail) = snapshot.status.as_ref() {
             let current = (!detail.detached).then_some(detail.branch.as_str());
@@ -840,14 +861,6 @@ impl Workspace {
         Some(
             div()
                 .relative()
-                .with_animation(
-                    (SharedString::from(format!("badge-pop-{key}")), count),
-                    Animation::new(motion::BADGE_POP),
-                    move |badge, delta| {
-                        let (offset, opacity) = motion::item_reveal(delta);
-                        badge.top(px(offset)).opacity(opacity)
-                    },
-                )
                 .child(
                     div()
                         .flex()
@@ -863,6 +876,14 @@ impl Workspace {
                         .border_color(theme.border_subtle)
                         .child(icon(icon_name, 10.0, icon_color))
                         .child(SharedString::from(count.to_string())),
+                )
+                .with_animation(
+                    (SharedString::from(format!("badge-pop-{key}")), count),
+                    Animation::new(motion::BADGE_POP),
+                    move |wrapper, delta| {
+                        let (offset, opacity) = motion::item_reveal(delta);
+                        wrapper.top(px(offset)).opacity(opacity)
+                    },
                 )
                 .into_any_element(),
         )
@@ -945,20 +966,24 @@ impl Workspace {
                     .items_center()
                     .gap_1p5()
                     .child(
-                        btn_toolbar("toggle-sidebar", theme, self.sidebar_motion.is_active_toggle())
-                            .on_click(cx.listener(|this, _: &ClickEvent, _window, cx| {
-                                this.toggle_panel(PanelSide::Sidebar, cx);
-                            }))
-                            .child(icon(
-                                ICON_BRANCH,
-                                13.0,
-                                if self.sidebar_motion.is_active_toggle() {
-                                    theme.text_primary
-                                } else {
-                                    theme.text_secondary
-                                },
-                            ))
-                            .child("Branches"),
+                        btn_toolbar(
+                            "toggle-sidebar",
+                            theme,
+                            self.sidebar_motion.is_active_toggle(),
+                        )
+                        .on_click(cx.listener(|this, _: &ClickEvent, _window, cx| {
+                            this.toggle_panel(PanelSide::Sidebar, cx);
+                        }))
+                        .child(icon(
+                            ICON_BRANCH,
+                            13.0,
+                            if self.sidebar_motion.is_active_toggle() {
+                                theme.text_primary
+                            } else {
+                                theme.text_secondary
+                            },
+                        ))
+                        .child("Branches"),
                     )
                     .child(
                         btn_toolbar("fetch", theme, false)
@@ -1008,34 +1033,32 @@ impl Workspace {
                             } else {
                                 theme.warning_text
                             })
-                            .child(
-                                div()
-                                    .w(px(7.0))
-                                    .h(px(7.0))
-                                    .rounded_full()
-                                    .bg(if clean {
-                                        theme.success_text
-                                    } else {
-                                        theme.warning_text
-                                    }),
-                            )
+                            .child(div().w(px(7.0)).h(px(7.0)).rounded_full().bg(if clean {
+                                theme.success_text
+                            } else {
+                                theme.warning_text
+                            }))
                             .child(SharedString::from(if clean { "clean" } else { "changed" })),
                     )
                     .child(
-                        btn_toolbar("toggle-inspector", theme, self.inspector_motion.is_active_toggle())
-                            .on_click(cx.listener(|this, _: &ClickEvent, _window, cx| {
-                                this.toggle_panel(PanelSide::Inspector, cx);
-                            }))
-                            .child(icon(
-                                ICON_INSPECTOR,
-                                13.0,
-                                if self.inspector_motion.is_active_toggle() {
-                                    theme.text_primary
-                                } else {
-                                    theme.text_secondary
-                                },
-                            ))
-                            .child("Inspector"),
+                        btn_toolbar(
+                            "toggle-inspector",
+                            theme,
+                            self.inspector_motion.is_active_toggle(),
+                        )
+                        .on_click(cx.listener(|this, _: &ClickEvent, _window, cx| {
+                            this.toggle_panel(PanelSide::Inspector, cx);
+                        }))
+                        .child(icon(
+                            ICON_INSPECTOR,
+                            13.0,
+                            if self.inspector_motion.is_active_toggle() {
+                                theme.text_primary
+                            } else {
+                                theme.text_secondary
+                            },
+                        ))
+                        .child("Inspector"),
                     ),
             )
     }
@@ -1059,7 +1082,7 @@ impl Workspace {
         element: gpui::Div,
         state: PanelState,
         side: PanelSide,
-        gen: u64,
+        generation: u64,
     ) -> Option<gpui::AnyElement> {
         if !state.is_visible() {
             return None;
@@ -1078,7 +1101,7 @@ impl Workspace {
             PanelState::Entering { .. } => Some(
                 column
                     .with_animation(
-                        (enter_id, gen),
+                        (enter_id.clone(), generation as usize),
                         Animation::new(motion::PANEL_CHANGE),
                         move |column, delta| {
                             // L'ingresso da destra e' il mirror esatto di quello da sinistra.
@@ -1086,7 +1109,9 @@ impl Workspace {
                                 PanelSide::Sidebar => motion::panel_slide_enter(delta),
                                 PanelSide::Inspector => -motion::panel_slide_enter(delta),
                             };
-                            column.opacity((delta / 0.72).clamp(0.0, 1.0)).left(px(slide))
+                            column
+                                .opacity((delta / 0.72).clamp(0.0, 1.0))
+                                .left(px(slide))
                         },
                     )
                     .into_any_element(),
@@ -1094,7 +1119,7 @@ impl Workspace {
             PanelState::Closing { .. } => Some(
                 column
                     .with_animation(
-                        (exit_id, gen),
+                        (exit_id, generation as usize),
                         Animation::new(motion::PANEL_CHANGE),
                         move |column, delta| {
                             let slide = match side {
@@ -1175,12 +1200,7 @@ impl Workspace {
                                 .pb_1()
                                 .h(px(32.0))
                                 .flex()
-                                .child(self.input_shell(
-                                    theme,
-                                    &self.new_branch_field,
-                                    28.0,
-                                    None,
-                                )),
+                                .child(self.input_shell(theme, &self.new_branch_field, 28.0, None)),
                         )
                     })
                     .child(
@@ -1262,7 +1282,12 @@ impl Workspace {
                     ),
             ),
         );
-        Self::animated_panel_column(column, self.sidebar_motion, PanelSide::Sidebar, self.panel_gen)
+        Self::animated_panel_column(
+            column,
+            self.sidebar_motion,
+            PanelSide::Sidebar,
+            self.panel_gen,
+        )
     }
 
     fn render_branch_row(
@@ -1330,141 +1355,141 @@ impl Workspace {
             .flex_1()
             .min_w_0()
             .size_full()
+            .child(
+                panel(theme).size_full().child(
+                    div()
+                        .flex()
+                        .flex_col()
+                        .size_full()
+                        .child(
+                            div()
+                                .flex()
+                                .items_center()
+                                .justify_between()
+                                .gap_2()
+                                .px_4()
+                                .h(px(72.0))
+                                .border_b_1()
+                                .border_color(theme.border_subtle)
+                                .child(
+                                    div()
+                                        .flex()
+                                        .items_center()
+                                        .gap_3()
+                                        .child(
+                                            div()
+                                                .child(
+                                                    div()
+                                                        .text_size(px(10.0))
+                                                        .text_color(theme.text_tertiary)
+                                                        .child("REPOSITORY ACTIVITY"),
+                                                )
+                                                .child(
+                                                    div()
+                                                        .text_size(px(14.0))
+                                                        .font_weight(gpui::FontWeight::SEMIBOLD)
+                                                        .child(SharedString::from(
+                                                            match self.mode {
+                                                                ViewMode::History => {
+                                                                    "Commit history"
+                                                                }
+                                                                ViewMode::Changes => "Changes",
+                                                            },
+                                                        )),
+                                                ),
+                                        )
+                                        .when(self.busy > 0, |title| {
+                                            title.child(
+                                                div()
+                                                    .flex()
+                                                    .items_center()
+                                                    .gap_1p5()
+                                                    .text_size(px(11.0))
+                                                    .text_color(theme.text_tertiary)
+                                                    .child(pulsing_icon(
+                                                        ICON_SPINNER,
+                                                        12.0,
+                                                        theme.text_tertiary,
+                                                    ))
+                                                    .child("Loading…"),
+                                            )
+                                        }),
+                                )
+                                .child(
+                                    segmented(theme)
+                                        .child(
+                                            segmented_item(
+                                                "mode-history",
+                                                self.mode == ViewMode::History,
+                                                theme,
+                                            )
+                                            .on_click(cx.listener(
+                                                |this, _: &ClickEvent, _window, cx| {
+                                                    this.mode = ViewMode::History;
+                                                    cx.notify();
+                                                },
+                                            ))
+                                            .child("History"),
+                                        )
+                                        .child(
+                                            segmented_item(
+                                                "mode-changes",
+                                                self.mode == ViewMode::Changes,
+                                                theme,
+                                            )
+                                            .on_click(cx.listener(
+                                                |this, _: &ClickEvent, _window, cx| {
+                                                    this.mode = ViewMode::Changes;
+                                                    cx.notify();
+                                                },
+                                            ))
+                                            .child("Changes")
+                                            .child(
+                                                revealed_badge(
+                                                    theme,
+                                                    format!("{change_count}"),
+                                                    ("changes-count", change_count),
+                                                ),
+                                            ),
+                                        ),
+                                ),
+                        )
+                        .child(
+                            // Cambio vista History/Changes: `motion-content-in`.
+                            div()
+                                .flex()
+                                .flex_col()
+                                .flex_1()
+                                .min_h_0()
+                                .relative()
+                                .children(if self.mode == ViewMode::History {
+                                    Some(self.render_history(theme, cx).into_any_element())
+                                } else {
+                                    Some(self.render_changes(theme, cx).into_any_element())
+                                })
+                                .with_animation(
+                                    ("view-content", mode_key as usize),
+                                    Animation::new(motion::CONTENT_ENTER),
+                                    |content, delta| {
+                                        let (offset, opacity) = motion::content_in(delta);
+                                        content.top(px(offset)).opacity(opacity)
+                                    },
+                                ),
+                        ),
+                ),
+            )
             .with_animation(
                 "main-panel-enter",
                 Animation::new(motion::CONTENT_ENTER).with_easing(motion::ease_decel()),
                 |column, delta| column.opacity(delta),
             )
-            .child(
-                panel(theme).size_full().child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .size_full()
-                    .child(
-                        div()
-                            .flex()
-                            .items_center()
-                            .justify_between()
-                            .gap_2()
-                            .px_4()
-                            .h(px(72.0))
-                            .border_b_1()
-                            .border_color(theme.border_subtle)
-                            .child(
-                                div()
-                                    .flex()
-                                    .items_center()
-                                    .gap_3()
-                                    .child(
-                                        div()
-                                            .child(
-                                                div()
-                                                    .text_size(px(10.0))
-                                                    .text_color(theme.text_tertiary)
-                                                    .child("REPOSITORY ACTIVITY"),
-                                            )
-                                            .child(
-                                                div()
-                                                    .text_size(px(14.0))
-                                                    .font_weight(gpui::FontWeight::SEMIBOLD)
-                                                    .child(SharedString::from(match self.mode {
-                                                        ViewMode::History => "Commit history",
-                                                        ViewMode::Changes => "Changes",
-                                                    })),
-                                            ),
-                                    )
-                                    .when(self.busy > 0, |title| {
-                                        title.child(
-                                            div()
-                                                .flex()
-                                                .items_center()
-                                                .gap_1p5()
-                                                .text_size(px(11.0))
-                                                .text_color(theme.text_tertiary)
-                                                .child(pulsing_icon(
-                                                    ICON_SPINNER,
-                                                    12.0,
-                                                    theme.text_tertiary,
-                                                ))
-                                                .child("Loading…"),
-                                        )
-                                    }),
-                            )
-                            .child(
-                                segmented(theme)
-                                    .child(
-                                        segmented_item(
-                                            "mode-history",
-                                            self.mode == ViewMode::History,
-                                            theme,
-                                        )
-                                        .on_click(cx.listener(
-                                            |this, _: &ClickEvent, _window, cx| {
-                                                this.mode = ViewMode::History;
-                                                cx.notify();
-                                            },
-                                        ))
-                                        .child("History"),
-                                    )
-                                    .child(
-                                        segmented_item(
-                                            "mode-changes",
-                                            self.mode == ViewMode::Changes,
-                                            theme,
-                                        )
-                                        .on_click(cx.listener(
-                                            |this, _: &ClickEvent, _window, cx| {
-                                                this.mode = ViewMode::Changes;
-                                                cx.notify();
-                                            },
-                                        ))
-                                        .child("Changes")
-                                        .children(revealed_badge(
-                                            theme,
-                                            format!("{change_count}"),
-                                            ("changes-count", change_count),
-                                        )),
-                                    ),
-                            )
-                            .child(
-                                div()
-                                    .w(px(220.0))
-                                    .h(px(28.0))
-                                    .flex()
-                                    .child(self.input_shell(
-                                        theme,
-                                        &self.history_filter,
-                                        26.0,
-                                        Some(ICON_SEARCH),
-                                    )),
-                            ),
-                    )
-                    .child(
-                        // Cambio vista History/Changes: `motion-content-in`.
-                        div()
-                            .flex()
-                            .flex_col()
-                            .flex_1()
-                            .min_h_0()
-                            .relative()
-                            .with_animation(
-                                ("view-content", mode_key),
-                                Animation::new(motion::CONTENT_ENTER),
-                                |content, delta| {
-                                    let (offset, opacity) = motion::content_in(delta);
-                                    content.top(px(offset)).opacity(opacity)
-                                },
-                            )
-                            .children(if self.mode == ViewMode::History {
-                                Some(self.render_history(theme, cx).into_any_element())
-                            } else {
-                                Some(self.render_changes(theme, cx).into_any_element())
-                            }),
-                    ),
-            ),
-        )
-        .into_any_element()
+            .into_any_element()
+    }
+
+    /// Larghezza colonna grafo come `updateGraphWidth`:
+    /// `clamp(lane_count * 18 + 20, 84..=240)`.
+    fn graph_col_width(&self) -> f32 {
+        (self.graph_lane_count as f32 * LANE_PITCH + 20.0).clamp(GRAPH_COL_WIDTH, 240.0)
     }
 
     fn change_count(&self) -> usize {
@@ -1484,18 +1509,86 @@ impl Workspace {
                 .justify_center()
                 .gap_2()
                 .text_color(theme.text_tertiary)
-                .child(pulsing_icon(ICON_SPINNER, 24.0, theme.border_strong))
+                .child(pulsing_icon(
+                    if self.busy > 0 {
+                        ICON_SPINNER
+                    } else {
+                        ICON_COMMIT
+                    },
+                    24.0,
+                    theme.border_strong,
+                ))
                 .child(if self.busy > 0 {
                     "Loading history…"
                 } else {
                     "No commits in this repository"
                 });
         }
+        let filtering = !self.history_query.is_empty();
         div()
             .flex()
             .flex_col()
             .flex_1()
             .min_h_0()
+            // Riga controlli cronologia (`.history-controls`): ricerca con
+            // magnifier, clear animato e conteggio risultati in filtro.
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap_2()
+                    .px_3()
+                    .py_2()
+                    .border_b_1()
+                    .border_color(theme.border_subtle)
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .flex_1()
+                            .max_w(px(520.0))
+                            .h(px(34.0))
+                            .px_3()
+                            .gap_2()
+                            .rounded_full()
+                            .bg(theme.surface_secondary)
+                            .border_1()
+                            .border_color(if filtering {
+                                theme.primary
+                            } else {
+                                theme.border_subtle
+                            })
+                            .child(icon(ICON_SEARCH, 13.0, theme.text_tertiary))
+                            .child(
+                                div()
+                                    .flex_1()
+                                    .min_w_0()
+                                    .h_full()
+                                    .overflow_hidden()
+                                    .child(self.history_filter.clone()),
+                            )
+                            .when(filtering, |search| {
+                                search
+                                    .child(
+                                        btn_icon_sm("clear-history-search", theme, ICON_CLOSE)
+                                            .on_click(cx.listener(
+                                                |this, _: &ClickEvent, window, cx| {
+                                                    this.history_filter
+                                                        .update(cx, |field, cx| field.clear(cx));
+                                                    let handle =
+                                                        this.history_filter.read(cx).handle();
+                                                    window.focus(&handle);
+                                                },
+                                            )),
+                                    )
+                                    .child(revealed_badge(
+                                        theme,
+                                        format!("{} / {}", self.filtered.len(), self.rows.len()),
+                                        ("history-results", self.filtered.len()),
+                                    ))
+                            }),
+                    ),
+            )
             .child(self.render_graph_header(theme))
             .child(
                 uniform_list(
@@ -1513,21 +1606,58 @@ impl Workspace {
     }
 
     fn render_graph_header(&self, theme: Theme) -> gpui::Div {
+        // `.graph-header`: 36px, label uppercase 9.5px semibold, date/hash
+        // allineati a destra come le colonne.
+        let header_label = |text: &'static str| {
+            div()
+                .text_size(px(9.5))
+                .font_weight(gpui::FontWeight::SEMIBOLD)
+                .child(text)
+        };
         div()
             .flex()
             .items_center()
-            .h(px(30.0))
-            .px_3()
-            .gap_2()
+            .min_h(px(36.0))
+            .px_2()
             .border_b_1()
+            .bg(theme.surface_secondary)
             .border_color(theme.border_subtle)
-            .text_size(px(11.0))
             .text_color(theme.text_tertiary)
-            .child(div().w(px(GRAPH_COL_WIDTH)).child("Graph"))
-            .child(div().flex_1().min_w_0().child("Message"))
-            .child(div().w(px(AUTHOR_COL_WIDTH)).child("Author"))
-            .child(div().w(px(DATE_COL_WIDTH)).child("Date"))
-            .child(div().w(px(HASH_COL_WIDTH)).child("Hash"))
+            .child(
+                div()
+                    .w(px(self.graph_col_width()))
+                    .px_2()
+                    .child(header_label("GRAPH")),
+            )
+            .child(
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .px_2()
+                    .child(header_label("MESSAGE")),
+            )
+            .child(
+                div()
+                    .w(px(AUTHOR_COL_WIDTH))
+                    .px_2()
+                    .child(header_label("AUTHOR")),
+            )
+            .child(
+                div()
+                    .w(px(DATE_COL_WIDTH))
+                    .px_2()
+                    .flex()
+                    .justify_end()
+                    .child(header_label("DATE")),
+            )
+            .child(
+                div()
+                    .w(px(HASH_COL_WIDTH))
+                    .px_2()
+                    .flex()
+                    .justify_end()
+                    .child(header_label("HASH")),
+            )
     }
 
     fn render_commit_row(
@@ -1542,7 +1672,7 @@ impl Workspace {
         let Some(row) = self.rows.get(row_index) else {
             return div().h(px(COMMIT_ROW_HEIGHT)).into_any_element();
         };
-        let graph_cells = self.graph_rows.get(row_index);
+        let graph_row = self.graph_rows.get(row_index);
         let is_selected = self.selected_hash.as_deref() == Some(row.hash.as_str());
 
         let chips = row
@@ -1564,48 +1694,25 @@ impl Workspace {
             .id(("commit-row", position))
             .flex()
             .items_center()
-            .gap_2()
-            .px_3()
+            .px_2()
             .h(px(COMMIT_ROW_HEIGHT))
             .w_full()
+            .border_b_1()
+            .border_color(theme.border_subtle)
             .cursor_pointer()
-            .when(is_selected, |row| row.bg(theme.surface_selected))
+            .when(is_selected, |row| row.bg(theme.primary_soft))
             .hover(move |style| style.bg(theme.surface_hover))
             .on_click(cx.listener(move |this, _: &ClickEvent, _window, cx| {
                 this.pick_visible_index(position, cx);
             }))
             .child(
                 div()
-                    .w(px(GRAPH_COL_WIDTH))
-                    .flex()
-                    .items_center()
-                    .font_family(crate::theme::MONO)
-                    .text_size(px(11.0))
+                    .w(px(self.graph_col_width()))
+                    .relative()
+                    .h(px(COMMIT_ROW_HEIGHT))
                     .children(
-                        graph_cells
-                            .map(|graph_row| {
-                                graph_row
-                                    .cells
-                                    .iter()
-                                    .map(|(kind, lane)| {
-                                        let glyph = match kind {
-                                            CellKind::Node => "\u{25cf}",
-                                            CellKind::Pass => "\u{2502}",
-                                            CellKind::Empty => " ",
-                                        };
-                                        let color = if *kind == CellKind::Pass {
-                                            theme.graph_line
-                                        } else {
-                                            theme.lane_colors[lane % theme.lane_colors.len()]
-                                        };
-                                        div()
-                                            .w(px(14.0))
-                                            .text_center()
-                                            .text_color(color)
-                                            .child(glyph)
-                                    })
-                                    .collect::<Vec<_>>()
-                            })
+                        graph_row
+                            .map(|graph_row| self.render_graph_cell(theme, graph_row, row.is_head))
                             .unwrap_or_default(),
                     ),
             )
@@ -1615,32 +1722,181 @@ impl Workspace {
                     .min_w_0()
                     .flex()
                     .items_center()
+                    .gap_2()
+                    .px_2()
                     .overflow_hidden()
                     .child(div().flex().items_center().min_w_0().children(chips))
-                    .child(div().min_w_0().truncate().child(row.subject.clone())),
+                    .child(
+                        div()
+                            .min_w_0()
+                            .truncate()
+                            .text_size(px(12.0))
+                            .font_weight(gpui::FontWeight::SEMIBOLD)
+                            .text_color(theme.text_primary)
+                            .child(row.subject.clone()),
+                    ),
             )
             .child(
                 div()
                     .w(px(AUTHOR_COL_WIDTH))
+                    .px_2()
                     .truncate()
+                    .text_size(px(11.0))
                     .text_color(theme.text_secondary)
                     .child(row.author.clone()),
             )
             .child(
                 div()
                     .w(px(DATE_COL_WIDTH))
+                    .px_2()
+                    .truncate()
+                    .text_size(px(10.0))
+                    .text_right()
                     .text_color(theme.text_tertiary)
                     .child(row.date_rel.clone()),
             )
             .child(
                 div()
                     .w(px(HASH_COL_WIDTH))
+                    .px_2()
                     .font_family(crate::theme::MONO)
-                    .text_size(px(11.0))
-                    .text_color(theme.text_link)
+                    .text_size(px(10.0))
+                    .text_right()
+                    .text_color(theme.text_tertiary)
                     .child(row.hash_short.clone()),
             )
             .into_any_element()
+    }
+
+    /// Cella grafo di una riga: binari verticali, curve verso i parent
+    /// (stessa geometria SVG di `createGraphSegments`), nodo colorato e
+    /// anello HEAD. I binari e i nodi sono div assoluti; le curve bezier
+    /// vengono tracciate con `PathBuilder::stroke`.
+    fn render_graph_cell(
+        &self,
+        theme: Theme,
+        row: &GraphRow,
+        is_head: bool,
+    ) -> Vec<gpui::AnyElement> {
+        let height = COMMIT_ROW_HEIGHT;
+        let midpoint = height / 2.0;
+        let lane_x = |lane: usize| LANE_X0 + lane as f32 * LANE_PITCH;
+        let lane_color = |lane: usize| theme.lane_colors[lane % theme.lane_colors.len()];
+
+        let mut elements: Vec<gpui::AnyElement> = Vec::new();
+
+        for (lane, occupied) in row.rails.iter().enumerate() {
+            if !*occupied {
+                continue;
+            }
+            elements.push(
+                div()
+                    .absolute()
+                    .left(px(lane_x(lane) - GRAPH_STROKE / 2.0))
+                    .top(px(-1.0))
+                    .size_full()
+                    .h(px(height + 2.0))
+                    .w(px(GRAPH_STROKE))
+                    .bg(lane_color(lane))
+                    .into_any_element(),
+            );
+        }
+        if row.incoming {
+            elements.push(
+                div()
+                    .absolute()
+                    .left(px(lane_x(row.lane) - GRAPH_STROKE / 2.0))
+                    .top(px(-1.0))
+                    .w(px(GRAPH_STROKE))
+                    .h(px(midpoint + 1.0))
+                    .bg(lane_color(row.lane))
+                    .into_any_element(),
+            );
+        }
+
+        // Curve verso i parent: cubic bezier come nell'SVG (`C from mid+10,
+        // to bottom-10, to bottom`), tracciate a 1.65px.
+        let curves: Vec<(f32, f32, gpui::Rgba)> = row
+            .parents
+            .iter()
+            .map(|parent| {
+                (
+                    lane_x(row.lane),
+                    lane_x(parent.lane),
+                    lane_color(parent.lane),
+                )
+            })
+            .collect();
+        if !curves.is_empty() {
+            elements.push(
+                canvas(
+                    move |bounds, _, _| bounds.origin,
+                    move |bounds, origin, window, _| {
+                        for (from_x, to_x, color) in curves.iter() {
+                            let mut path = gpui::PathBuilder::stroke(px(GRAPH_STROKE));
+                            path.move_to(origin + point(px(*from_x), px(midpoint)));
+                            if (from_x - to_x).abs() < 0.01 {
+                                path.line_to(origin + point(px(*to_x), px(height + 1.0)));
+                            } else {
+                                path.cubic_bezier_to(
+                                    origin + point(px(*to_x), px(height + 1.0)),
+                                    origin + point(px(*from_x), px(midpoint + 10.0)),
+                                    origin + point(px(*to_x), px(height - 9.0)),
+                                );
+                            }
+                            if let Ok(path) = path.build() {
+                                window.paint_path(path, *color);
+                            }
+                        }
+                        let _ = bounds;
+                    },
+                )
+                .absolute()
+                .inset_0()
+                .into_any_element(),
+            );
+        }
+
+        // Nodo del commit: cerchio pieno con anello surface-primary; i merge
+        // sono piu' grandi con anello piu' spesso (`.graph-lane-node.is-merge`).
+        let is_merge = row.parents.len() > 1;
+        let node_radius = if is_merge {
+            MERGE_NODE_RADIUS
+        } else {
+            NODE_RADIUS
+        };
+        let node_ring = if is_merge { 2.5 } else { 1.5 };
+        let node_size = node_radius * 2.0 + node_ring;
+        elements.push(
+            div()
+                .absolute()
+                .left(px(lane_x(row.lane) - node_size / 2.0))
+                .top(px(midpoint - node_size / 2.0))
+                .size(px(node_size))
+                .rounded_full()
+                .bg(lane_color(row.lane))
+                .border_1()
+                .border(px(node_ring))
+                .border_color(theme.surface_primary)
+                .into_any_element(),
+        );
+        // Indicatore HEAD: anello vuoto `--graph-head` (r=8, stroke 2).
+        if is_head {
+            let ring_size = HEAD_RING_RADIUS * 2.0 + 2.0;
+            elements.push(
+                div()
+                    .absolute()
+                    .left(px(lane_x(row.lane) - ring_size / 2.0))
+                    .top(px(midpoint - ring_size / 2.0))
+                    .size(px(ring_size))
+                    .rounded_full()
+                    .border_1()
+                    .border(px(2.0))
+                    .border_color(theme.graph_head)
+                    .into_any_element(),
+            );
+        }
+        elements
     }
 }
 
@@ -1755,7 +2011,7 @@ impl Workspace {
                                     .font_weight(gpui::FontWeight::SEMIBOLD)
                                     .child(title),
                             )
-                            .children(revealed_badge(
+                            .child(revealed_badge(
                                 theme,
                                 format!("{}", files.len()),
                                 (section_id, files.len()),
@@ -2095,7 +2351,7 @@ impl Workspace {
                             .px_3()
                             .pb_2()
                             .text_size(px(11.0))
-                            .children(revealed_badge(
+                            .child(revealed_badge(
                                 theme,
                                 format!("+{} \u{2212}{}", model.added, model.deleted),
                                 (
@@ -2106,7 +2362,7 @@ impl Workspace {
                                     model.added + model.deleted,
                                 ),
                             ))
-                            .children(revealed_badge(
+                            .child(revealed_badge(
                                 theme,
                                 format!("{} files", model.files.len()),
                                 ("inspector-files", model.files.len()),
@@ -2137,7 +2393,12 @@ impl Workspace {
                     }),
             ),
         );
-        Self::animated_panel_column(column, self.inspector_motion, PanelSide::Inspector, self.panel_gen)
+        Self::animated_panel_column(
+            column,
+            self.inspector_motion,
+            PanelSide::Inspector,
+            self.panel_gen,
+        )
     }
 
     fn render_diff_pane(&self, theme: Theme, cx: &mut Context<Self>) -> gpui::AnyElement {
@@ -2309,20 +2570,16 @@ impl Workspace {
                     .into_any_element()
             }))
             // Esito operazioni come toast compatto: `motion-fade-in-up`.
-            .child(
-                div()
-                    .relative()
-                    .truncate()
-                    .with_animation(
-                        ("status-toast", self.message_seq),
-                        Animation::new(motion::CONTENT_ENTER),
-                        |toast, delta| {
-                            let (offset, opacity) = motion::fade_in_up(delta);
-                            toast.top(px(offset.min(12.0))).opacity(opacity.clamp(0.0, 1.0))
-                        },
-                    )
-                    .child(info),
-            )
+            .child(div().relative().truncate().child(info).with_animation(
+                ("status-toast", self.message_seq),
+                Animation::new(motion::CONTENT_ENTER),
+                |toast, delta| {
+                    let (offset, opacity) = motion::fade_in_up(delta);
+                    toast
+                        .top(px(offset.min(12.0)))
+                        .opacity(opacity.clamp(0.0, 1.0))
+                },
+            ))
             .child(
                 div()
                     .text_color(theme.text_tertiary)
@@ -2349,7 +2606,7 @@ fn pulsing_dot(color: gpui::Rgba) -> gpui::AnyElement {
             "status-dot-busy",
             Animation::new(motion::PULSE_SOFT)
                 .repeat()
-                .with_easing(gpui::pulsating_between(0.45, 1.0)),
+                .with_easing(breathing(0.45, 1.0)),
             move |dot, alpha| {
                 dot.w(px(8.0))
                     .h(px(8.0))
@@ -2372,11 +2629,15 @@ fn revealed_badge(
 ) -> gpui::AnyElement {
     div()
         .relative()
-        .with_animation(key.into(), Animation::new(motion::BADGE_POP), move |wrapper, delta| {
-            let (offset, opacity) = motion::item_reveal(delta);
-            wrapper.top(px(offset)).opacity(opacity)
-        })
         .child(badge(theme, text))
+        .with_animation(
+            key.into(),
+            Animation::new(motion::BADGE_POP),
+            move |wrapper, delta| {
+                let (offset, opacity) = motion::item_reveal(delta);
+                wrapper.top(px(offset)).opacity(opacity)
+            },
+        )
         .into_any_element()
 }
 
@@ -2414,52 +2675,54 @@ impl Render for Workspace {
 
 fn main() {
     let repo_path = std::env::args().nth(1).unwrap_or_else(|| ".".to_string());
-    Application::new().with_assets(icons::EmbeddedIcons).run(move |app: &mut App| {
-        app.bind_keys([
-            KeyBinding::new("down", NextCommit, None),
-            KeyBinding::new("up", PrevCommit, None),
-            KeyBinding::new("f5", Refresh, None),
-            KeyBinding::new("ctrl-p", FocusSearch, None),
-        ]);
-        widgets::text_field::bind_keys(app);
+    Application::new()
+        .with_assets(icons::EmbeddedIcons)
+        .run(move |app: &mut App| {
+            app.bind_keys([
+                KeyBinding::new("down", NextCommit, None),
+                KeyBinding::new("up", PrevCommit, None),
+                KeyBinding::new("f5", Refresh, None),
+                KeyBinding::new("ctrl-p", FocusSearch, None),
+            ]);
+            widgets::text_field::bind_keys(app);
 
-        let bounds = Bounds::centered(None, size(px(1280.), px(800.)), app);
-        let result = app.open_window(
-            WindowOptions {
-                window_bounds: Some(WindowBounds::Windowed(bounds)),
-                ..Default::default()
-            },
-            move |_, cx| {
-                let workspace = cx.new(|cx| Workspace::new(repo_path.as_str(), cx));
-                let weak = workspace.downgrade();
-                workspace.update(cx, move |workspace, cx| {
-                    let weak_summary = weak.clone();
-                    workspace.summary_field.update(cx, move |field, _| {
-                        field.set_on_submit(move |_value, _window, cx| {
-                            if let Some(entity) = weak_summary.upgrade() {
-                                entity.update(cx, |workspace, cx| workspace.submit_commit(cx));
-                            }
+            let bounds = Bounds::centered(None, size(px(1280.), px(800.)), app);
+            let result = app.open_window(
+                WindowOptions {
+                    window_bounds: Some(WindowBounds::Windowed(bounds)),
+                    ..Default::default()
+                },
+                move |_, cx| {
+                    let workspace = cx.new(|cx| Workspace::new(repo_path.as_str(), cx));
+                    let weak = workspace.downgrade();
+                    workspace.update(cx, move |workspace, cx| {
+                        let weak_summary = weak.clone();
+                        workspace.summary_field.update(cx, move |field, _| {
+                            field.set_on_submit(move |_value, _window, cx| {
+                                if let Some(entity) = weak_summary.upgrade() {
+                                    entity.update(cx, |workspace, cx| workspace.submit_commit(cx));
+                                }
+                            });
+                        });
+                        let weak_branch = weak;
+                        workspace.new_branch_field.update(cx, move |field, _| {
+                            field.set_on_submit(move |value, _window, cx| {
+                                if let Some(entity) = weak_branch.upgrade() {
+                                    let value = value.to_string();
+                                    entity.update(cx, |workspace, cx| {
+                                        workspace.submit_new_branch(value, cx)
+                                    });
+                                }
+                            });
                         });
                     });
-                    let weak_branch = weak;
-                    workspace.new_branch_field.update(cx, move |field, _| {
-                        field.set_on_submit(move |value, _window, cx| {
-                            if let Some(entity) = weak_branch.upgrade() {
-                                let value = value.to_string();
-                                entity.update(cx, |workspace, cx| {
-                                    workspace.submit_new_branch(value, cx)
-                                });
-                            }
-                        });
-                    });
-                });
-                workspace
-            },
-        );
-        if let Err(error) = result {
-            eprintln!("impossibile aprire la finestra: {error}");
-            std::process::exit(1);
-        }
-        app.activate(true);
-    });
+                    workspace
+                },
+            );
+            if let Err(error) = result {
+                eprintln!("impossibile aprire la finestra: {error}");
+                std::process::exit(1);
+            }
+            app.activate(true);
+        });
 }

@@ -167,6 +167,8 @@ pub enum RefChipKind {
 pub struct CommitRow {
     pub hash: String,
     pub hash_short: SharedString,
+    /// Il commit e' puntato da HEAD (anello `--graph-head` sul nodo).
+    pub is_head: bool,
     pub subject: SharedString,
     pub author: SharedString,
     pub date_rel: SharedString,
@@ -177,6 +179,8 @@ pub struct CommitRow {
 pub struct RowModels {
     pub commits: Vec<CommitRow>,
     pub graph_rows: Vec<GraphRow>,
+    /// Lane massime della pagina: determina la larghezza colonna grafo.
+    pub graph_lane_count: usize,
 }
 
 /// Etichetta relativa accurata dalla parte data di un ISO-8601 (`%aI`).
@@ -236,8 +240,10 @@ pub fn build_rows(commits: &[GraphCommit], refs: &[GraphRef]) -> RowModels {
     // Indice hash -> chips, costruito una volta sui refs.
     let mut chips_by_hash: std::collections::HashMap<&str, Vec<RefChip>> =
         std::collections::HashMap::new();
+    let mut head_hashes: std::collections::HashSet<&str> = std::collections::HashSet::new();
     for reference in refs {
         if reference.ref_type == GraphRefType::Head {
+            head_hashes.insert(reference.commit.trim());
             continue;
         }
         chips_by_hash
@@ -258,6 +264,7 @@ pub fn build_rows(commits: &[GraphCommit], refs: &[GraphRef]) -> RowModels {
             let haystack = format!("{}\n{}\n{}", subject, author, hash).to_lowercase();
             CommitRow {
                 hash_short: SharedString::from(hash.chars().take(7).collect::<String>()),
+                is_head: head_hashes.contains(commit.hash.trim()),
                 hash,
                 subject: SharedString::from(subject),
                 author: SharedString::from(author),
@@ -268,76 +275,221 @@ pub fn build_rows(commits: &[GraphCommit], refs: &[GraphRef]) -> RowModels {
         })
         .collect();
 
+    let layout = layout_graph(commits);
     RowModels {
         commits: commits_model,
-        graph_rows: compute_graph_rows(commits),
+        graph_rows: layout.rows,
+        graph_lane_count: layout.lane_count,
     }
 }
 
 // -- Lane del grafo ------------------------------------------------------
+//
+// Port fedele di `src/renderer/components/graph-layout.mts` (layoutGraph +
+// createGraphSegments): stesse regole di assegnazione lane, stesso dedup
+// del first parent su lane esistente, stessa geometria dei segmenti.
 
-#[derive(Clone, Copy, PartialEq)]
-pub enum CellKind {
-    Node,
-    Pass,
-    Empty,
+#[derive(Clone, Copy, Debug)]
+pub struct GraphParent {
+    pub lane: usize,
 }
 
-#[derive(Clone)]
+/// Riga di layout del grafo: tutto cio' che serve a disegnare i binari,
+/// le curve verso i parent e il nodo, senza stringe.
+#[derive(Clone, Debug)]
 pub struct GraphRow {
-    pub cells: Vec<(CellKind, usize)>,
+    pub lane: usize,
+    pub incoming: bool,
+    /// Lane con binario verticale passante (occupate da altri commit).
+    pub rails: Vec<bool>,
+    pub parents: Vec<GraphParent>,
 }
 
-/// Layout delle lane come farebbe `git log --graph`.
-pub fn compute_graph_rows(commits_newest_first: &[GraphCommit]) -> Vec<GraphRow> {
-    let mut ascending: Vec<&GraphCommit> = commits_newest_first.iter().collect();
-    ascending.reverse();
+pub struct GraphLayout {
+    pub rows: Vec<GraphRow>,
+    pub lane_count: usize,
+}
 
-    let mut lanes: Vec<Option<&str>> = Vec::new();
-    let mut rows = vec![GraphRow { cells: Vec::new() }; commits_newest_first.len()];
+fn first_available_lane<T>(lanes: &[Option<T>]) -> usize {
+    lanes
+        .iter()
+        .position(Option::is_none)
+        .unwrap_or(lanes.len())
+}
 
-    for (order, commit) in ascending.iter().enumerate() {
-        let index = commits_newest_first.len() - 1 - order;
-        let existing = lanes
-            .iter()
-            .position(|tip| tip.as_deref() == Some(commit.hash.trim()));
-        let col = match existing {
-            Some(col) => col,
-            None => lanes
-                .iter()
-                .position(Option::is_none)
-                .unwrap_or(lanes.len()),
-        };
-        while lanes.len() <= col {
-            lanes.push(None);
-        }
+fn trim_trailing_lanes<T>(lanes: &mut Vec<Option<T>>) {
+    while lanes.last().is_some_and(Option::is_none) {
+        lanes.pop();
+    }
+}
 
-        let width = lanes.len().max(col + 1);
-        let cells = (0..width)
-            .map(|column| {
-                if column == col {
-                    (CellKind::Node, column)
-                } else if lanes.get(column).is_some_and(Option::is_some) {
-                    (CellKind::Pass, column)
-                } else {
-                    (CellKind::Empty, column)
-                }
-            })
-            .collect();
-        let _ = col;
-        rows[index] = GraphRow { cells };
+/// Port di `layoutGraph`: processa i commit newest-first come da pagina git.
+pub fn layout_graph(commits_newest_first: &[GraphCommit]) -> GraphLayout {
+    let mut lanes: Vec<Option<String>> = Vec::new();
+    let mut rows = Vec::with_capacity(commits_newest_first.len());
+    let mut lane_count = 0usize;
 
-        let first_parent = commit.parents.first().map(String::as_str);
-        lanes[col] = first_parent;
-        for parent in commit.parents.iter().skip(1) {
-            let parent = parent.as_str();
-            if !lanes.contains(&Some(parent)) {
-                match lanes.iter().position(Option::is_none) {
-                    Some(free) => lanes[free] = Some(parent),
-                    None => lanes.push(Some(parent)),
+    for commit in commits_newest_first {
+        let hash = commit.hash.trim();
+        let existing = lanes.iter().position(|tip| tip.as_deref() == Some(hash));
+        let incoming = existing.is_some();
+        let lane = existing.unwrap_or_else(|| {
+            let lane = first_available_lane(&lanes);
+            if lane == lanes.len() {
+                lanes.push(None);
+            }
+            lane
+        });
+        lanes[lane] = Some(hash.to_string());
+
+        let before: Vec<bool> = lanes.iter().map(|tip| tip.is_some()).collect();
+        let mut parents: Vec<GraphParent> = Vec::new();
+
+        match commit.parents.first().map(String::as_str) {
+            None => lanes[lane] = None,
+            Some(first_parent) => {
+                // Il first parent gia' presente su un'altra lane chiude la
+                // propria lane e punta lì (niente doppio binario).
+                let existing_parent = lanes
+                    .iter()
+                    .enumerate()
+                    .position(|(index, tip)| index != lane && tip.as_deref() == Some(first_parent));
+                match existing_parent {
+                    Some(parent_lane) => {
+                        lanes[lane] = None;
+                        parents.push(GraphParent { lane: parent_lane });
+                    }
+                    None => {
+                        // La lane del commit prosegue con il first parent.
+                        lanes[lane] = Some(first_parent.to_string());
+                        parents.push(GraphParent { lane });
+                    }
                 }
             }
         }
+
+        for parent in commit.parents.iter().skip(1) {
+            let parent_hash = parent.as_str().trim();
+            let parent_lane = match lanes
+                .iter()
+                .position(|tip| tip.as_deref() == Some(parent_hash))
+            {
+                Some(parent_lane) => parent_lane,
+                None => {
+                    let parent_lane = first_available_lane(&lanes);
+                    if parent_lane == lanes.len() {
+                        lanes.push(None);
+                    }
+                    lanes[parent_lane] = Some(parent_hash.to_string());
+                    parent_lane
+                }
+            };
+            parents.push(GraphParent { lane: parent_lane });
+        }
+
+        trim_trailing_lanes(&mut lanes);
+        lane_count = lane_count.max(before.len()).max(lanes.len()).max(lane + 1);
+
+        rows.push(GraphRow {
+            lane,
+            incoming,
+            // `createGraphSegments`: binari verticali su ogni lane occupata
+            // dello snapshot `before`, tranne la propria.
+            rails: before
+                .iter()
+                .enumerate()
+                .filter(|(index, _)| *index != lane)
+                .map(|(_, occupied)| *occupied)
+                .collect(),
+            parents,
+        });
     }
-    rows
+
+    GraphLayout { rows, lane_count }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn commit(hash: &str, parents: &[&str]) -> GraphCommit {
+        GraphCommit {
+            hash: hash.to_string(),
+            subject: String::new(),
+            author_name: String::new(),
+            author_email: String::new(),
+            date: String::new(),
+            parents: parents.iter().map(|parent| parent.to_string()).collect(),
+        }
+    }
+
+    #[test]
+    fn linear_history_stays_on_lane_zero() {
+        let commits = [commit("c", &["b"]), commit("b", &["a"]), commit("a", &[])];
+        let layout = layout_graph(&commits);
+        assert_eq!(layout.rows.len(), 3);
+        assert!(layout.rows.iter().all(|row| row.lane == 0));
+        assert_eq!(layout.lane_count, 1);
+        // Solo il commit piu' nuovo non e' "incoming": gli altri sono stati
+        // piazzati sulla lane dal rispettivo figlio.
+        assert!(!layout.rows[0].incoming);
+        assert!(layout.rows[1].incoming);
+        assert!(layout.rows[2].incoming);
+    }
+
+    #[test]
+    fn branch_gets_its_own_lane_and_merges_back() {
+        // main: a --- c --- d
+        //           \- b --/
+        let commits = [
+            commit("d", &["c"]),
+            commit("c", &["a", "b"]),
+            commit("b", &["a"]),
+            commit("a", &[]),
+        ];
+        let layout = layout_graph(&commits);
+        assert_eq!(layout.rows[3].lane, 0); // a
+        assert_eq!(layout.rows[2].lane, 1); // b su lane nuova
+        assert_eq!(layout.rows[1].lane, 0); // c
+        assert_eq!(layout.rows[0].lane, 0); // d
+        // c ha due parent: primo sulla propria lane, merge parent su lane 1.
+        let row_c = &layout.rows[1];
+        assert_eq!(row_c.parents.len(), 2);
+        assert_eq!(row_c.parents[0].lane, 0);
+        assert_eq!(row_c.parents[1].lane, 1);
+    }
+
+    #[test]
+    fn first_parent_already_on_other_lane_closes_own_lane() {
+        // x punta a b che si trova gia' sulla lane principale: la sua lane
+        // si chiude e il binario punta lì invece di duplicarsi.
+        let commits = [
+            commit("c", &["b"]),
+            commit("x", &["b"]),
+            commit("b", &["a"]),
+            commit("a", &[]),
+        ];
+        let layout = layout_graph(&commits);
+        let row_x = &layout.rows[1];
+        assert_eq!(row_x.lane, 1);
+        assert_eq!(row_x.parents.len(), 1);
+        assert_eq!(row_x.parents[0].lane, 0);
+    }
+
+    #[test]
+    fn rails_skip_own_lane_like_create_graph_segments() {
+        let commits = [
+            commit("d", &["c"]),
+            commit("c", &["a", "b"]),
+            commit("b", &["a"]),
+            commit("a", &[]),
+        ];
+        let layout = layout_graph(&commits);
+        // Riga di b (indice 2): la propria lane e' esclusa dai binari,
+        // resta solo il passante del ramo principale (lane 0).
+        let row_b = &layout.rows[2];
+        assert_eq!(row_b.lane, 1);
+        assert_eq!(row_b.rails, vec![true]);
+        assert!(row_b.incoming);
+    }
 }

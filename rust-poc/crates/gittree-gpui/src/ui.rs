@@ -2,12 +2,13 @@
 //! `src/renderer/styles/components.css` (btn, chip, segmented, badge,
 //! pannelli bento) con i token del tema corrente.
 
+use gpui::prelude::*;
 use gpui::{
     Animation, AnimationExt, AnyElement, Div, ElementId, FontWeight, InteractiveElement,
-    ParentElement, SharedString, Stateful, Styled, div, px, svg,
+    ParentElement, SharedString, Stateful, StatefulInteractiveElement, Styled, div, px, svg,
 };
 
-use crate::motion;
+use crate::motion::{self, breathing};
 use crate::theme::Theme;
 
 /// Icona Phosphor regolare servita da `crate::icons::EmbeddedIcons`.
@@ -26,14 +27,14 @@ pub fn pulsing_icon(name: &'static str, size: f32, color: gpui::Rgba) -> AnyElem
     div()
         .flex()
         .items_center()
+        .child(glyph)
         .with_animation(
             SharedString::from(format!("pulse-{name}")),
             Animation::new(motion::PULSE_SOFT)
                 .repeat()
-                .with_easing(gpui::pulsating_between(0.55, 1.0)),
+                .with_easing(breathing(0.55, 1.0)),
             move |container, alpha| container.opacity(alpha),
         )
-        .child(glyph)
         .into_any_element()
 }
 
@@ -111,11 +112,7 @@ pub fn btn_primary(id: impl Into<ElementId>, theme: Theme) -> Stateful<Div> {
 }
 
 /// Bottone circolare solo-icona (`.btn-icon`, 34px con bordo).
-pub fn btn_icon(
-    id: impl Into<ElementId>,
-    theme: Theme,
-    icon_name: &'static str,
-) -> Stateful<Div> {
+pub fn btn_icon(id: impl Into<ElementId>, theme: Theme, icon_name: &'static str) -> Stateful<Div> {
     div()
         .id(id.into())
         .flex()

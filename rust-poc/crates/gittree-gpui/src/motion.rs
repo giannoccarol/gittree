@@ -1,15 +1,16 @@
 //! Sistema di motion che replica `MOTION.md`, `DESIGN.md` e i keyframe
 //! `motion-*` di `src/renderer/styles/variables.css`.
 //!
-//! GPUI 0.2 non ha transform CSS: slide e settle sono replicati con offset
-//! `left`/`top` su elementi posizionati in modo relativo e con `opacity`,
-//! cosi' il layout dei pannelli vicini resta stabile durante il moto,
-//! come accade all'app Electron con `translate3d`.
+//! GPUI 0.2 non ha transform CSS ne' transizioni su hover: slide e settle
+//! sono replicati con offset `left`/`top` su elementi posizionati in modo
+//! relativo e con `opacity`, cosi' il layout dei pannelli vicini resta
+//! stabile durante il moto, come accade all'app Electron con `translate3d`.
+//! Il feedback istantaneo dei controlli sostituisce le transizioni
+//! `--transition-fast` (140ms); gli stati premuti usano i token surface-*.
+//! Le curve che servono davvero ai pannelli e ai contenuti sono qui sotto.
 
 use std::time::Duration;
 
-/// `--transition-fast`: feedback dei controlli.
-pub const CONTROL_FEEDBACK: Duration = Duration::from_millis(140);
 /// `--transition-normal`: cambi di stato dei pannelli.
 pub const PANEL_CHANGE: Duration = Duration::from_millis(220);
 /// `--duration-normal`: entrate di contenuti, toast ed empty state.
@@ -37,6 +38,14 @@ pub fn ease_smooth() -> impl Fn(f32) -> f32 {
 /// `--spring-gentle`: cubic-bezier(0.22, 1.2, 0.36, 1), supera brevemente 1.
 pub fn spring_gentle() -> impl Fn(f32) -> f32 {
     cubic_bezier(0.22, 1.2, 0.36, 1.0)
+}
+
+/// Respiro `motion-pulse-soft`: il progresso passa prima da `--ease-smooth`
+/// e poi oscilla tra `min` e `max`, come l'opacita' degli spinner Electron.
+pub fn breathing(min: f32, max: f32) -> impl Fn(f32) -> f32 {
+    let smooth = ease_smooth();
+    let pulse = gpui::pulsating_between(min, max);
+    move |delta| pulse(smooth(delta))
 }
 
 /// Solver cubic-bezier CSS (curve parametriche con ascisse in [0, 1]).
@@ -166,7 +175,10 @@ pub fn content_in(delta: f32) -> (f32, f32) {
 /// `motion-item-reveal`: comparsa soft di badge e voci.
 /// Restituisce `(offset_top_px, opacity)`.
 pub fn item_reveal(delta: f32) -> (f32, f32) {
-    ((4.0 * (1.0 - ease_decel()(delta))).min(4.0), ease_decel()(delta))
+    (
+        (4.0 * (1.0 - ease_decel()(delta))).min(4.0),
+        ease_decel()(delta),
+    )
 }
 
 #[cfg(test)]
@@ -193,20 +205,25 @@ mod tests {
     #[test]
     fn decel_eases_fast_then_slow() {
         let ease = ease_decel();
+        // Valori di riferimento di cubic-bezier(0, 0, 0.2, 1).
         assert!(
-            ease(0.25) > 0.25,
-            "decel anticipa il valore lineare nella prima meta'"
+            ease(0.25) > 0.5,
+            "decel anticipa nettamente il valore lineare: {}",
+            ease(0.25)
         );
-        assert!(ease(0.75) < 0.75 + 1e-3 && ease(0.75) > 0.7);
+        let late = ease(0.75);
+        assert!(
+            (0.95..=0.98).contains(&late),
+            "la coda decelera verso 1: {late}"
+        );
     }
 
     #[test]
     fn spring_gentle_overshoots_then_settles() {
         let spring = spring_gentle();
-        let max = (0..=100).map(|step| spring(step as f32 / 100.0)).fold(
-            0.0_f32,
-            |peak, value| peak.max(value),
-        );
+        let max = (0..=100)
+            .map(|step| spring(step as f32 / 100.0))
+            .fold(0.0_f32, |peak, value| peak.max(value));
         assert!(max > 1.01, "lo spring deve superare 1, massimo {max}");
         assert!(max < 1.15, "l'overshoot resta gentile, massimo {max}");
     }
@@ -242,7 +259,7 @@ mod tests {
 
     #[test]
     fn durations_match_motion_contract() {
-        assert_eq!(CONTROL_FEEDBACK, Duration::from_millis(140));
         assert_eq!(PANEL_CHANGE, Duration::from_millis(220));
+        assert_eq!(CONTENT_ENTER, Duration::from_millis(280));
     }
 }
