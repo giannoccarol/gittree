@@ -1,7 +1,13 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const RepoTabs = require('../src/renderer/components/repo-tabs');
+let RepoTabs;
+try {
+  const mod = require('../src/renderer/components/repo-tabs.mts');
+  RepoTabs = mod.RepoTabs || mod.default || mod;
+} catch {
+  RepoTabs = require('../src/renderer/components/repo-tabs');
+}
 
 function createStorage(initial = {}) {
   const values = new Map(Object.entries(initial));

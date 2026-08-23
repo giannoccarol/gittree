@@ -2,7 +2,7 @@ const { EventEmitter } = require('node:events');
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const UpdateService = require('../src/main/update-service');
+const { UpdateService } = require('../src/main/update-service.mts');
 
 function createHarness({ packaged = true, version = '1.2.3' } = {}) {
   const sent = [];

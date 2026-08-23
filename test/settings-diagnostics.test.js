@@ -10,14 +10,15 @@ function loadSettingsView(exportDiagnostics) {
   };
   global.window = { gitTree: { exportDiagnostics } };
   global.t = key => translations[key] || key;
-  return require(path.join(
+  const mod = require(path.join(
     __dirname,
     '..',
     'src',
     'renderer',
     'components',
-    'settings-view.js'
+    'settings-view.mts'
   ));
+  return mod.SettingsView || mod.default || mod;
 }
 
 test('diagnostics export exposes loading and success states', async () => {

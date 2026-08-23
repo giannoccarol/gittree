@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { registerAgentHandlers } = require('../src/main/ipc/agent-handlers');
+const { registerAgentHandlers } = require('../src/main/ipc/agent-handlers.mts');
 
 function harness() {
   const handlers = new Map();

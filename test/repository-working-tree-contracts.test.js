@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const GitService = require('../src/main/git-service');
+const { GitService } = require('../src/main/git-service.mts');
 const { createRepository } = require('./helpers/git-repository');
 
 test('normalizes status for staged, unstaged, untracked and renamed files', async t => {

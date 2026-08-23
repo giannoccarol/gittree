@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { registerRepositoryHandlers } = require('../src/main/ipc/repository-handlers');
+const { registerRepositoryHandlers } = require('../src/main/ipc/repository-handlers.mts');
 
 test('adding a repository rejects non-working-tree paths without persisting them', async () => {
   const registrations = new Map();

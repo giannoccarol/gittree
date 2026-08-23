@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { registerAiHandlers } = require('../src/main/ipc/ai-handlers');
+const { registerAiHandlers } = require('../src/main/ipc/ai-handlers.mts');
 
 test('AI handlers validate managed repositories and normalize errors', async () => {
   const registered = new Map();

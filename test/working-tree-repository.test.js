@@ -4,7 +4,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const { createRepository, git, toWindowsShortPath } = require('./helpers/git-repository');
-const { isWorkingTreeRepository } = require('../src/main/working-tree-repository');
+const { isWorkingTreeRepository } = require('../src/main/working-tree-repository.mts');
 
 test('working-tree validation accepts only the repository root', async t => {
   const fixture = createRepository();

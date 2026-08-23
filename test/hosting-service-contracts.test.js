@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const HostingService = require('../src/main/hosting-service');
+const { HostingService } = require('../src/main/hosting-service.mts');
 
 function jsonResponse(body, status = 200, headers = {}) {
   return new Response(JSON.stringify(body), {

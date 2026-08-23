@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const {
   parseRemoteUrl,
   buildPullRequestUrl
-} = require('../src/main/provider-links');
+} = require('../src/main/provider-links.mts');
 
 test('GitHub HTTPS and SSH remotes open a prefilled compare page', () => {
   const httpsRemote = parseRemoteUrl('https://github.com/acme/widgets.git');

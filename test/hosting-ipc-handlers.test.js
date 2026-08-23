@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { registerHostingHandlers } = require('../src/main/ipc/hosting-handlers');
+const { registerHostingHandlers } = require('../src/main/ipc/hosting-handlers.mts');
 
 test('PAT setup validates every optional repository path before provider resolution', async () => {
   const registrations = new Map();

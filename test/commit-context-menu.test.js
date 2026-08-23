@@ -1,6 +1,12 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const CommitContextMenu = require('../src/renderer/components/commit-context-menu');
+let CommitContextMenu;
+try {
+  const mod = require('../src/renderer/components/commit-context-menu.mts');
+  CommitContextMenu = mod.CommitContextMenu || mod.default || mod;
+} catch {
+  CommitContextMenu = require('../src/renderer/components/commit-context-menu');
+}
 
 function deferred() {
   let resolve;

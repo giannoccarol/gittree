@@ -3,7 +3,7 @@ const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { scanRepositories } = require('../src/main/repository-scanner');
+const { scanRepositories } = require('../src/main/repository-scanner.mts');
 
 function createWorkspace(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'gittree-scan-'));

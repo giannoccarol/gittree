@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const CredentialVault = require('../src/main/credential-vault');
+const { CredentialVault } = require('../src/main/credential-vault.mts');
 
 function fakeSafeStorage(backend = 'kwallet') {
   return {

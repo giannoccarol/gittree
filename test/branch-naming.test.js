@@ -3,14 +3,26 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 function loadBranchNaming() {
-  return require(path.join(
-    __dirname,
-    '..',
-    'src',
-    'renderer',
-    'components',
-    'branch-naming.js'
-  ));
+  try {
+    const mod = require(path.join(
+      __dirname,
+      '..',
+      'src',
+      'renderer',
+      'components',
+      'branch-naming.mts'
+    ));
+    return mod.BranchNaming || mod.default || mod;
+  } catch {
+    return require(path.join(
+      __dirname,
+      '..',
+      'src',
+      'renderer',
+      'components',
+      'branch-naming.js'
+    ));
+  }
 }
 
 test('quick branch naming follows folders already used by local and remote branches', () => {

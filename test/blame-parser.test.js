@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { parseBlamePorcelain } = require('../src/main/git/blame-parser');
+const { parseBlamePorcelain } = require('../src/main/git/blame-parser.mts');
 
 const HASH_A = 'a'.repeat(40);
 const HASH_B = 'b'.repeat(40);

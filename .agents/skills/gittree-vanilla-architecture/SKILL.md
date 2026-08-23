@@ -19,8 +19,8 @@ Read [architecture-boundaries.md](references/architecture-boundaries.md) when ch
 ## Preserve the vanilla stack
 
 - Use CommonJS for main-process and test code.
-- Keep renderer modules directly loadable by `index.html`. Use the repository's existing script-compatible export pattern when Node tests also need the module.
-- Do not add a framework, bundler, transpiler, decorator system or TypeScript.
+- Keep renderer modules directly loadable by `index.html`. Use the repository's existing script-compatible export pattern when Node tests also need the module. During the TypeScript migration (ADR-0008), converted renderer modules become tsc-emitted ES modules loaded via `<script type="module">`.
+- Do not add a framework, bundler or decorator system. TypeScript is adopted incrementally per ADR-0008 and `docs/typescript-migration-plan.md`: in converted directories new files are `.ts` with `strict` typing, never new `.js`; `.js`→`.ts` conversions never share a commit with behavior changes or architectural extractions; shared contracts and domain models live in `src/shared/`.
 - Prefer platform APIs and existing dependencies. Justify every new dependency against a small local module.
 
 ## Create deep boundaries

@@ -5,7 +5,7 @@ const os = require('node:os');
 const path = require('node:path');
 const AdmZip = require('adm-zip');
 
-const { DiagnosticsExporter, buildDiagnosticsData } = require('../src/main/diagnostics-exporter');
+const { DiagnosticsExporter, buildDiagnosticsData } = require('../src/main/diagnostics-exporter.mts');
 
 test('diagnostics redact credentials, remote URLs and absolute repository paths', () => {
   const repositoryPath = 'C:\\Users\\person\\secret-repository';

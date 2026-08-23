@@ -1,6 +1,12 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const DiffLayout = require('../src/renderer/components/diff-layout');
+let DiffLayout;
+try {
+  const mod = require('../src/renderer/components/diff-layout.mts');
+  DiffLayout = mod.DiffLayout || mod.default || mod;
+} catch {
+  DiffLayout = require('../src/renderer/components/diff-layout');
+}
 
 test('groups diff rows by file and preserves preamble rows', () => {
   const files = DiffLayout.groupRows([

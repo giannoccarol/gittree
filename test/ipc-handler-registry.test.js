@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { createHandlerRegistry } = require('../src/main/ipc/handler-registry');
+const { createHandlerRegistry } = require('../src/main/ipc/handler-registry.mts');
 
 function createHarness(assertManagedRepo = () => {}) {
   const handlers = new Map();

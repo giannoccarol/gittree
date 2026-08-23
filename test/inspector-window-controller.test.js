@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 
 const {
   createInspectorWindowController
-} = require('../src/main/inspector-window-controller');
+} = require('../src/main/inspector-window-controller.mts');
 
 test('inspector controller creates one locked-down window and reuses it', () => {
   const created = [];

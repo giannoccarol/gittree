@@ -1,6 +1,12 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const WorkspaceStateController = require('../src/renderer/workspace-state-controller');
+let WorkspaceStateController;
+try {
+  const mod = require('../src/renderer/workspace-state-controller.mts');
+  WorkspaceStateController = mod.WorkspaceStateController || mod.default || mod;
+} catch {
+  WorkspaceStateController = require('../src/renderer/workspace-state-controller');
+}
 
 class FakeClassList {
   constructor(values = []) { this.values = new Set(values); }

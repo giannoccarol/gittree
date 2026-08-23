@@ -4,6 +4,17 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const vm = require('node:vm');
 
+function matches(source, pattern) {
+  return [...source.matchAll(pattern)].map(match => match[1]);
+}
+
+function resolvePreloadPath() {
+  const mts = path.resolve(__dirname, '..', 'src', 'preload.mts');
+  const js = path.resolve(__dirname, '..', 'src', 'preload.js');
+  if (fs.existsSync(mts)) return mts;
+  return js;
+}
+
 function loadBridge() {
   const invokes = [];
   const listeners = new Map();
@@ -21,11 +32,22 @@ function loadBridge() {
       removed.push({ channel, listener });
     }
   };
-  const source = fs.readFileSync(
-    path.resolve(__dirname, '..', 'src', 'preload.js'),
-    'utf8'
-  );
-  vm.runInNewContext(source, {
+  const preloadPath = resolvePreloadPath();
+  let source = fs.readFileSync(preloadPath, 'utf8');
+  const isMts = preloadPath.endsWith('.mts');
+  if (isMts) {
+    const ts = require('typescript');
+    const transpiled = ts.transpileModule(source, {
+      compilerOptions: {
+        target: ts.ScriptTarget.ES2022,
+        module: ts.ModuleKind.CommonJS,
+        esModuleInterop: true,
+        allowImportingTsExtensions: true
+      }
+    }).outputText;
+    source = transpiled;
+  }
+  const sandbox = {
     require(moduleName) {
       assert.equal(moduleName, 'electron');
       return {
@@ -38,8 +60,15 @@ function loadBridge() {
         }
       };
     },
-    process: { platform: 'win32' }
-  });
+    process: { platform: 'win32' },
+    exports: {},
+    module: { exports: {} },
+    console,
+    setTimeout,
+    clearTimeout,
+    Buffer
+  };
+  vm.runInNewContext(source, sandbox);
   return { bridge, invokes, listeners, removed };
 }
 
@@ -92,4 +121,18 @@ test('preload preserves observable defaults', async () => {
     ['repo', 'github', 42, 1],
     ['repo', 'github', { id: 42 }, false]
   ]);
+});
+
+test('shared GitTreeBridge interface stays in lockstep with the preload API', () => {
+  const bridge = fs.readFileSync(
+    path.resolve(__dirname, '..', 'src', 'shared', 'bridge.mts'),
+    'utf8'
+  );
+  const preloadPath = resolvePreloadPath();
+  const source = fs.readFileSync(preloadPath, 'utf8');
+  const exposed = [...new Set(matches(source, /^ {2}([a-zA-Z_][a-zA-Z0-9_]*):/gm))];
+  const declared = [...new Set(matches(bridge, /^ {2}(?:readonly )?([a-zA-Z_][a-zA-Z0-9_]*)[:(]/gm))];
+
+  assert.ok(exposed.length >= 150);
+  assert.deepEqual([...declared].sort(), [...exposed].sort());
 });

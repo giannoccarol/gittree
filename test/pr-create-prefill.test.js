@@ -1,6 +1,12 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const PrCreatePrefill = require('../src/renderer/pr-create-prefill');
+let PrCreatePrefill;
+try {
+  const mod = require('../src/renderer/pr-create-prefill.mts');
+  PrCreatePrefill = mod.PrCreatePrefill || mod.default || mod;
+} catch {
+  PrCreatePrefill = require('../src/renderer/pr-create-prefill');
+}
 
 test('builds a title from the first commit subject', () => {
   const draft = PrCreatePrefill.build({

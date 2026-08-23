@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { environmentForAi } = require('../src/main/ai/ai-env');
+const { environmentForAi } = require('../src/main/ai/ai-env.mts');
 
 test('exports nothing without an API key', () => {
   assert.deepEqual(environmentForAi({ provider: 'openai', baseUrl: '', apiKey: '' }), {});

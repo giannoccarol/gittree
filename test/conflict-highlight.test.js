@@ -1,7 +1,12 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { parseConflictBlocks } = require('../src/main/conflict-model');
-const highlight = require('../src/renderer/components/conflict-highlight');
+const { parseConflictBlocks } = require('../src/main/conflict-model.mts');
+let highlight;
+try {
+  highlight = require('../src/renderer/components/conflict-highlight.mts');
+} catch {
+  highlight = require('../src/renderer/components/conflict-highlight');
+}
 
 test('classifies a simple two-way block', () => {
   const content = 'line1\n<<<<<<< HEAD\nours\n=======\ntheirs\n>>>>>>> branch\nline9\n';

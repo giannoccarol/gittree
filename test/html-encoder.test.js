@@ -1,6 +1,12 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const HtmlEncoder = require('../src/renderer/html-encoder');
+let HtmlEncoder;
+try {
+  const mod = require('../src/renderer/html-encoder.mts');
+  HtmlEncoder = mod.HtmlEncoder || mod.default || mod;
+} catch {
+  HtmlEncoder = require('../src/renderer/html-encoder');
+}
 
 test('HTML encoder preserves the legacy renderer escaping contract', () => {
   assert.equal(HtmlEncoder.encode(null), '');

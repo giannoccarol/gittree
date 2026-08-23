@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 
 const {
   registerWindowApplicationHandlers
-} = require('../src/main/ipc/window-application-handlers');
+} = require('../src/main/ipc/window-application-handlers.mts');
 
 test('terminal and explorer actions require a managed repository registrar', () => {
   const managedChannels = [];

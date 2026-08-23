@@ -1,7 +1,13 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const WorktreeAgentPanel = require('../src/renderer/components/worktree-agent-panel');
+let WorktreeAgentPanel;
+try {
+  const mod = require('../src/renderer/components/worktree-agent-panel.mts');
+  WorktreeAgentPanel = mod.WorktreeAgentPanel || mod.default || mod;
+} catch {
+  WorktreeAgentPanel = require('../src/renderer/components/worktree-agent-panel');
+}
 
 class ClassList {
   constructor() { this.values = new Set(); }

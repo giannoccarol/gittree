@@ -23,7 +23,7 @@ const SOURCE_GROUPS = [
   },
   {
     name: 'git',
-    match: /^(src\/main\/git-service\.js|src\/main\/git\/)/,
+    match: /^(src\/main\/git-service\.(?:js|mts)|src\/main\/git\/)/,
     tests: [
       'test/git-*.test.js',
       'test/repository-*.test.js',
@@ -33,7 +33,7 @@ const SOURCE_GROUPS = [
   },
   {
     name: 'hosting',
-    match: /^(src\/main\/hosting-service\.js|src\/main\/hosting\/)/,
+    match: /^(src\/main\/hosting-service\.(?:js|mts)|src\/main\/hosting\/)/,
     tests: ['test/hosting-*.test.js', 'test/provider-links.test.js']
   },
   {
@@ -43,42 +43,42 @@ const SOURCE_GROUPS = [
   },
   {
     name: 'preload',
-    match: /^src\/preload.*\.js$/,
+    match: /^src\/preload.*\.(?:js|mts)$/,
     tests: ['test/preload-contract.test.js', 'test/hardening.test.js']
   },
   {
     name: 'composition',
-    match: /^src\/main\/(main-application|application-runtime)\.js$/,
+    match: /^src\/main\/(main-application|application-runtime)\.(?:js|mts)$/,
     tests: ['test/main-application.test.js', 'test/application-runtime.test.js']
   },
   {
     name: 'vault',
-    match: /^src\/main\/credential-vault\.js$/,
+    match: /^src\/main\/credential-vault\.(?:js|mts)$/,
     tests: ['test/credential-vault.test.js']
   },
   {
     name: 'update',
-    match: /^src\/main\/update-service\.js$/,
+    match: /^src\/main\/update-service\.(?:js|mts)$/,
     tests: ['test/update-service.test.js']
   },
   {
     name: 'diagnostics',
-    match: /^src\/main\/(diagnostics-exporter|logger)\.js$/,
+    match: /^src\/main\/(diagnostics-exporter|logger)\.(?:js|mts)$/,
     tests: ['test/diagnostics-exporter.test.js', 'test/settings-diagnostics.test.js']
   },
   {
     name: 'renderer-i18n',
-    match: /^src\/renderer\/i18n\.js$/,
+    match: /^src\/renderer\/i18n\.(?:js|mts)$/,
     tests: ['test/i18n-parity.test.js']
   },
   {
     name: 'renderer-components',
-    match: /^src\/renderer\/components\/([^/]+)\.js$/,
+    match: /^src\/renderer\/components\/([^/]+)\.(?:js|mts)$/,
     componentTests: true
   },
   {
     name: 'renderer-modules',
-    match: /^src\/renderer\/([^/]+)\.js$/,
+    match: /^src\/renderer\/([^/]+)\.(?:js|mts)$/,
     componentTests: true
   }
 ];
@@ -149,7 +149,7 @@ function matchScopedRuns(changedFiles, dependencies = {}) {
   }
 
   const lintFiles = changedFiles
-    .filter(file => /\.js$/.test(file) && exists(root, fileSystem, file))
+    .filter(file => /\.(?:js|mts|ts)$/.test(file) && exists(root, fileSystem, file))
     .map(file => file.replaceAll('\\', '/'));
 
   const benchmarks = BENCHMARKS
@@ -191,6 +191,7 @@ function run(command, args, label) {
 function runFull() {
   const steps = [
     ['lint', 'npm', ['run', 'lint']],
+    ['typecheck ratchet', 'node', ['scripts/check-ts-baseline.js']],
     ['test', 'npm', ['test']],
     ['coverage', 'npm', ['run', 'test:coverage']],
     ['design audit', 'npm', ['run', 'audit:design']],
@@ -221,6 +222,9 @@ function runScoped({ benchmarks = false } = {}) {
     if (!run('node', [eslintBin, ...scoped.lintFiles], 'lint (changed files)')) {
       process.exitCode = 1;
     }
+  }
+  if (changed.some(file => /^src\//.test(file.replaceAll('\\', '/')))) {
+    if (!run('node', ['scripts/check-ts-baseline.js'], 'typecheck ratchet')) process.exitCode = 1;
   }
   if (!run('node', ['--test', ...scoped.testFiles], 'scoped tests')) process.exitCode = 1;
   if (scoped.needsDesignAudit) {

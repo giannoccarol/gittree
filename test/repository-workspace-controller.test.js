@@ -1,6 +1,12 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const RepositoryWorkspaceController = require('../src/renderer/repository-workspace-controller');
+let RepositoryWorkspaceController;
+try {
+  const mod = require('../src/renderer/repository-workspace-controller.mts');
+  RepositoryWorkspaceController = mod.RepositoryWorkspaceController || mod.default || mod;
+} catch {
+  RepositoryWorkspaceController = require('../src/renderer/repository-workspace-controller');
+}
 
 function deferred() {
   let resolve;

@@ -4,12 +4,12 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
-const AiService = require('../src/main/ai/ai-service');
 const {
+  AiService,
   validateSettingsInput,
   validateKey,
   validateBaseUrl
-} = AiService;
+} = require('../src/main/ai/ai-service.mts');
 
 function createVault() {
   const state = { accounts: {} };

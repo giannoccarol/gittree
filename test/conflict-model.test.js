@@ -4,7 +4,7 @@ const {
   hasUnresolvedMarkers,
   parseConflictBlocks,
   safeCombination
-} = require('../src/main/conflict-model');
+} = require('../src/main/conflict-model.mts');
 
 test('conflict blocks preserve CRLF content and offsets for multiple conflicts', () => {
   const result = [

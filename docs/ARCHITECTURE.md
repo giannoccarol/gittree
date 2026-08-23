@@ -1,8 +1,16 @@
 # GitTree architecture
 
-GitTree keeps a vanilla JavaScript, CommonJS and native DOM stack. The goal is
-not to create more layers: it is to make ownership obvious, keep public
-contracts stable and place volatile details behind narrow Seams.
+GitTree runs on a TypeScript, native DOM stack with no framework and no
+bundler. The goal is not to create more layers: it is to make ownership
+obvious, keep public contracts stable and place volatile details behind
+narrow Seams.
+
+The TypeScript migration (ADR-0008) is complete: every module under `src/`
+is strict `.mts` except the documented exception `src/renderer/i18n.js`, a
+classic script that carries translation resources plus the loader. Shared
+contracts live in `src/shared/`; renderer modules are emitted as ES modules
+and main-process modules as CommonJS-compatible output by `tsc` into
+`dist/`.
 
 ## Dependency direction
 

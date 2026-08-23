@@ -26,7 +26,7 @@ test('release dependencies are assigned to the correct package scopes', () => {
   assert.equal(packageJson.scripts.quality, 'node scripts/quality.js');
   assert.equal(
     packageJson.scripts['quality:full'],
-    'npm run lint && npm run test && npm run test:coverage && npm run audit:design && npm run test:contracts'
+    'npm run lint && npm run typecheck:baseline && npm run test && npm run test:coverage && npm run audit:design && npm run test:contracts'
   );
   assert.ok(packageJson.scripts['quality:bench']);
 });

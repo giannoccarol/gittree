@@ -1,6 +1,12 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const GraphView = require('../src/renderer/components/graph-view');
+let GraphView;
+try {
+  const mod = require('../src/renderer/components/graph-view.mts');
+  GraphView = mod.GraphView || mod.default || mod;
+} catch {
+  GraphView = require('../src/renderer/components/graph-view');
+}
 
 function createView(scrollTop) {
   const view = Object.create(GraphView.prototype);

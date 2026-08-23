@@ -11,7 +11,7 @@ const {
   buildCommitExplainPrompt,
   buildHistorySearchPrompt,
   buildBlamePrompt
-} = require('../src/main/ai/ai-output');
+} = require('../src/main/ai/ai-output.mts');
 
 test('parses the strict TITLE/BODY format from provider output', () => {
   const result = parseAiOutput(

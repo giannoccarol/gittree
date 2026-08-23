@@ -2,14 +2,27 @@ const path = require('node:path');
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const SettingsView = require(path.join(
-  __dirname,
-  '..',
-  'src',
-  'renderer',
-  'components',
-  'settings-view.js'
-));
+let SettingsView;
+try {
+  const mod = require(path.join(
+    __dirname,
+    '..',
+    'src',
+    'renderer',
+    'components',
+    'settings-view.mts'
+  ));
+  SettingsView = mod.SettingsView || mod.default || mod;
+} catch {
+  SettingsView = require(path.join(
+    __dirname,
+    '..',
+    'src',
+    'renderer',
+    'components',
+    'settings-view.js'
+  ));
+}
 
 const previousTranslate = global.t;
 global.t = key => key;

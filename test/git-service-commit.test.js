@@ -2,7 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const GitService = require('../src/main/git-service');
+const { GitService } = require('../src/main/git-service.mts');
 const { createRepository } = require('./helpers/git-repository');
 
 test('reads and writes repository identity without changing global config', async t => {

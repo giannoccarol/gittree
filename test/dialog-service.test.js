@@ -1,6 +1,12 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const DialogService = require('../src/renderer/dialog-service');
+let DialogService;
+try {
+  const mod = require('../src/renderer/dialog-service.mts');
+  DialogService = mod.DialogService || mod.default || mod;
+} catch {
+  DialogService = require('../src/renderer/dialog-service');
+}
 
 function createHarness() {
   const listeners = new Map();

@@ -1,6 +1,12 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const WorkspaceResizeController = require('../src/renderer/workspace-resize-controller');
+let WorkspaceResizeController;
+try {
+  const mod = require('../src/renderer/workspace-resize-controller.mts');
+  WorkspaceResizeController = mod.WorkspaceResizeController || mod.default || mod;
+} catch {
+  WorkspaceResizeController = require('../src/renderer/workspace-resize-controller');
+}
 
 class FakeClassList {
   constructor() { this.values = new Set(); }

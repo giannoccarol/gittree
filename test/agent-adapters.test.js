@@ -7,7 +7,7 @@ const path = require('node:path');
 const {
   detectAgentAdapters,
   resolveAgentExecutable
-} = require('../src/main/agents/agent-adapters');
+} = require('../src/main/agents/agent-adapters.mts');
 
 function createExecutable(filename) {
   fs.mkdirSync(path.dirname(filename), { recursive: true });

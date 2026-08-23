@@ -2,7 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('node:path');
 
-const RepositoryWorktrees = require('../src/main/git/repository-worktrees');
+const { RepositoryWorktrees } = require('../src/main/git/repository-worktrees.mts');
 
 test('parses complete porcelain worktree state', async () => {
   const worktrees = new RepositoryWorktrees({

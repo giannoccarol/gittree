@@ -2,14 +2,27 @@ const path = require('node:path');
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const ChangesFileList = require(path.join(
-  __dirname,
-  '..',
-  'src',
-  'renderer',
-  'components',
-  'changes-file-list.js'
-));
+let ChangesFileList;
+try {
+  const mod = require(path.join(
+    __dirname,
+    '..',
+    'src',
+    'renderer',
+    'components',
+    'changes-file-list.mts'
+  ));
+  ChangesFileList = mod.ChangesFileList || mod.default || mod;
+} catch {
+  ChangesFileList = require(path.join(
+    __dirname,
+    '..',
+    'src',
+    'renderer',
+    'components',
+    'changes-file-list.js'
+  ));
+}
 
 function createElement(tag = 'div') {
   return {

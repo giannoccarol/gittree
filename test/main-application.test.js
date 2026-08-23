@@ -8,7 +8,7 @@ const assert = require('node:assert/strict');
 const {
   createMainApplication,
   isSafeExternalUrl
-} = require('../src/main/main-application');
+} = require('../src/main/main-application.mts');
 
 function createHarness(t, { realAiService = false } = {}) {
   const calls = [];

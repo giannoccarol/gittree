@@ -28,10 +28,16 @@ const FILES = new Set([
   'test/merge-workspace.test.js',
   'test/repository-workspace-controller.test.js',
   'test/workspace-state-controller.test.js',
+  'src/main/logger.mts',
   'src/main/logger.js',
+  'src/main/ai/ai-service.mts',
   'src/main/ai/ai-service.js',
+  'src/main/ipc/git-handlers.mts',
   'src/main/ipc/git-handlers.js',
+  'src/preload.mts',
   'src/preload.js',
+  'src/main/main.mts',
+  'src/main/main.js',
   'src/renderer/components/settings-view.js',
   'src/renderer/components/merge-workspace.js',
   'src/renderer/components/graph-view.js',
@@ -73,10 +79,13 @@ test('AI source changes select the AI test suite', () => {
 
 test('preload changes select preload and hardening contracts', () => {
   const { fileSystem, glob } = createHarness();
-  const scoped = matchScopedRuns(['src/preload.js'], { root: '', fs: fileSystem, glob });
+  const scopedJs = matchScopedRuns(['src/preload.js'], { root: '', fs: fileSystem, glob });
+  const scopedMts = matchScopedRuns(['src/preload.mts'], { root: '', fs: fileSystem, glob });
 
-  assert.ok(scoped.testFiles.includes('test/preload-contract.test.js'));
-  assert.ok(scoped.testFiles.includes('test/hardening.test.js'));
+  assert.ok(scopedJs.testFiles.includes('test/preload-contract.test.js'));
+  assert.ok(scopedJs.testFiles.includes('test/hardening.test.js'));
+  assert.ok(scopedMts.testFiles.includes('test/preload-contract.test.js'));
+  assert.ok(scopedMts.testFiles.includes('test/hardening.test.js'));
 });
 
 test('IPC changes select handler and registry tests', () => {

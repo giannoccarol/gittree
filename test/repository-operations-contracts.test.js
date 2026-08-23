@@ -3,8 +3,8 @@ const path = require('node:path');
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const GitService = require('../src/main/git-service');
-const { registerGitHandlers } = require('../src/main/ipc/git-handlers');
+const { GitService } = require('../src/main/git-service.mts');
+const { registerGitHandlers } = require('../src/main/ipc/git-handlers.mts');
 const { createRepository } = require('./helpers/git-repository');
 
 function commitAll(repo, message) {

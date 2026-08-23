@@ -3,12 +3,12 @@ const path = require('node:path');
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const GitService = require('../src/main/git-service');
-const RepoManager = require('../src/main/repo-manager');
-const CredentialVault = require('../src/main/credential-vault');
-const { Logger } = require('../src/main/logger');
-const { parseGitVersion, isVersionAtLeast } = require('../src/main/git-version');
-const { parseDeepLink } = require('../src/main/deep-link');
+const { GitService } = require('../src/main/git-service.mts');
+const { RepoManager } = require('../src/main/repo-manager.mts');
+const { CredentialVault } = require('../src/main/credential-vault.mts');
+const { Logger } = require('../src/main/logger.mts');
+const { parseGitVersion, isVersionAtLeast } = require('../src/main/git-version.mts');
+const { parseDeepLink } = require('../src/main/deep-link.mts');
 const { createRepository } = require('./helpers/git-repository');
 
 test('diff and commit detail work for the repository root commit', async () => {

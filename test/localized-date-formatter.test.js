@@ -1,6 +1,12 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const LocalizedDateFormatter = require('../src/renderer/localized-date-formatter');
+let LocalizedDateFormatter;
+try {
+  const mod = require('../src/renderer/localized-date-formatter.mts');
+  LocalizedDateFormatter = mod.LocalizedDateFormatter || mod.default || mod;
+} catch {
+  LocalizedDateFormatter = require('../src/renderer/localized-date-formatter');
+}
 
 test('localized date formatter preserves the existing short date and time output', () => {
   const format = LocalizedDateFormatter.create();

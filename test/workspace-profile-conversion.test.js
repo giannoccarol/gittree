@@ -4,7 +4,7 @@ const path = require('node:path');
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { convertWorkspaceProfile } = require('../src/main/workspace-profile-conversion');
+const { convertWorkspaceProfile } = require('../src/main/workspace-profile-conversion.mts');
 
 function createFixture(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'gittree-profile-conversion-'));

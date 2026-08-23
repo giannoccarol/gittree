@@ -9,7 +9,7 @@ function loadMergeWorkspace(gitTree) {
     'src',
     'renderer',
     'components',
-    'merge-workspace.js'
+    'merge-workspace.mts'
   );
   global.window = { gitTree };
   global.document = {
@@ -17,7 +17,8 @@ function loadMergeWorkspace(gitTree) {
     getElementById: () => null
   };
   global.t = key => key;
-  return require(filename);
+  const mod = require(filename);
+  return mod.MergeWorkspace || mod.default || mod;
 }
 
 test('merge preview compares develop against quality without treating the range as a commit', async () => {

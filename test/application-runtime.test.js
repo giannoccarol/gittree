@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { createApplicationRuntime } = require('../src/main/application-runtime');
+const { createApplicationRuntime } = require('../src/main/application-runtime.mts');
 
 test('Application runtime stops before readiness when the single-instance lock fails', async () => {
   const calls = [];

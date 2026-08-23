@@ -1,6 +1,12 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const WorkspacePanelMotion = require('../src/renderer/workspace-panel-motion');
+let WorkspacePanelMotion;
+try {
+  const mod = require('../src/renderer/workspace-panel-motion.mts');
+  WorkspacePanelMotion = mod.WorkspacePanelMotion || mod.default || mod;
+} catch {
+  WorkspacePanelMotion = require('../src/renderer/workspace-panel-motion');
+}
 
 class FakeClassList {
   constructor() { this.values = new Set(); }

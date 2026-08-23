@@ -4,8 +4,8 @@ const assert = require('node:assert/strict');
 const {
   requestOpenAiCompatible,
   requestAnthropic
-} = require('../src/main/ai/ai-providers');
-const { generateWithOpencode, collectOpencodeText } = require('../src/main/ai/ai-opencode');
+} = require('../src/main/ai/ai-providers.mts');
+const { generateWithOpencode, collectOpencodeText } = require('../src/main/ai/ai-opencode.mts');
 
 test('openai-compatible request posts chat completions and returns the content', async () => {
   const calls = [];

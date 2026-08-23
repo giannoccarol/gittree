@@ -9,7 +9,7 @@ function loadDiffViewer() {
     'src',
     'renderer',
     'components',
-    'diff-viewer.js'
+    'diff-viewer.mts'
   );
   const buttons = new Map();
   const storage = new Map();
@@ -31,10 +31,20 @@ function loadDiffViewer() {
   };
   global.window = { gitTree: {} };
   global.t = key => key;
-  global.DiffParser = require(path.join(
-    __dirname, '..', 'src', 'renderer', 'components', 'diff-parser.js'
-  ));
-  return require(filename);
+  global.DiffParser = (() => {
+    try {
+      const mod = require(path.join(
+        __dirname, '..', 'src', 'renderer', 'components', 'diff-parser.mts'
+      ));
+      return mod.DiffParser || mod.default || mod;
+    } catch {
+      return require(path.join(
+        __dirname, '..', 'src', 'renderer', 'components', 'diff-parser.js'
+      ));
+    }
+  })();
+  const mod = require(filename);
+  return mod.DiffViewer || mod.default || mod;
 }
 
 test('maximizing the inspector temporarily selects the side-by-side diff', () => {

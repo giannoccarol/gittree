@@ -1,11 +1,11 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const HostingService = require('../src/main/hosting-service');
+const { HostingService } = require('../src/main/hosting-service.mts');
 const {
   GitHubProviderAdapter,
   GitLabProviderAdapter,
   AzureProviderAdapter
-} = require('../src/main/hosting/providers');
+} = require('../src/main/hosting/providers/index.mts');
 
 function response(data, headers = {}) {
   return {

@@ -1,6 +1,12 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const ShortcutController = require('../src/renderer/shortcut-controller');
+let ShortcutController;
+try {
+  const mod = require('../src/renderer/shortcut-controller.mts');
+  ShortcutController = mod.ShortcutController || mod.default || mod;
+} catch {
+  ShortcutController = require('../src/renderer/shortcut-controller');
+}
 
 class FakeElement {
   constructor(dataset = {}) {

@@ -1,6 +1,13 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { layoutGraph, createGraphSegments } = require('../src/renderer/components/graph-layout');
+let GraphLayout;
+try {
+  const mod = require('../src/renderer/components/graph-layout.mts');
+  GraphLayout = mod.GraphLayout || mod.default || mod;
+} catch {
+  GraphLayout = require('../src/renderer/components/graph-layout');
+}
+const { layoutGraph, createGraphSegments } = GraphLayout;
 
 const commit = (hash, parents = []) => ({ hash, parents });
 

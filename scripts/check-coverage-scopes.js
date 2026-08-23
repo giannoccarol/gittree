@@ -4,50 +4,57 @@ const path = require('node:path');
 const root = path.resolve(__dirname, '..');
 const c8Bin = require.resolve('c8/bin/c8.js');
 
+const EXTENSION_ARGUMENTS = [
+  '--extension=js',
+  '--extension=cjs',
+  '--extension=mjs',
+  '--extension=mts'
+];
+
 const SCOPES = {
   git: {
-    include: ['src/main/git-service.js', 'src/main/git/**/*.js'],
+    include: ['src/main/git-service.mts', 'src/main/git/**/*.mts'],
     gate: { lines: 82, branches: 70, functions: 90 },
     target: { lines: 82, branches: 70, functions: 90 }
   },
   runtime: {
     include: [
-      'src/main/application-runtime.js',
-      'src/main/deep-link.js',
-      'src/main/diagnostics-exporter.js',
-      'src/main/git-version.js',
-      'src/main/inspector-window-controller.js',
-      'src/main/ipc/**/*.js',
-      'src/main/logger.js',
-      'src/main/main-application.js',
-      'src/main/oauth-config.js',
-      'src/main/provider-links.js',
-      'src/main/repo-manager.js',
-      'src/main/repository-workspace.js',
-      'src/main/repository-scanner.js',
-      'src/main/update-service.js',
-      'src/main/workspace-profile-conversion.js'
+      'src/main/application-runtime.mts',
+      'src/main/deep-link.mts',
+      'src/main/diagnostics-exporter.mts',
+      'src/main/git-version.mts',
+      'src/main/inspector-window-controller.mts',
+      'src/main/ipc/**/*.mts',
+      'src/main/logger.mts',
+      'src/main/main-application.mts',
+      'src/main/oauth-config.mts',
+      'src/main/provider-links.mts',
+      'src/main/repo-manager.mts',
+      'src/main/repository-scanner.mts',
+      'src/main/repository-workspace.mts',
+      'src/main/update-service.mts',
+      'src/main/workspace-profile-conversion.mts'
     ],
     gate: { lines: 75, branches: 60, functions: 75 },
     target: { lines: 75, branches: 60, functions: 75 }
   },
   hosting: {
-    include: ['src/main/hosting-service.js', 'src/main/hosting/providers/**/*.js'],
+    include: ['src/main/hosting-service.mts', 'src/main/hosting/providers/**/*.mts'],
     gate: { lines: 90, branches: 70, functions: 90 },
     target: { lines: 90, branches: 70, functions: 90 }
   },
   renderer: {
     include: [
-      'src/renderer/dialog-service.js',
-      'src/renderer/html-encoder.js',
+      'src/renderer/dialog-service.mts',
+      'src/renderer/html-encoder.mts',
       'src/renderer/repository-load-session.js',
       'src/renderer/repository-workspace-controller.js',
       'src/renderer/shortcut-controller.js',
       'src/renderer/workspace-state-controller.js',
-      'src/renderer/components/branch-naming.js',
+      'src/renderer/components/branch-naming.mts',
       'src/renderer/components/conflict-highlight.js',
-      'src/renderer/components/diff-parser.js',
-      'src/renderer/components/graph-layout.js'
+      'src/renderer/components/diff-parser.mts',
+      'src/renderer/components/graph-layout.mts'
     ],
     gate: { lines: 70, branches: 60, functions: 70 },
     target: { lines: 70, branches: 60, functions: 70 }
@@ -67,6 +74,7 @@ function buildC8Arguments(name, scope) {
     `--lines=${scope.gate.lines}`,
     `--branches=${scope.gate.branches}`,
     `--functions=${scope.gate.functions}`,
+    ...EXTENSION_ARGUMENTS,
     ...scope.include.map(pattern => `--include=${pattern}`)
   ];
 }

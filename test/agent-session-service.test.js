@@ -5,9 +5,9 @@ const os = require('node:os');
 const path = require('node:path');
 const { EventEmitter } = require('node:events');
 
-const AgentSessionStore = require('../src/main/agents/agent-session-store');
-const AgentSessionService = require('../src/main/agents/agent-session-service');
-const { detectSetupRecipe } = require('../src/main/agents/setup-recipes');
+const { AgentSessionStore } = require('../src/main/agents/agent-session-store.mts');
+const { AgentSessionService } = require('../src/main/agents/agent-session-service.mts');
+const { detectSetupRecipe } = require('../src/main/agents/setup-recipes.mts');
 
 class FakePty extends EventEmitter {
   constructor(command, args, options) {

@@ -1,6 +1,12 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const RepositoryLoadSession = require('../src/renderer/repository-load-session');
+let RepositoryLoadSession;
+try {
+  const mod = require('../src/renderer/repository-load-session.mts');
+  RepositoryLoadSession = mod.RepositoryLoadSession || mod.default || mod;
+} catch {
+  RepositoryLoadSession = require('../src/renderer/repository-load-session');
+}
 
 function createBridge() {
   const calls = { metadata: 0, status: 0, operation: 0 };

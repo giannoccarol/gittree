@@ -2,16 +2,20 @@
   "name": "gittree",
   "version": "0.21.4",
   "description": "A fast, open-source Git desktop client for visual history and local-first repository management.",
-  "main": "src/main/main.js",
+  "main": "dist/main/main.mjs",
   "scripts": {
-    "start": "electron .",
+    "start": "npm run build:compile && electron .",
     "postinstall": "electron-builder install-app-deps",
+    "build:compile": "tsc -p tsconfig.json",
     "prepare:assets": "node scripts/prepare-build-assets.js",
     "validate": "npm run test && npm run audit:design",
     "quality": "node scripts/quality.js",
-    "quality:full": "npm run lint && npm run test && npm run test:coverage && npm run audit:design && npm run test:contracts",
+    "quality:full": "npm run lint && npm run typecheck:baseline && npm run test && npm run test:coverage && npm run audit:design && npm run test:contracts",
     "quality:bench": "node scripts/quality.js --benchmarks",
     "lint": "eslint .",
+    "typecheck": "tsc -p tsconfig.typecheck.json --pretty false",
+    "typecheck:baseline": "node scripts/check-ts-baseline.js",
+    "typecheck:baseline:update": "node scripts/check-ts-baseline.js --update",
     "audit:design": "node .agents/skills/gittree-design-system/scripts/audit-design.js",
     "perf:renderer": "node scripts/renderer-perf-benchmark.js",
     "perf:workspace": "node scripts/workspace-perf-benchmark.js",
@@ -23,15 +27,15 @@
     "screenshots:readme": "node scripts/capture-readme-screenshots.js",
     "test:performance": "npm run perf:renderer && npm run perf:workspace",
     "test:coverage": "npm run test:coverage:collect && npm run test:coverage:scopes",
-    "test:coverage:collect": "c8 --all --exclude-after-remap --temp-directory=coverage/tmp --reports-dir=coverage/all --include=src/main/**/*.js --include=src/renderer/**/*.js --include=src/*.js --reporter=text --reporter=lcov node --test test/*.test.js",
+    "test:coverage:collect": "c8 --all --exclude-after-remap --extension=js --extension=cjs --extension=mjs --extension=mts --temp-directory=coverage/tmp --reports-dir=coverage/all --include=src/main/**/*.js --include=src/main/**/*.mts --include=src/renderer/**/*.js --include=src/renderer/**/*.mts --include=src/*.js --include=src/*.mts --include=src/shared/**/*.mts --reporter=text --reporter=lcov node --test test/*.test.js",
     "test:coverage:scopes": "node scripts/check-coverage-scopes.js",
     "test:coverage:git": "node scripts/check-coverage-scopes.js git",
     "test:coverage:hosting": "node scripts/check-coverage-scopes.js hosting",
-    "build": "npm run prepare:assets && electron-builder --dir --publish never",
-    "dist": "npm run prepare:assets && electron-builder --publish never",
-    "dist:win": "npm run prepare:assets && electron-builder --win --publish never",
-    "dist:mac": "npm run prepare:assets && electron-builder --mac --publish never",
-    "dist:linux": "npm run prepare:assets && electron-builder --linux --publish never",
+    "build": "npm run build:compile && npm run prepare:assets && electron-builder --dir --publish never",
+    "dist": "npm run build:compile && npm run prepare:assets && electron-builder --publish never",
+    "dist:win": "npm run build:compile && npm run prepare:assets && electron-builder --win --publish never",
+    "dist:mac": "npm run build:compile && npm run prepare:assets && electron-builder --mac --publish never",
+    "dist:linux": "npm run build:compile && npm run prepare:assets && electron-builder --linux --publish never",
     "release:check": "node scripts/check-release-version.js",
     "release:assets": "node scripts/release-assets.js"
   },
@@ -57,6 +61,20 @@
   },
   "license": "MIT",
   "desktopName": "GitTree.desktop",
+  "build": {
+    "appId": "com.lorenzogit.gittree",
+    "productName": "GitTree",
+    "directories": {
+      "buildResources": "build",
+      "output": "dist"
+    },
+    "files": [
+      "dist/**/*",
+      "package.json"
+    ],
+    "asar": true,
+    "extraResources": []
+  },
   "type": "commonjs",
   "engines": {
     "node": ">=22"
@@ -79,13 +97,18 @@
     "@semantic-release/git": "^10.0.1",
     "@semantic-release/npm": "^12.0.1",
     "@semantic-release/release-notes-generator": "^14.0.3",
+    "@types/node": "^24.13.3",
+    "@typescript-eslint/eslint-plugin": "^8.67.0",
+    "@typescript-eslint/parser": "^8.67.0",
     "c8": "^12.0.0",
     "electron": "^43.2.0",
     "electron-builder": "^26.15.3",
     "eslint": "^10.8.0",
     "globals": "^17.8.0",
     "playwright": "^1.62.1",
-    "semantic-release": "^24.2.3"
+    "semantic-release": "^24.2.3",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.67.0"
   },
   "allowScripts": {
     "node-pty@1.1.0": true

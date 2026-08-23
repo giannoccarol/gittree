@@ -1,6 +1,12 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const RemoteOperationController = require('../src/renderer/remote-operation-controller');
+let RemoteOperationController;
+try {
+  const mod = require('../src/renderer/remote-operation-controller.mts');
+  RemoteOperationController = mod.RemoteOperationController || mod.default || mod;
+} catch {
+  RemoteOperationController = require('../src/renderer/remote-operation-controller');
+}
 
 class FakeClassList {
   constructor() { this.values = new Set(); }

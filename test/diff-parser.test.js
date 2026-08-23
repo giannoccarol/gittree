@@ -1,6 +1,12 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const DiffParser = require('../src/renderer/components/diff-parser');
+let DiffParser;
+try {
+  const mod = require('../src/renderer/components/diff-parser.mts');
+  DiffParser = mod.DiffParser || mod.default || mod;
+} catch {
+  DiffParser = require('../src/renderer/components/diff-parser');
+}
 
 const PATCH = [
   'diff --git a/example.txt b/example.txt',

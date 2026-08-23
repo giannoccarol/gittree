@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('node:path');
-const RepositorySession = require('../src/main/git/repository-session');
+const { RepositorySession } = require('../src/main/git/repository-session.mts');
 
 test('Repository session owns one normalized path and one git adapter', () => {
   const calls = [];

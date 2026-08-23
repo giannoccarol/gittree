@@ -4,7 +4,7 @@ const path = require('node:path');
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const RepoManager = require('../src/main/repo-manager');
+const { RepoManager } = require('../src/main/repo-manager.mts');
 
 function createManager(t, options = {}) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'gittree-workspace-store-'));

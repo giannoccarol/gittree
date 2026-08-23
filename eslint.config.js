@@ -1,9 +1,13 @@
 const js = require('@eslint/js');
+const tseslint = require('typescript-eslint');
+const globals = require('globals');
 
 const appGlobals = {
   i18next: 'readonly',
   t: 'readonly',
   Theme: 'readonly',
+  EventBus: 'readonly',
+  ToastService: 'readonly',
   HtmlEncoder: 'readonly',
   DialogService: 'readonly',
   RepositoryLoadSession: 'readonly',
@@ -45,6 +49,7 @@ module.exports = [
     ignores: [
       'dist/**',
       'build/**',
+      'out/**',
       'node_modules/**',
       'coverage/**',
       'package-lock.json'
@@ -71,6 +76,31 @@ module.exports = [
         ...require('globals').browser,
         ...appGlobals
       }
+    }
+  },
+  {
+    files: ['src/**/*.mts'],
+    languageOptions: {
+      parser: tseslint.parser,
+      parserOptions: { sourceType: 'module', ecmaVersion: 'latest' },
+      globals: { ...globals.node }
+    },
+    plugins: { '@typescript-eslint': tseslint.plugin },
+    rules: {
+      ...tseslint.configs.recommended.rules,
+      'no-undef': 'off',
+      'no-unused-vars': 'off',
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        {
+          argsIgnorePattern: '^_',
+          varsIgnorePattern: '^_',
+          caughtErrorsIgnorePattern: '^_',
+          destructuredArrayIgnorePattern: '^_',
+          ignoreRestSiblings: true
+        }
+      ],
+      '@typescript-eslint/no-explicit-any': 'off'
     }
   },
   {

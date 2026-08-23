@@ -39,3 +39,45 @@ fs.writeFileSync(oauthDestination, JSON.stringify({
   gitlabClientId: process.env.GITTREE_GITLAB_CLIENT_ID || ''
 }, null, 2));
 console.log(`Prepared build/icon.png (${metadata.width}×${metadata.height}, alpha channel)`);
+
+function copyRecursiveSync(src, dest) {
+  if (!fs.existsSync(src)) return;
+  const stat = fs.statSync(src);
+  if (stat.isDirectory()) {
+    fs.mkdirSync(dest, { recursive: true });
+    for (const entry of fs.readdirSync(src)) {
+      copyRecursiveSync(path.join(src, entry), path.join(dest, entry));
+    }
+  } else {
+    fs.mkdirSync(path.dirname(dest), { recursive: true });
+    fs.copyFileSync(src, dest);
+  }
+}
+
+function ensureRendererAssets() {
+  const distRenderer = path.join(projectRoot, 'dist', 'renderer');
+  fs.mkdirSync(distRenderer, { recursive: true });
+  const htmlFiles = ['index.html', 'inspector-window.html'];
+  for (const file of htmlFiles) {
+    const srcPath = path.join(projectRoot, 'src', 'renderer', file);
+    const destPath = path.join(distRenderer, file);
+    if (fs.existsSync(srcPath)) {
+      fs.copyFileSync(srcPath, destPath);
+    }
+  }
+  copyRecursiveSync(
+    path.join(projectRoot, 'src', 'renderer', 'styles'),
+    path.join(distRenderer, 'styles')
+  );
+  const iconDest = path.join(projectRoot, 'dist', 'icon.png');
+  if (!fs.existsSync(iconDest) && fs.existsSync(source)) {
+    fs.copyFileSync(source, iconDest);
+  }
+}
+
+if (process.argv.includes('--renderer-only')) {
+  ensureRendererAssets();
+  console.log('Renderer assets copied to dist/renderer');
+} else {
+  ensureRendererAssets();
+}

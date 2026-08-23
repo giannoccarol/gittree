@@ -4,7 +4,7 @@ const {
   GitHubProviderAdapter,
   GitLabProviderAdapter,
   AzureProviderAdapter
-} = require('../src/main/hosting/providers');
+} = require('../src/main/hosting/providers/index.mts');
 
 const repositories = {
   github: { provider: 'github', ownerPath: 'owner', repository: 'repo' },

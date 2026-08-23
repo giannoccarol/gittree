@@ -4,7 +4,7 @@ const path = require('node:path');
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { loadOAuthConfig, validClientId } = require('../src/main/oauth-config');
+const { loadOAuthConfig, validClientId } = require('../src/main/oauth-config.mts');
 
 test('OAuth client IDs accept only public identifier syntax', () => {
   assert.equal(validClientId('client_123.example'), 'client_123.example');

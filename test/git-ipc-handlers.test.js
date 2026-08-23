@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { registerGitHandlers } = require('../src/main/ipc/git-handlers');
+const { registerGitHandlers } = require('../src/main/ipc/git-handlers.mts');
 
 test('git status is registered as a managed repository handler', async () => {
   const registrations = [];
