@@ -1,0 +1,164 @@
+[
+  {
+    "content": "diff --git a/blob.bin b/blob.bin",
+    "kind": "file",
+    "oldLine": null,
+    "newLine": null
+  },
+  {
+    "content": "index 0f49c4a..050550c 100644",
+    "kind": "header",
+    "oldLine": null,
+    "newLine": null
+  },
+  {
+    "content": "Binary files a/blob.bin and b/blob.bin differ",
+    "kind": "header",
+    "oldLine": null,
+    "newLine": null
+  },
+  {
+    "content": "diff --git a/file.txt b/file.txt",
+    "kind": "file",
+    "oldLine": null,
+    "newLine": null
+  },
+  {
+    "content": "index cc3ba85..88aa75b 100644",
+    "kind": "header",
+    "oldLine": null,
+    "newLine": null
+  },
+  {
+    "content": "--- a/file.txt",
+    "kind": "header",
+    "oldLine": null,
+    "newLine": null
+  },
+  {
+    "content": "+++ b/file.txt",
+    "kind": "header",
+    "oldLine": null,
+    "newLine": null
+  },
+  {
+    "content": "@@ -1,6 +1,7 @@",
+    "kind": "hunk",
+    "oldLine": null,
+    "newLine": null
+  },
+  {
+    "content": " alpha",
+    "kind": "context",
+    "oldLine": 1,
+    "newLine": 1
+  },
+  {
+    "content": " bravo!",
+    "kind": "context",
+    "oldLine": 2,
+    "newLine": 2
+  },
+  {
+    "content": "-charlie",
+    "kind": "del",
+    "oldLine": 3,
+    "newLine": null
+  },
+  {
+    "content": "-delta",
+    "kind": "del",
+    "oldLine": 4,
+    "newLine": null
+  },
+  {
+    "content": "+CHARLIE",
+    "kind": "add",
+    "oldLine": null,
+    "newLine": 3
+  },
+  {
+    "content": "+delta?",
+    "kind": "add",
+    "oldLine": null,
+    "newLine": 4
+  },
+  {
+    "content": " echo",
+    "kind": "context",
+    "oldLine": 5,
+    "newLine": 5
+  },
+  {
+    "content": " foxtrot",
+    "kind": "context",
+    "oldLine": 6,
+    "newLine": 6
+  },
+  {
+    "content": "+golf",
+    "kind": "add",
+    "oldLine": null,
+    "newLine": 7
+  },
+  {
+    "content": "diff --git a/tail.txt b/tail.txt",
+    "kind": "file",
+    "oldLine": null,
+    "newLine": null
+  },
+  {
+    "content": "index eeed123..2cf9147 100644",
+    "kind": "header",
+    "oldLine": null,
+    "newLine": null
+  },
+  {
+    "content": "--- a/tail.txt",
+    "kind": "header",
+    "oldLine": null,
+    "newLine": null
+  },
+  {
+    "content": "+++ b/tail.txt",
+    "kind": "header",
+    "oldLine": null,
+    "newLine": null
+  },
+  {
+    "content": "@@ -1 +1 @@",
+    "kind": "hunk",
+    "oldLine": null,
+    "newLine": null
+  },
+  {
+    "content": "-tail",
+    "kind": "del",
+    "oldLine": 1,
+    "newLine": null
+  },
+  {
+    "content": "\\ No newline at end of file",
+    "kind": "no-newline",
+    "oldLine": null,
+    "newLine": null
+  },
+  {
+    "content": "+tail!",
+    "kind": "add",
+    "oldLine": null,
+    "newLine": 1
+  },
+  {
+    "content": "\\ No newline at end of file",
+    "kind": "no-newline",
+    "oldLine": null,
+    "newLine": null
+  },
+  {
+    "content": "",
+    "kind": "context",
+    "oldLine": 2,
+    "newLine": 2
+  }
+]

@@ -1,0 +1,13 @@
+diff --git a/file.txt b/file.txt
+index c83fd0f..88aa75b 100644
+--- a/file.txt
++++ b/file.txt
+@@ -1,6 +1,7 @@
+ alpha
+ bravo!
+ CHARLIE
+-delta
++delta?
+ echo
+ foxtrot
++golf

@@ -1,0 +1,55 @@
+{
+  "path": "file.txt",
+  "staged": false,
+  "binary": false,
+  "hunks": [
+    {
+      "id": "fe1fc4fd3638e72ad911a87b060e68696187762620629db5599f8467f6f30cfa",
+      "header": "@@ -1,6 +1,7 @@",
+      "oldRange": {
+        "start": 1,
+        "lines": 6
+      },
+      "newRange": {
+        "start": 1,
+        "lines": 7
+      },
+      "lines": [
+        {
+          "type": "context",
+          "content": " alpha"
+        },
+        {
+          "type": "context",
+          "content": " bravo!"
+        },
+        {
+          "type": "context",
+          "content": " CHARLIE"
+        },
+        {
+          "type": "delete",
+          "content": "-delta"
+        },
+        {
+          "type": "add",
+          "content": "+delta?"
+        },
+        {
+          "type": "context",
+          "content": " echo"
+        },
+        {
+          "type": "context",
+          "content": " foxtrot"
+        },
+        {
+          "type": "add",
+          "content": "+golf"
+        }
+      ],
+      "raw": "@@ -1,6 +1,7 @@\n alpha\n bravo!\n CHARLIE\n-delta\n+delta?\n echo\n foxtrot\n+golf\n"
+    }
+  ],
+  "prelude": "diff --git a/file.txt b/file.txt\nindex c83fd0f..88aa75b 100644\n--- a/file.txt\n+++ b/file.txt\n"
+}

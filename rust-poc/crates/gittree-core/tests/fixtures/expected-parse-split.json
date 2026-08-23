@@ -1,0 +1,257 @@
+[
+  {
+    "type": "full",
+    "content": "diff --git a/blob.bin b/blob.bin",
+    "kind": "file",
+    "oldLine": null,
+    "newLine": null
+  },
+  {
+    "type": "full",
+    "content": "index 0f49c4a..050550c 100644",
+    "kind": "header",
+    "oldLine": null,
+    "newLine": null
+  },
+  {
+    "type": "full",
+    "content": "Binary files a/blob.bin and b/blob.bin differ",
+    "kind": "header",
+    "oldLine": null,
+    "newLine": null
+  },
+  {
+    "type": "full",
+    "content": "diff --git a/file.txt b/file.txt",
+    "kind": "file",
+    "oldLine": null,
+    "newLine": null
+  },
+  {
+    "type": "full",
+    "content": "index cc3ba85..88aa75b 100644",
+    "kind": "header",
+    "oldLine": null,
+    "newLine": null
+  },
+  {
+    "type": "full",
+    "content": "--- a/file.txt",
+    "kind": "header",
+    "oldLine": null,
+    "newLine": null
+  },
+  {
+    "type": "full",
+    "content": "+++ b/file.txt",
+    "kind": "header",
+    "oldLine": null,
+    "newLine": null
+  },
+  {
+    "type": "full",
+    "content": "@@ -1,6 +1,7 @@",
+    "kind": "hunk",
+    "oldLine": null,
+    "newLine": null
+  },
+  {
+    "type": "pair",
+    "left": {
+      "content": " alpha",
+      "kind": "context",
+      "oldLine": 1,
+      "newLine": 1
+    },
+    "right": {
+      "content": " alpha",
+      "kind": "context",
+      "oldLine": 1,
+      "newLine": 1
+    }
+  },
+  {
+    "type": "pair",
+    "left": {
+      "content": " bravo!",
+      "kind": "context",
+      "oldLine": 2,
+      "newLine": 2
+    },
+    "right": {
+      "content": " bravo!",
+      "kind": "context",
+      "oldLine": 2,
+      "newLine": 2
+    }
+  },
+  {
+    "type": "pair",
+    "left": {
+      "content": "-charlie",
+      "kind": "del",
+      "oldLine": 3,
+      "newLine": null
+    },
+    "right": {
+      "content": "+CHARLIE",
+      "kind": "add",
+      "oldLine": null,
+      "newLine": 3
+    }
+  },
+  {
+    "type": "pair",
+    "left": {
+      "content": "-delta",
+      "kind": "del",
+      "oldLine": 4,
+      "newLine": null
+    },
+    "right": {
+      "content": "+delta?",
+      "kind": "add",
+      "oldLine": null,
+      "newLine": 4
+    }
+  },
+  {
+    "type": "pair",
+    "left": {
+      "content": " echo",
+      "kind": "context",
+      "oldLine": 5,
+      "newLine": 5
+    },
+    "right": {
+      "content": " echo",
+      "kind": "context",
+      "oldLine": 5,
+      "newLine": 5
+    }
+  },
+  {
+    "type": "pair",
+    "left": {
+      "content": " foxtrot",
+      "kind": "context",
+      "oldLine": 6,
+      "newLine": 6
+    },
+    "right": {
+      "content": " foxtrot",
+      "kind": "context",
+      "oldLine": 6,
+      "newLine": 6
+    }
+  },
+  {
+    "type": "pair",
+    "left": {
+      "content": "",
+      "kind": "empty",
+      "oldLine": null,
+      "newLine": null
+    },
+    "right": {
+      "content": "+golf",
+      "kind": "add",
+      "oldLine": null,
+      "newLine": 7
+    }
+  },
+  {
+    "type": "full",
+    "content": "diff --git a/tail.txt b/tail.txt",
+    "kind": "file",
+    "oldLine": null,
+    "newLine": null
+  },
+  {
+    "type": "full",
+    "content": "index eeed123..2cf9147 100644",
+    "kind": "header",
+    "oldLine": null,
+    "newLine": null
+  },
+  {
+    "type": "full",
+    "content": "--- a/tail.txt",
+    "kind": "header",
+    "oldLine": null,
+    "newLine": null
+  },
+  {
+    "type": "full",
+    "content": "+++ b/tail.txt",
+    "kind": "header",
+    "oldLine": null,
+    "newLine": null
+  },
+  {
+    "type": "full",
+    "content": "@@ -1 +1 @@",
+    "kind": "hunk",
+    "oldLine": null,
+    "newLine": null
+  },
+  {
+    "type": "pair",
+    "left": {
+      "content": "-tail",
+      "kind": "del",
+      "oldLine": 1,
+      "newLine": null
+    },
+    "right": {
+      "content": "",
+      "kind": "empty",
+      "oldLine": null,
+      "newLine": null
+    }
+  },
+  {
+    "type": "full",
+    "content": "\\ No newline at end of file",
+    "kind": "no-newline",
+    "oldLine": null,
+    "newLine": null
+  },
+  {
+    "type": "pair",
+    "left": {
+      "content": "",
+      "kind": "empty",
+      "oldLine": null,
+      "newLine": null
+    },
+    "right": {
+      "content": "+tail!",
+      "kind": "add",
+      "oldLine": null,
+      "newLine": 1
+    }
+  },
+  {
+    "type": "full",
+    "content": "\\ No newline at end of file",
+    "kind": "no-newline",
+    "oldLine": null,
+    "newLine": null
+  },
+  {
+    "type": "pair",
+    "left": {
+      "content": "",
+      "kind": "context",
+      "oldLine": 2,
+      "newLine": 2
+    },
+    "right": {
+      "content": "",
+      "kind": "context",
+      "oldLine": 2,
+      "newLine": 2
+    }
+  }
+]

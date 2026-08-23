@@ -1,0 +1,26 @@
+diff --git a/blob.bin b/blob.bin
+index 0f49c4a..050550c 100644
+Binary files a/blob.bin and b/blob.bin differ
+diff --git a/file.txt b/file.txt
+index cc3ba85..88aa75b 100644
+--- a/file.txt
++++ b/file.txt
+@@ -1,6 +1,7 @@
+ alpha
+ bravo!
+-charlie
+-delta
++CHARLIE
++delta?
+ echo
+ foxtrot
++golf
+diff --git a/tail.txt b/tail.txt
+index eeed123..2cf9147 100644
+--- a/tail.txt
++++ b/tail.txt
+@@ -1 +1 @@
+-tail
+\ No newline at end of file
++tail!
+\ No newline at end of file

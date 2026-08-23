@@ -1,0 +1,13 @@
+[package]
+name = "gittree-sidecar"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+gittree-core = { path = "../gittree-core" }
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
+tempfile = "3"

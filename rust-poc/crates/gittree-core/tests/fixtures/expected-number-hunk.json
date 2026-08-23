@@ -1,0 +1,58 @@
+[
+  {
+    "type": "context",
+    "content": " alpha",
+    "kind": "context",
+    "oldLine": 1,
+    "newLine": 1
+  },
+  {
+    "type": "context",
+    "content": " bravo!",
+    "kind": "context",
+    "oldLine": 2,
+    "newLine": 2
+  },
+  {
+    "type": "context",
+    "content": " CHARLIE",
+    "kind": "context",
+    "oldLine": 3,
+    "newLine": 3
+  },
+  {
+    "type": "delete",
+    "content": "-delta",
+    "kind": "del",
+    "oldLine": 4,
+    "newLine": null
+  },
+  {
+    "type": "add",
+    "content": "+delta?",
+    "kind": "add",
+    "oldLine": null,
+    "newLine": 4
+  },
+  {
+    "type": "context",
+    "content": " echo",
+    "kind": "context",
+    "oldLine": 5,
+    "newLine": 5
+  },
+  {
+    "type": "context",
+    "content": " foxtrot",
+    "kind": "context",
+    "oldLine": 6,
+    "newLine": 6
+  },
+  {
+    "type": "add",
+    "content": "+golf",
+    "kind": "add",
+    "oldLine": null,
+    "newLine": 7
+  }
+]

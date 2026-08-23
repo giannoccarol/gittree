@@ -1,0 +1,51 @@
+[
+  {
+    "hash": "ee208c061e1a1c296c6f61a52bd8e0d599ea3ddf",
+    "originalLine": 1,
+    "finalLine": 1,
+    "author": "Ada Lovelace",
+    "summary": "add file"
+  },
+  {
+    "hash": "1686e5389d41c2ce7889bb6259002e531db21a67",
+    "originalLine": 2,
+    "finalLine": 2,
+    "author": "Ada Lovelace",
+    "summary": "edit bravo and add foxtrot"
+  },
+  {
+    "hash": "0000000000000000000000000000000000000000",
+    "originalLine": 3,
+    "finalLine": 3,
+    "author": "Not Committed Yet",
+    "summary": "Version of file.txt from file.txt"
+  },
+  {
+    "hash": "0000000000000000000000000000000000000000",
+    "originalLine": 4,
+    "finalLine": 4,
+    "author": "",
+    "summary": ""
+  },
+  {
+    "hash": "ee208c061e1a1c296c6f61a52bd8e0d599ea3ddf",
+    "originalLine": 5,
+    "finalLine": 5,
+    "author": "",
+    "summary": ""
+  },
+  {
+    "hash": "1686e5389d41c2ce7889bb6259002e531db21a67",
+    "originalLine": 6,
+    "finalLine": 6,
+    "author": "",
+    "summary": ""
+  },
+  {
+    "hash": "0000000000000000000000000000000000000000",
+    "originalLine": 7,
+    "finalLine": 7,
+    "author": "",
+    "summary": ""
+  }
+]
