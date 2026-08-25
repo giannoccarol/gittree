@@ -1,3 +1,10 @@
+# [0.23.0](https://github.com/giannoccarol/gittree/compare/v0.22.3...v0.23.0) (2026-08-25)
+
+
+### Features
+
+* **merge:** redesign merge and conflict workflow with navigation and IDE refresh ([207ecd8](https://github.com/giannoccarol/gittree/commit/207ecd8333927adc4688a7b1139bcc1734f0ecf2))
+
 ## [0.22.3](https://github.com/giannoccarol/gittree/compare/v0.22.2...v0.22.3) (2026-08-23)
 
 
