@@ -26,6 +26,10 @@ interface MergePreview {
   changedFiles?: string[] | null;
 }
 
+interface PendingPush {
+  remote: string;
+  branch: string;
+}
 
 export class MergeWorkspace {
   app: GitTreeApp;
@@ -44,6 +48,9 @@ export class MergeWorkspace {
   container: HTMLElement | null;
   strategy: string;
   onKeydown: ((event: KeyboardEvent) => void) | null;
+  onBackdropClick: ((event: MouseEvent) => void) | null;
+  pendingPush: PendingPush | null;
+  isRefreshing: boolean;
 
   constructor(app: GitTreeApp) {
     this.app = app;
@@ -54,12 +61,16 @@ export class MergeWorkspace {
     this.container = null;
     this.strategy = 'noff';
     this.onKeydown = null;
+    this.onBackdropClick = null;
+    this.pendingPush = null;
+    this.isRefreshing = false;
   }
 
   async open(source: string, target: string): Promise<void> {
     this.sourceBranch = source;
     this.targetBranch = target;
     this.strategy = 'noff';
+    this.pendingPush = null;
     const repo = this.app.state.repo;
     if (!repo) return;
 
@@ -96,12 +107,54 @@ export class MergeWorkspace {
     }
   }
 
+  async refreshPreview(): Promise<void> {
+    const repo = this.app.state.repo;
+    const data = this.mergeData;
+    if (!repo || !data || this.isRefreshing) return;
+    this.isRefreshing = true;
+    const btn = document.getElementById('merge-refresh-btn') as HTMLButtonElement | null;
+    if (btn) {
+      btn.disabled = true;
+      btn.classList.add('is-spinning');
+    }
+    try {
+      const [status, preview, comparison] = await Promise.all([
+        window.gitTree.getStatus(repo.path) as Promise<MergeStatus>,
+        window.gitTree.previewMerge(repo.path, data.source) as Promise<MergePreview>,
+        window.gitTree.compareBranches(repo.path, data.target, data.source) as Promise<{ error?: string; commits?: MergeCommit[]; diff?: string }>
+      ]);
+      if (comparison && !comparison.error) {
+        this.mergeData = {
+          ...data,
+          commitsCount: comparison.commits?.length || 0,
+          commits: comparison.commits || [],
+          diff: comparison.diff || '',
+          status: status || {}
+        };
+      } else {
+        this.mergeData!.status = status || {};
+      }
+      this.preview = preview && !preview.error ? preview : null;
+      this.renderMerge();
+      this.app.showToast(t('mergeWorkspace.previewRefreshed'), 'success');
+    } catch (e) {
+      this.app.showToast((e as Error).message, 'error');
+    } finally {
+      this.isRefreshing = false;
+      if (btn) {
+        btn.disabled = false;
+        btn.classList.remove('is-spinning');
+      }
+    }
+  }
+
   showLoading(): void {
     this.ensureContainer();
     this.bindEscape();
+    this.bindBackdrop();
     this.container!.classList.remove('is-hidden');
     this.container!.innerHTML = `
-      <div class="merge-modal-card">
+      <div class="merge-modal-card" role="dialog" aria-modal="true" aria-labelledby="merge-title">
       <header class="merge-header">
         <div class="merge-heading">
           <span class="eyebrow">${this.esc(t('mergeWorkspace.mergeAction'))}</span>
@@ -110,10 +163,11 @@ export class MergeWorkspace {
           <button id="merge-cancel-btn" class="btn"><i class="ph ph-x" aria-hidden="true"></i><span>${this.esc(t('common.close'))}</span></button>
         </div>
       </header>
-      <div class="empty-state">${this.esc(t('common.loading'))}</div>
+      <div class="empty-state"><i class="ph ph-circle-notch" aria-hidden="true" style="animation: project-loading-spin .8s linear infinite"></i><span>${this.esc(t('common.loading'))}</span></div>
       </div>
     `;
-    document.getElementById('merge-cancel-btn')!.onclick = () => this.hide();
+    const cancel = document.getElementById('merge-cancel-btn');
+    if (cancel) cancel.onclick = () => this.hide();
   }
 
   ensureContainer(): void {
@@ -125,6 +179,52 @@ export class MergeWorkspace {
       document.getElementById('app')!.appendChild(this.container);
     }
     this.container.className = 'merge-workspace-shell is-hidden';
+  }
+
+  bindBackdrop(): void {
+    if (this.onBackdropClick) return;
+    this.onBackdropClick = (event: MouseEvent) => {
+      if (!this.container || this.container.classList.contains('is-hidden')) return;
+      if (event.target === this.container) this.hide();
+    };
+    this.ensureContainer();
+    if (typeof (this.container as unknown as { addEventListener?: unknown }).addEventListener === 'function') {
+      this.container!.addEventListener('click', this.onBackdropClick);
+    }
+  }
+
+  unbindBackdrop(): void {
+    if (!this.onBackdropClick || !this.container) return;
+    if (typeof (this.container as unknown as { removeEventListener?: unknown }).removeEventListener === 'function') {
+      this.container.removeEventListener('click', this.onBackdropClick);
+    }
+    this.onBackdropClick = null;
+  }
+
+  renderStepper(activeStep: number, hasConflicts: boolean): string {
+    const steps = [
+      { label: t('mergeWorkspace.stepPreview') || 'Anteprima', done: activeStep > 1 },
+      { label: t('mergeWorkspace.stepConflicts') || 'Conflitti', done: activeStep > 2 && !hasConflicts, warn: hasConflicts },
+      { label: t('mergeWorkspace.stepPush') || 'Push', done: false }
+    ];
+    return `
+      <div class="merge-stepper" aria-label="${this.esc(t('mergeWorkspace.stepperLabel') || 'Progresso merge')}">
+        <div class="merge-stepper-item ${activeStep === 1 ? 'is-active' : ''} ${steps[0].done ? 'is-done' : ''}">
+          <span class="merge-stepper-index">${steps[0].done ? '<i class="ph ph-check" aria-hidden="true"></i>' : '1'}</span>
+          <span>${this.esc(steps[0].label)}</span>
+        </div>
+        <span class="merge-stepper-separator ${steps[0].done ? 'is-done' : ''}" aria-hidden="true"></span>
+        <div class="merge-stepper-item ${activeStep === 2 ? 'is-active' : ''} ${hasConflicts ? 'is-active' : ''}">
+          <span class="merge-stepper-index">${hasConflicts ? '<i class="ph ph-warning" aria-hidden="true"></i>' : (steps[1].done ? '<i class="ph ph-check"></i>' : '2')}</span>
+          <span>${this.esc(steps[1].label)}</span>
+        </div>
+        <span class="merge-stepper-separator" aria-hidden="true"></span>
+        <div class="merge-stepper-item ${activeStep === 3 ? 'is-active' : ''}">
+          <span class="merge-stepper-index">3</span>
+          <span>${this.esc(steps[2].label)}</span>
+        </div>
+      </div>
+    `;
   }
 
   renderMerge(): void {
@@ -140,9 +240,10 @@ export class MergeWorkspace {
     const hasPending = this.hasPendingChanges(d.status);
     const blockingSummary = this.blockingSummary(d.status, changedFiles);
     const conflictList = conflictFiles.slice(0, 6).join(', ');
+    const stepper = this.renderStepper(1, conflictFiles.length > 0);
 
     this.container!.innerHTML = `
-      <div class="merge-modal-card">
+      <div class="merge-modal-card" role="dialog" aria-modal="true" aria-labelledby="merge-title">
       <header class="merge-header">
         <div class="merge-heading">
           <span class="eyebrow">${this.esc(t('mergeWorkspace.mergeAction'))}</span>
@@ -153,12 +254,16 @@ export class MergeWorkspace {
           </div>
         </div>
         <div class="merge-header-actions">
+          <button id="merge-refresh-btn" class="btn btn-small merge-refresh-btn" title="${this.esc(t('mergeWorkspace.refreshPreview'))}">
+            <i class="ph ph-arrows-clockwise" aria-hidden="true"></i><span>${this.esc(t('mergeWorkspace.refreshPreview'))}</span>
+          </button>
           ${conflictFiles.length
             ? `<span class="badge badge-conflict">${this.esc(t('mergeWorkspace.conflictsBadge', { count: conflictFiles.length }))}</span>`
             : `<span class="badge badge-head">${this.esc(t('mergeWorkspace.noConflictsBadge'))}</span>`}
-          <button id="merge-cancel-btn" class="btn"><i class="ph ph-x" aria-hidden="true"></i><span>${this.esc(t('common.close'))}</span></button>
+          <button id="merge-cancel-btn" class="btn" title="${this.esc(t('common.close'))}"><i class="ph ph-x" aria-hidden="true"></i><span>${this.esc(t('common.close'))}</span></button>
         </div>
       </header>
+      ${stepper}
 
       <div class="merge-body">
         <aside class="merge-sidebar" aria-label="${this.esc(t('mergeWorkspace.summary'))}">
@@ -236,6 +341,15 @@ export class MergeWorkspace {
                   <div class="merge-risk-detail">${this.esc(t('mergeWorkspace.commitsBy', { authors: [...new Set(d.commits.map(c => c.author_name))].slice(0, 3).join(', ') }))}</div>
                 </div>
               </div>
+              ${conflictFiles.length ? `
+                <div class="merge-risk-item">
+                  <i class="ph ph-arrows-clockwise merge-risk-icon info" aria-hidden="true"></i>
+                  <div class="merge-risk-content">
+                    <div class="merge-risk-title">${this.esc(t('mergeWorkspace.externalFixHintTitle'))}</div>
+                    <div class="merge-risk-detail">${this.esc(t('mergeWorkspace.externalFixHintDetail'))}</div>
+                  </div>
+                </div>
+              ` : ''}
             </div>
           </section>
         </aside>
@@ -249,6 +363,7 @@ export class MergeWorkspace {
               </div>
               <div class="merge-conflict-prediction-detail">${this.esc(t('mergeWorkspace.conflictPredictionDetail'))}</div>
               <div class="merge-conflict-prediction-files">${this.esc(conflictList)}${conflictFiles.length > 6 ? ` ${this.esc(t('mergeWorkspace.conflictPredictionMore', { count: conflictFiles.length - 6 }))}` : ''}</div>
+              <div class="merge-conflict-prediction-detail" style="margin-top:8px">${this.esc(t('mergeWorkspace.conflictWillOpenResolver'))}</div>
             </section>
           ` : ''}
           <section class="merge-section merge-diff-section">
@@ -275,14 +390,17 @@ export class MergeWorkspace {
         </button>
         <button id="merge-push-btn" class="btn merge-confirm"
           ${hasBlocking ? `disabled title="${this.esc(t('mergeWorkspace.mergeBlocked'))}"` : ''}>
-          <i class="ph ph-git-merge" aria-hidden="true"></i>
+          <i class="ph ph-upload-simple" aria-hidden="true"></i>
           <span>${this.esc(t('mergeWorkspace.mergeAndPush'))}</span>
         </button>
       </footer>
       </div>
     `;
 
-    document.getElementById('merge-cancel-btn')!.onclick = () => this.hide();
+    const cancel = document.getElementById('merge-cancel-btn');
+    if (cancel) cancel.onclick = () => this.hide();
+    const refreshBtn = document.getElementById('merge-refresh-btn');
+    if (refreshBtn) refreshBtn.onclick = () => this.refreshPreview();
     document.getElementById('merge-only-btn')!.onclick = () => this.executeMerge(false);
     document.getElementById('merge-push-btn')!.onclick = () => this.executeMerge(true);
     const viewChangesButton = document.getElementById('merge-view-changes-btn')!;
@@ -354,6 +472,17 @@ export class MergeWorkspace {
       return;
     }
     this.app.showToast(t('mergeWorkspace.mergeStarted'));
+    this.pendingPush = null;
+    if (andPush) {
+      const metadata = this.app.components.branchList.metadata;
+      const targetBranch = (metadata?.branches || []).find(
+        branch => branch.name === this.mergeData!.target && branch.kind === 'local'
+      );
+      const remoteName = targetBranch?.upstream?.split('/')[0]
+        || metadata?.remotes?.[0]?.name
+        || 'origin';
+      this.pendingPush = { remote: remoteName, branch: this.mergeData!.target };
+    }
 
     const result = await window.gitTree.merge(repo.path, this.mergeData!.source, this.strategy) as {
       error?: string;
@@ -361,8 +490,19 @@ export class MergeWorkspace {
     };
     if (result.error) {
       if (result.conflictState?.type) {
+        // Preserve merge context for conflict resolver
+        const pushContext = this.pendingPush;
         this.hide();
-        await this.app.components.conflict.open(result.conflictState);
+        await this.app.components.conflict.open(result.conflictState, pushContext ? { pushAfter: pushContext } : undefined);
+        // Also show operation banner
+        try {
+          const state = await window.gitTree.getOperationState(repo.path) as { type?: string; conflicts?: string[] };
+          if (state?.type) this.app.components.operationBanner?.setOperation(state as never);
+        } catch (_err) {
+          void _err;
+        }
+      } else {
+        this.pendingPush = null;
       }
       this.app.showToast(result.error, 'error');
       return;
@@ -370,22 +510,20 @@ export class MergeWorkspace {
 
     if (!andPush) {
       this.hide();
+      this.pendingPush = null;
       this.app.showToast(t('mergeWorkspace.mergeCompleted'), 'success');
       this.app.emit('refresh');
       return;
     }
 
     this.setPushing(true);
-    const metadata = this.app.components.branchList.metadata;
-    const targetBranch = (metadata?.branches || []).find(
-      branch => branch.name === this.mergeData!.target && branch.kind === 'local'
-    );
-    const remoteName = targetBranch?.upstream?.split('/')[0]
-      || metadata?.remotes?.[0]?.name
-      || 'origin';
-    const pushResult = await window.gitTree.push(repo.path, remoteName, this.mergeData!.target) as { error?: string };
+    const pushContext = this.pendingPush;
+    const remoteName = pushContext?.remote || 'origin';
+    const branchName = pushContext?.branch || this.mergeData!.target;
+    const pushResult = await window.gitTree.push(repo.path, remoteName, branchName) as { error?: string };
     this.setPushing(false);
     this.hide();
+    this.pendingPush = null;
     if (pushResult.error) {
       this.app.showToast(t('mergeWorkspace.pushFailed', { error: pushResult.error }), 'error');
     } else {
@@ -396,7 +534,7 @@ export class MergeWorkspace {
 
   setPushing(pushing: boolean): void {
     if (!this.container) return;
-    this.container!.querySelectorAll('.merge-confirm, #merge-cancel-btn').forEach(button => {
+    this.container!.querySelectorAll('.merge-confirm, #merge-cancel-btn, #merge-refresh-btn').forEach(button => {
       (button as HTMLButtonElement).disabled = pushing;
     });
     const pushButton = this.container!.querySelector('#merge-push-btn');
@@ -438,6 +576,7 @@ export class MergeWorkspace {
       document.removeEventListener('keydown', this.onKeydown);
       this.onKeydown = null;
     }
+    this.unbindBackdrop();
     if (this.container) this.container!.classList.add('is-hidden');
   }
 

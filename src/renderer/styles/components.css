@@ -730,6 +730,106 @@ kbd {
   border-color: var(--warning);
 }
 
+.operation-banner {
+  padding: var(--space-2) var(--space-3) 0;
+  background: var(--surface-shell);
+}
+
+.operation-banner.is-hidden {
+  display: none;
+}
+
+.operation-banner-card {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: 52px;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid color-mix(in srgb, var(--warning) 22%, var(--border-subtle));
+  border-left: 3px solid var(--warning);
+  border-radius: var(--radius-lg);
+  background: var(--surface-primary);
+  box-shadow: var(--shadow-sm);
+  animation: motion-fade-in-down var(--duration-normal) var(--ease-decel);
+}
+
+.operation-banner-icon {
+  width: 30px;
+  height: 30px;
+  flex: 0 0 30px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--warning-soft);
+  color: var(--warning-text);
+  font-size: 16px;
+}
+
+.operation-banner-content {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.operation-banner-title {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  font-size: var(--text-sm);
+  color: var(--text-primary);
+}
+
+.operation-banner-eyebrow {
+  color: var(--warning-text);
+  font-size: 10px;
+  font-weight: var(--weight-semibold);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.operation-banner-detail {
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+}
+
+.operation-banner-files {
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.operation-banner-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex-shrink: 0;
+}
+
+.operation-banner-actions .btn-icon {
+  width: 28px;
+  height: 28px;
+  flex-basis: 28px;
+  font-size: 14px;
+}
+
+@media (max-width: 900px) {
+  .operation-banner-card {
+    flex-wrap: wrap;
+  }
+
+  .operation-banner-actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+}
+
 input[type="checkbox"] {
   appearance: none;
   -webkit-appearance: none;

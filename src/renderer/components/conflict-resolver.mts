@@ -30,6 +30,10 @@ export interface OperationStateInfo {
   error?: unknown;
 }
 
+interface PushAfter {
+  remote: string;
+  branch: string;
+}
 
 declare const ConflictHighlight: {
   splitLines: (content: unknown) => string[];
@@ -67,6 +71,9 @@ export class ConflictResolver {
   syncFrame: number;
   globalKeysHandler: ((event: KeyboardEvent) => void) | null;
   closeResolveAllMenu: ((event: MouseEvent) => void) | null;
+  pushAfter: PushAfter | null;
+  minimized: boolean;
+  isRefreshingDisk: boolean;
 
   constructor(app: GitTreeApp) {
     this.app = app;
@@ -92,6 +99,9 @@ export class ConflictResolver {
     this.syncFrame = 0;
     this.globalKeysHandler = null;
     this.closeResolveAllMenu = null;
+    this.pushAfter = null;
+    this.minimized = false;
+    this.isRefreshingDisk = false;
     this.layout = localStorage.getItem('gittree.mergeEditor.layout') === 'vertical'
       ? 'vertical'
       : 'horizontal';
@@ -102,7 +112,7 @@ export class ConflictResolver {
     });
   }
 
-  async open(state: OperationStateInfo | null = null): Promise<void> {
+  async open(state: OperationStateInfo | null = null, options: { pushAfter?: PushAfter } | null = null): Promise<void> {
     const repo = this.app.state.repo;
     if (!repo) return;
     this.state = state?.type ? state : await window.gitTree.getOperationState(repo.path) as OperationStateInfo;
@@ -111,6 +121,7 @@ export class ConflictResolver {
       return;
     }
     if (!this.state?.type) return;
+    if (options?.pushAfter) this.pushAfter = options.pushAfter;
     const conflicts = this.state.conflicts || [];
     this.allFiles = [...conflicts];
     this.blockCounts = new Map<string, number | null>(
@@ -122,8 +133,10 @@ export class ConflictResolver {
     this.dirty = false;
     this.undoStack = [];
     this.fileFilter = '';
+    this.minimized = false;
     this.render();
     this.container!.classList.remove('is-hidden');
+    this.updateBanner();
     if (this.currentPath) await this.loadFile(this.currentPath);
   }
 
@@ -139,11 +152,37 @@ export class ConflictResolver {
     return known.length === remaining.length ? known.reduce((sum, count) => sum + count, 0) : null;
   }
 
+  updateBanner(): void {
+    const banner = this.app.components.operationBanner as unknown as { setOperation: (s: unknown) => void } | undefined;
+    if (banner && this.state?.type && !this.container.classList.contains('is-hidden')) {
+      banner.setOperation(null);
+    } else if (banner) {
+      banner.setOperation(this.state);
+    }
+  }
+
+  renderStepper(): string {
+    const total = this.allFiles.length;
+    const resolved = total - this.remainingFiles().length;
+    const hasConflicts = this.remainingFiles().length > 0;
+    const pushLabel = this.pushAfter ? `${t('mergeWorkspace.stepPush')} • ${this.esc(this.pushAfter.branch)}` : (t('mergeWorkspace.stepPush') || 'Push');
+    return `
+      <div class="conflict-stepper" aria-label="${this.esc(t('mergeWorkspace.stepperLabel') || 'Avanzamento')}">
+        <div class="conflict-stepper-item is-done"><span class="conflict-stepper-index"><i class="ph ph-check" aria-hidden="true"></i></span><span>${this.esc(t('mergeWorkspace.stepPreview') || 'Anteprima')}</span></div>
+        <span class="conflict-stepper-sep is-done" aria-hidden="true"></span>
+        <div class="conflict-stepper-item is-active"><span class="conflict-stepper-index">2</span><span>${this.esc(t('conflicts.title'))} • ${resolved}/${total}</span></div>
+        <span class="conflict-stepper-sep" aria-hidden="true"></span>
+        <div class="conflict-stepper-item ${!hasConflicts ? '' : ''}"><span class="conflict-stepper-index">3</span><span>${this.esc(pushLabel)}</span></div>
+      </div>
+    `;
+  }
+
   render(): void {
     const conflicts = this.remainingFiles();
     const resolved = this.allFiles.length - conflicts.length;
     const total = this.allFiles.length;
     const conflictsSum = this.unresolvedCount();
+    const canContinue = conflicts.length === 0;
     this.container!.innerHTML = `
       <div class="conflict-workspace">
         <header class="conflict-header">
@@ -157,15 +196,25 @@ export class ConflictResolver {
               ? `<span class="badge badge-conflict">${this.esc(t('conflicts.blockCountTotal', { count: conflictsSum }))}</span>`
               : ''}
             <span class="badge ${conflicts.length ? 'badge-conflict' : 'badge-head'}">${conflicts.length} ${this.esc(t('conflicts.remaining'))}</span>
+            <button class="btn btn-small conflict-refresh-btn" id="conflict-refresh" title="${this.esc(t('conflicts.refreshTitle'))}">
+              <i class="ph ph-arrows-clockwise" aria-hidden="true"></i><span>${this.esc(t('conflicts.refresh'))}</span>
+            </button>
+            <button class="btn btn-small" id="conflict-minimize" title="${this.esc(t('conflicts.minimizeTitle'))}">
+              <i class="ph ph-minus" aria-hidden="true"></i><span>${this.esc(t('conflicts.minimize'))}</span>
+            </button>
             <button class="btn" id="conflict-abort"><i class="ph ph-x-circle" aria-hidden="true"></i><span>${this.esc(t('conflicts.abort'))}</span></button>
             ${['rebase', 'cherry-pick'].includes(String(this.state!.type)) ? `
               <button class="btn" id="conflict-skip"><i class="ph ph-skip-forward" aria-hidden="true"></i><span>${this.esc(t('conflicts.skip'))}</span></button>
             ` : ''}
-            <button class="btn btn-primary" id="conflict-continue" ${conflicts.length ? 'disabled' : ''}>
-              <i class="ph ph-arrow-right" aria-hidden="true"></i><span>${this.esc(t('common.continue'))}</span>
+            <button class="btn btn-primary" id="conflict-continue" ${canContinue ? '' : 'disabled'}>
+              <i class="ph ph-arrow-right" aria-hidden="true"></i><span>${this.esc(this.pushAfter ? t('conflicts.continueAndPush') : t('common.continue'))}</span>
+            </button>
+            <button class="btn-icon" id="conflict-close" aria-label="${this.esc(t('common.close'))}" title="${this.esc(t('common.close'))}">
+              <i class="ph ph-x" aria-hidden="true"></i>
             </button>
           </div>
         </header>
+        ${this.renderStepper()}
         <div class="conflict-body">
           <aside class="conflict-file-list" aria-label="${this.esc(t('conflicts.files'))}">
             <div class="conflict-file-search search-clearable">
@@ -178,16 +227,44 @@ export class ConflictResolver {
             <div class="conflict-file-scroll" id="conflict-file-scroll">
               ${this.renderFileList()}
             </div>
+            <div class="conflict-minimized-hint">
+              <i class="ph ph-info" aria-hidden="true"></i>
+              <span>${this.esc(t('conflicts.externalHint'))}</span>
+            </div>
           </aside>
           <main class="conflict-editor" id="conflict-editor">
             <div class="empty-state">${this.esc(conflicts.length ? t('common.loading') : t('conflicts.readyContinue'))}</div>
           </main>
         </div>
+        <footer class="conflict-wizard-footer">
+          <div class="conflict-wizard-step">
+            <i class="ph ph-git-merge" aria-hidden="true"></i>
+            <span>${this.esc(t('conflicts.wizardStep', { resolved, total }))}</span>
+            ${this.pushAfter ? `<span class="badge badge-remote"><i class="ph ph-upload-simple" aria-hidden="true"></i> ${this.esc(t('mergeWorkspace.mergeAndPush'))}</span>` : ''}
+          </div>
+          <div class="conflict-header-secondary">
+            <button class="btn btn-small" id="conflict-wizard-refresh"><i class="ph ph-arrows-clockwise" aria-hidden="true"></i>${this.esc(t('conflicts.refresh'))}</button>
+            <button class="btn btn-small" id="conflict-wizard-minimize"><i class="ph ph-eye-slash" aria-hidden="true"></i>${this.esc(t('conflicts.minimize'))}</button>
+          </div>
+          <div class="conflict-wizard-actions">
+            <button class="btn" id="conflict-wizard-abort">${this.esc(t('conflicts.abort'))}</button>
+            <button class="btn btn-primary" id="conflict-wizard-continue" ${canContinue ? '' : 'disabled'}>
+              ${this.esc(this.pushAfter ? t('conflicts.continueAndPush') : t('common.continue'))}
+            </button>
+          </div>
+        </footer>
       </div>`;
 
     (document.getElementById('conflict-abort')! as HTMLElement).onclick = () => this.abort();
+    document.getElementById('conflict-wizard-abort')?.addEventListener('click', () => this.abort());
     document.getElementById('conflict-skip')?.addEventListener('click', () => this.skip());
     (document.getElementById('conflict-continue')! as HTMLElement).onclick = () => this.continue();
+    document.getElementById('conflict-wizard-continue')?.addEventListener('click', () => this.continue());
+    document.getElementById('conflict-refresh')?.addEventListener('click', () => this.refreshFromDisk());
+    document.getElementById('conflict-wizard-refresh')?.addEventListener('click', () => this.refreshFromDisk());
+    document.getElementById('conflict-minimize')?.addEventListener('click', () => this.minimize());
+    document.getElementById('conflict-wizard-minimize')?.addEventListener('click', () => this.minimize());
+    document.getElementById('conflict-close')?.addEventListener('click', () => this.minimize());
     const filterInput = document.getElementById('conflict-file-filter')! as HTMLInputElement | null;
     if (filterInput) {
       filterInput.value = this.fileFilter;
@@ -253,6 +330,97 @@ export class ConflictResolver {
     });
   }
 
+  async refreshFromDisk(): Promise<void> {
+    const repo = this.app.state.repo;
+    if (!repo || this.isRefreshingDisk) return;
+    this.isRefreshingDisk = true;
+    const btn = document.getElementById('conflict-refresh') as HTMLButtonElement | null;
+    const wBtn = document.getElementById('conflict-wizard-refresh') as HTMLButtonElement | null;
+    [btn, wBtn].forEach(b => {
+      if (b) {
+        b.disabled = true;
+        b.classList.add('is-spinning');
+        const i = b.querySelector('i');
+        if (i) i.className = 'ph ph-circle-notch';
+      }
+    });
+    try {
+      const freshState = await window.gitTree.getOperationState(repo.path) as OperationStateInfo;
+      if (!freshState?.type) {
+        this.app.showToast(t('operationBanner.noOperation'), 'success');
+        this.hide();
+        this.app.emit('refresh');
+        return;
+      }
+      this.state = freshState;
+      const remaining = freshState.conflicts || [];
+      // Sync allFiles
+      const newSet = new Set([...this.allFiles, ...remaining]);
+      this.allFiles = [...newSet];
+      for (const f of remaining) if (!this.blockCounts.has(f)) this.blockCounts.set(f, null);
+      // If current file still conflicted, reload it
+      if (this.currentPath && remaining.includes(this.currentPath)) {
+        await this.loadFile(this.currentPath);
+      } else if (remaining.length) {
+        this.currentPath = remaining[0];
+        await this.loadFile(this.currentPath);
+      } else {
+        this.currentPath = null;
+        this.current = null;
+      }
+      // Re-count blocks for remaining files where needed by reading them if not yet known
+      for (const file of remaining) {
+        if (this.blockCounts.get(file) === null) {
+          try {
+            const info = await window.gitTree.readConflict(repo.path, file) as ConflictFileState;
+            this.blockCounts.set(file, info?.blocks?.length ?? 0);
+            if (info?.binary) this.binaryMap.set(file, true);
+          } catch (_e) { void _e; }
+        }
+      }
+      this.render();
+      if (this.currentPath) await this.loadFile(this.currentPath);
+      else {
+        const editor = document.getElementById('conflict-editor');
+        if (editor) editor.innerHTML = `<div class="empty-state">${this.esc(t('conflicts.readyContinue'))}</div>`;
+      }
+      this.app.showToast(t('conflicts.refreshed'), 'success');
+      this.updateBanner();
+    } catch (e) {
+      this.app.showToast((e as Error).message, 'error');
+    } finally {
+      this.isRefreshingDisk = false;
+      [btn, wBtn].forEach(b => {
+        if (b) {
+          b.disabled = false;
+          b.classList.remove('is-spinning');
+          const i = b.querySelector('i');
+          if (i) i.className = 'ph ph-arrows-clockwise';
+        }
+      });
+    }
+  }
+
+  minimize(): void {
+    if (!this.state?.type) {
+      this.hide();
+      return;
+    }
+    // Hide overlay but keep state, show banner
+    this.container.classList.add('is-hidden');
+    const banner = this.app.components.operationBanner as unknown as { setOperation: (s: unknown) => void } | undefined;
+    if (banner) banner.setOperation(this.state);
+    this.app.showToast(t('conflicts.minimized'), 'info');
+  }
+
+  resume(): void {
+    if (!this.state?.type) return;
+    this.minimized = false;
+    this.container.classList.remove('is-hidden');
+    const banner = this.app.components.operationBanner as unknown as { setOperation: (s: unknown) => void } | undefined;
+    if (banner) banner.setOperation(null);
+  }
+
   async loadFile(filePath: string): Promise<void> {
     const repo = this.app.state.repo;
     if (!repo) return;
@@ -288,6 +456,7 @@ export class ConflictResolver {
           <strong>${this.esc(file.path)}</strong>
           ${file.binary ? `<span class="badge">${this.esc(t('conflicts.binary'))}</span>` : ''}
           ${!file.binary && blockCount > 0 ? `<span class="badge badge-conflict">${this.esc(t('conflicts.blockCountTitle', { count: blockCount }))}</span>` : ''}
+          ${!file.binary && blockCount === 0 ? `<span class="badge badge-head">${this.esc(t('conflicts.noConflictsBadge') || 'Risolto')}</span>` : ''}
         </div>
         <div class="conflict-toolbar-actions">
           ${file.binary ? `
@@ -304,6 +473,7 @@ export class ConflictResolver {
             </div>
             <button class="btn" data-whole="current" title="${this.esc(t('conflicts.useCurrentFile'))}">${this.esc(t('conflicts.useCurrentFile'))}</button>
             <button class="btn" data-whole="incoming" title="${this.esc(t('conflicts.useIncomingFile'))}">${this.esc(t('conflicts.useIncomingFile'))}</button>
+            <button class="btn" id="conflict-refresh-file" title="${this.esc(t('conflicts.refreshFileTitle'))}"><i class="ph ph-arrows-clockwise" aria-hidden="true"></i>${this.esc(t('conflicts.refreshFile'))}</button>
             <button class="btn" id="conflict-layout">
               <i class="ph ph-layout" aria-hidden="true"></i>${this.esc(
                 this.layout === 'horizontal' ? t('conflicts.verticalLayout') : t('conflicts.horizontalLayout')
@@ -360,6 +530,7 @@ export class ConflictResolver {
       localStorage.setItem('gittree.mergeEditor.layout', this.layout);
       this.renderEditor();
     });
+    document.getElementById('conflict-refresh-file')?.addEventListener('click', () => this.refreshFromDisk());
     document.getElementById('conflict-undo')?.addEventListener('click', () => this.undo());
     document.getElementById('conflict-mark-resolved')?.addEventListener('click', () => this.markResolved());
     document.getElementById('conflict-ai-explain')?.addEventListener('click', () => this.explainBlock());
@@ -494,6 +665,7 @@ export class ConflictResolver {
             current: this.blocks.length ? this.activeBlockIndex + 1 : 0,
             total: this.blocks.length
           }))}</strong>
+          <span class="conflict-keyhint" style="margin-left:8px">${this.esc(t('conflicts.navigateHint'))}</span>
         </div>
         ${active && !this.manualEdited ? `
           <div class="conflict-block-actions">
@@ -936,13 +1108,25 @@ export class ConflictResolver {
     } else {
       this.app.showToast(t('conflicts.allFilesResolved'), 'success');
     }
-    this.render();
-    if (this.currentPath) await this.loadFile(this.currentPath);
+    if (this.state?.type) {
+      this.render();
+      this.updateBanner();
+      if (this.currentPath) await this.loadFile(this.currentPath);
+    } else {
+      // No more conflicts but operation still pending (needs continue)
+      this.render();
+      this.updateBanner();
+      const editor = document.getElementById('conflict-editor');
+      if (editor) editor.innerHTML = `<div class="empty-state">${this.esc(t('conflicts.readyContinue'))}<br><button class="btn btn-primary" id="conflict-ready-continue" style="margin-top:12px"><i class="ph ph-check"></i>${this.esc(this.pushAfter ? t('conflicts.continueAndPush') : t('common.continue'))}</button></div>`;
+      document.getElementById('conflict-ready-continue')?.addEventListener('click', () => this.continue());
+    }
   }
 
   async continue(): Promise<void> {
     if (this.state?.conflicts?.length) return;
     const repo = this.app.state.repo;
+    if (!repo) return;
+    const pushContext = this.pushAfter;
     const result = await window.gitTree.continueOperation(repo!.path) as { error?: string };
     if (result?.error) {
       this.app.showToast(result.error, 'error');
@@ -951,7 +1135,18 @@ export class ConflictResolver {
       return;
     }
     this.hide();
-    this.app.showToast(t('conflicts.completed'), 'success');
+    if (pushContext) {
+      this.app.showToast(t('mergeWorkspace.pushing'), 'info');
+      const pushResult = await window.gitTree.push(repo.path, pushContext.remote, pushContext.branch) as { error?: string };
+      if (pushResult?.error) {
+        this.app.showToast(t('mergeWorkspace.pushFailed', { error: pushResult.error }), 'error');
+      } else {
+        this.app.showToast(t('mergeWorkspace.mergeAndPushCompleted'), 'success');
+      }
+      this.pushAfter = null;
+    } else {
+      this.app.showToast(t('conflicts.completed'), 'success');
+    }
     this.app.emit('refresh');
   }
 
@@ -963,6 +1158,7 @@ export class ConflictResolver {
       this.app.showToast(result.error, 'error');
       return;
     }
+    this.pushAfter = null;
     this.hide();
     this.app.emit('refresh');
   }
@@ -988,6 +1184,14 @@ export class ConflictResolver {
       document.removeEventListener('keydown', this.globalKeysHandler);
     }
     this.globalKeysHandler = event => {
+      if (event.key === 'Escape' && !this.container.classList.contains('is-hidden')) {
+        // Esc on fullscreen should minimize, not abort
+        const target = event.target as HTMLElement;
+        if (target.closest?.('input, textarea')) return;
+        event.preventDefault();
+        this.minimize();
+        return;
+      }
       if (event.altKey && (event.key === 'ArrowUp' || event.key === 'ArrowDown')) {
         const target = event.target;
         if (target === document.getElementById('conflict-result-editor')!) return;
@@ -1027,6 +1231,8 @@ export class ConflictResolver {
     this.state = null;
     this.current = null;
     this.dirty = false;
+    this.pushAfter = null;
+    this.minimized = false;
     if (this.reparseTimer) clearTimeout(this.reparseTimer);
     if (this.globalKeysHandler) {
       document.removeEventListener('keydown', this.globalKeysHandler);
@@ -1036,6 +1242,7 @@ export class ConflictResolver {
       document.removeEventListener('click', this.closeResolveAllMenu);
       this.closeResolveAllMenu = null;
     }
+    this.updateBanner();
   }
 
   esc(value: unknown): string {

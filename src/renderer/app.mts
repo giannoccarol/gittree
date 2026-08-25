@@ -15,6 +15,7 @@ import { CommitCompare } from './components/commit-compare.mts';
 import { MergeWorkspace } from './components/merge-workspace.mts';
 import { ReflogView } from './components/reflog-view.mts';
 import { ConflictResolver } from './components/conflict-resolver.mts';
+import { OperationBanner } from './components/operation-banner.mts';
 import { GitFlow } from './components/gitflow.mts';
 import { StatusBar } from './components/status-bar.mts';
 import { WorktreeAgentPanel } from './components/worktree-agent-panel.mts';
@@ -56,6 +57,7 @@ interface AppComponents {
   merge: MergeWorkspace;
   reflog: ReflogView;
   conflict: ConflictResolver;
+  operationBanner: OperationBanner;
   gitflow: GitFlow;
   statusBar: StatusBar;
   worktreeAgents: WorktreeAgentPanel;
@@ -181,6 +183,8 @@ export class GitTreeApp {
     this.components.merge = new MergeWorkspace(this);
     this.components.reflog = new ReflogView(this);
     this.components.conflict = new ConflictResolver(this);
+    this.components.operationBanner = new OperationBanner(this);
+    this.components.operationBanner.mount();
     this.components.gitflow = new GitFlow(this);
     this.components.statusBar = new StatusBar();
     this.components.worktreeAgents = new WorktreeAgentPanel(this);
@@ -718,7 +722,28 @@ export class GitTreeApp {
     if (!options.silent) this.showToast(t('common.loading'));
     await this.openRepo(this.state.repo, options);
     this.components.repoTabs.refreshAllSync();
+    await this.syncOperationBanner();
     if (!options.silent) this.showToast(t('feedback.refreshed'), 'success');
+  }
+
+  async syncOperationBanner(): Promise<void> {
+    const repo = this.state.repo;
+    if (!repo) {
+      this.components.operationBanner?.setOperation(null);
+      return;
+    }
+    try {
+      const state = await window.gitTree.getOperationState(repo.path) as { type?: string } | null;
+      // If conflict resolver is visible, let it own the banner
+      const conflictVisible = !this.components.conflict?.container?.classList.contains('is-hidden');
+      if (conflictVisible && state?.type) {
+        this.components.operationBanner?.setOperation(null);
+      } else {
+        this.components.operationBanner?.setOperation(state as never);
+      }
+    } catch {
+      this.components.operationBanner?.setOperation(null);
+    }
   }
 
   async doFetch(): Promise<{ error?: string } | null> {
@@ -784,6 +809,7 @@ export class GitTreeApp {
 
   showWelcome(): void {
     this.state.repo = null;
+    this.components.operationBanner?.setOperation(null);
     this.components.changes?.setActive(false);
     this.components.pullRequests?.setActive(false);
     this.components.welcome.show();
