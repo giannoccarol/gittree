@@ -68,6 +68,7 @@ interface UpdateStatePayload {
   availableVersion?: string;
   progress?: number;
   error?: string;
+  autoInstall?: boolean;
 }
 
 interface InspectorPayload extends Record<string, unknown> {
@@ -421,10 +422,22 @@ export class GitTreeApp {
         const result = await window.gitTree.downloadUpdate() as { error?: string };
         if (result?.error) this.showToast(result.error, 'error');
       } else if (this.updateState?.status === 'downloaded') {
-        await window.gitTree.installUpdate();
+        const result = await window.gitTree.installUpdate() as { error?: string; manual?: boolean };
+        if (result?.error) {
+          this.showToast(result.error, 'error');
+        } else if (result?.manual) {
+          this.showToast(t('updates.manualReady'), 'info');
+        }
       }
     };
     window.gitTree.onUpdateState(state => this.handleUpdateState(state as UpdateStatePayload));
+    window.gitTree.onStaleInstall?.(payload => {
+      const info = payload as { runningVersion?: string; installedVersion?: string };
+      this.showToast(t('updates.staleInstall', {
+        running: info.runningVersion || '?',
+        installed: info.installedVersion || '?'
+      }), 'warning');
+    });
     this.handleUpdateState(await window.gitTree.getUpdateState() as UpdateStatePayload);
   }
 
@@ -451,9 +464,19 @@ export class GitTreeApp {
       icon.className = 'ph ph-circle-notch';
       label.textContent = t('updates.downloading', { progress: state.progress });
     } else if (state.status === 'downloaded') {
-      icon.className = 'ph ph-arrows-clockwise';
-      label.textContent = t('updates.restart');
-      if (previousStatus !== 'downloaded') this.showToast(t('updates.ready'), 'success');
+      if (state.autoInstall === false) {
+        icon.className = 'ph ph-arrow-square-out';
+        label.textContent = t('updates.manualInstall');
+      } else {
+        icon.className = 'ph ph-arrows-clockwise';
+        label.textContent = t('updates.restart');
+      }
+      if (previousStatus !== 'downloaded') {
+        this.showToast(
+          state.autoInstall === false ? t('updates.manualReady') : t('updates.ready'),
+          'success'
+        );
+      }
     } else if (state.status === 'error' && state.error) {
       this.showToast(t('updates.failed', { error: state.error }), 'error');
     }

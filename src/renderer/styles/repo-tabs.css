@@ -186,3 +186,143 @@
 .tab-add-btn {
   flex-shrink: 0;
 }
+
+.repo-tab-overflow {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.repo-tab-overflow-trigger {
+  min-height: 34px;
+  gap: var(--space-1);
+  padding-inline: var(--space-3);
+}
+
+.repo-tab-overflow-trigger.is-active {
+  border-color: var(--primary-muted);
+  background: var(--primary-soft);
+  color: var(--text-primary);
+}
+
+.repo-tab-overflow-count {
+  min-width: 1ch;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+}
+
+.repo-tab-overflow-menu {
+  position: absolute;
+  top: calc(100% + var(--space-1));
+  right: 0;
+  z-index: var(--z-overlay);
+  width: min(360px, 70vw);
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  background: var(--surface-primary);
+  box-shadow: var(--shadow-md);
+}
+
+.repo-tab-overflow-menu.is-hidden {
+  display: none;
+}
+
+.repo-tab-overflow-search {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 34px;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-pill);
+  background: var(--surface-input);
+}
+
+.repo-tab-overflow-search > i {
+  color: var(--text-tertiary);
+}
+
+.repo-tab-overflow-input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: var(--text-sm);
+}
+
+.repo-tab-overflow-list {
+  max-height: min(320px, 50vh);
+  overflow-y: auto;
+  display: grid;
+  gap: var(--space-1);
+}
+
+.repo-tab-overflow-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--space-1) var(--space-2);
+  align-items: center;
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: var(--surface-secondary);
+  color: var(--text-primary);
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+}
+
+.repo-tab-overflow-item:hover,
+.repo-tab-overflow-item:focus-visible {
+  border-color: var(--border-default);
+  background: var(--surface-hover);
+  outline: none;
+}
+
+.repo-tab-overflow-item.is-active {
+  border-color: var(--primary-muted);
+  background: var(--primary-soft);
+}
+
+.repo-tab-overflow-item.is-pinned .repo-tab-overflow-name::before {
+  display: inline-block;
+  margin-right: var(--space-1);
+  color: var(--primary);
+  content: "•";
+}
+
+.repo-tab-overflow-name {
+  min-width: 0;
+  overflow: hidden;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.repo-tab-overflow-path {
+  grid-column: 1 / -1;
+  overflow: hidden;
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.repo-tab-overflow-empty {
+  padding: var(--space-3);
+  color: var(--text-tertiary);
+  font-size: var(--text-sm);
+  text-align: center;
+}
+
+.repo-tab-overflow-item .repo-tab-sync {
+  grid-column: 2;
+  grid-row: 1;
+}

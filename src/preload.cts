@@ -43,6 +43,12 @@ const bridge = {
     return () => ipcRenderer.removeListener('update:state', listener);
   },
 
+  onStaleInstall: (callback: (payload: unknown) => void): (() => void) => {
+    const listener = (_event: unknown, payload: unknown): void => callback(payload);
+    ipcRenderer.on('app:stale-install', listener);
+    return () => ipcRenderer.removeListener('app:stale-install', listener);
+  },
+
   getLog: (repoPath: unknown, maxCount: unknown, branch: unknown): Promise<unknown> =>
     ipcRenderer.invoke('git:log', repoPath, maxCount, branch),
 

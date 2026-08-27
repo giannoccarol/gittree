@@ -1,10 +1,14 @@
 import * as electron from 'electron';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 import { createRequire } from 'node:module';
 import type { UpdateInfo } from 'builder-util-runtime';
 
 // electron-updater is CommonJS: resolve it through require so the real
 // `autoUpdater` binding is available from this ESM module.
 const require = createRequire(import.meta.url);
+
+export const RELEASE_URL = 'https://github.com/giannoccarol/gittree/releases/latest';
 
 interface DownloadProgress {
   percent: number;
@@ -18,6 +22,8 @@ export interface UpdateState {
   availableVersion: string | null;
   progress: number;
   error: string | null;
+  packageType: string;
+  autoInstall: boolean;
 }
 
 interface UpdateWindow {
@@ -42,11 +48,31 @@ interface AutoUpdaterLike {
   quitAndInstall(isSilent: boolean, isForceRunAfter: boolean): void;
 }
 
+export function readPackageType(
+  platform: string = process.platform,
+  resourcesPath: string = process.resourcesPath
+): string {
+  if (platform !== 'linux') return '';
+  if (process.env.APPIMAGE) return 'appimage';
+  if (process.execPath.toLowerCase().endsWith('.appimage')) return 'appimage';
+  try {
+    return fs.readFileSync(path.join(resourcesPath, 'package-type'), 'utf8').trim().toLowerCase();
+  } catch {
+    return 'native';
+  }
+}
+
+export function supportsAutoInstall(platform: string, packageType: string): boolean {
+  if (platform === 'win32' || platform === 'darwin') return true;
+  return packageType === 'appimage';
+}
+
 export class UpdateService {
   window: UpdateWindow | null;
   notify: (channel: string, payload: unknown) => void;
   app: ElectronAppLike;
   autoUpdater: AutoUpdaterLike;
+  platform: string;
   timers: {
     setTimeout: typeof setTimeout;
     setInterval: typeof setInterval;
@@ -54,10 +80,13 @@ export class UpdateService {
     clearTimeout: typeof clearTimeout;
     clearInterval: typeof clearInterval;
   };
+  openExternal: (url: string) => Promise<void>;
   initialized: boolean;
   startupTimer: ReturnType<typeof setTimeout> | null;
   timer: ReturnType<typeof setInterval> | null;
   updaterListeners: Array<[string, (...args: never[]) => void]>;
+  packageType: string;
+  autoInstall: boolean;
   state: UpdateState;
 
   constructor(
@@ -66,6 +95,8 @@ export class UpdateService {
       notify?: (channel: string, payload: unknown) => void;
       app?: ElectronAppLike;
       autoUpdater?: AutoUpdaterLike;
+      platform?: string;
+      openExternal?: (url: string) => Promise<void>;
       setTimeout?: typeof setTimeout;
       setInterval?: typeof setInterval;
       setImmediate?: typeof setImmediate;
@@ -80,6 +111,9 @@ export class UpdateService {
     this.app = dependencies.app || (electron as unknown as { app: ElectronAppLike }).app;
     this.autoUpdater = dependencies.autoUpdater
       || (require('electron-updater') as { autoUpdater: AutoUpdaterLike }).autoUpdater;
+    this.platform = dependencies.platform || process.platform;
+    this.openExternal = dependencies.openExternal
+      || (url => (electron as unknown as { shell: { openExternal(url: string): Promise<void> } }).shell.openExternal(url));
     this.timers = {
       setTimeout: dependencies.setTimeout || setTimeout,
       setInterval: dependencies.setInterval || setInterval,
@@ -91,12 +125,16 @@ export class UpdateService {
     this.startupTimer = null;
     this.timer = null;
     this.updaterListeners = [];
+    this.packageType = readPackageType(this.platform);
+    this.autoInstall = supportsAutoInstall(this.platform, this.packageType);
     this.state = {
       status: this.app.isPackaged ? 'idle' : 'disabled',
       currentVersion: this.app.getVersion(),
       availableVersion: null,
       progress: 0,
-      error: null
+      error: null,
+      packageType: this.packageType,
+      autoInstall: this.autoInstall
     };
   }
 
@@ -117,7 +155,7 @@ export class UpdateService {
     }
 
     this.autoUpdater.autoDownload = false;
-    this.autoUpdater.autoInstallOnAppQuit = true;
+    this.autoUpdater.autoInstallOnAppQuit = this.autoInstall;
     this.autoUpdater.allowDowngrade = false;
     this.autoUpdater.allowPrerelease = this.app.getVersion().includes('-');
 
@@ -213,9 +251,13 @@ export class UpdateService {
     }
   }
 
-  install(): { success: boolean; error?: string } {
+  install(): { success: boolean; error?: string; manual?: boolean } {
     if (this.state.status !== 'downloaded') {
       return { success: false, error: 'No downloaded update is ready to install' };
+    }
+    if (!this.autoInstall) {
+      this.openExternal(RELEASE_URL).catch(() => {});
+      return { success: true, manual: true };
     }
     this.timers.setImmediate(() => this.autoUpdater.quitAndInstall(false, true));
     return { success: true };

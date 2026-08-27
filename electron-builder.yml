@@ -41,6 +41,8 @@ protocols:
 
 artifactName: ${productName}-${version}-${os}-${arch}.${ext}
 
+afterPack: scripts/electron-after-pack.mjs
+
 publish:
   provider: github
   owner: giannoccarol

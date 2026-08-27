@@ -18,6 +18,7 @@ export interface GitTreeBridge {
   downloadUpdate(...args: unknown[]): Promise<unknown>;
   installUpdate(...args: unknown[]): Promise<unknown>;
   onUpdateState(callback: (payload: unknown) => void): () => void;
+  onStaleInstall(callback: (payload: unknown) => void): () => void;
   getLog(...args: unknown[]): Promise<unknown>;
   getGraphPage(...args: unknown[]): Promise<unknown>;
   getDiff(...args: unknown[]): Promise<unknown>;

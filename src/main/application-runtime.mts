@@ -1,7 +1,9 @@
+import { shouldHandoverToSecondInstance } from './single-instance.mts';
+
 interface RuntimeHost {
   on(event: string, listener: (...args: unknown[]) => void): unknown;
   removeListener(event: string, listener: (...args: unknown[]) => void): unknown;
-  requestSingleInstanceLock(): boolean;
+  requestSingleInstanceLock(additionalData?: { version: string }): boolean;
   quit(): void;
   whenReady(): Promise<void>;
 }
@@ -31,6 +33,8 @@ export interface ApplicationRuntimeOptions {
   handleDeepLink: (url: string) => void;
   argv?: string[];
   platform?: string;
+  appVersion?: string;
+  onHandoverRelaunch?: () => void;
   teardown?: () => void | Promise<void>;
 }
 
@@ -44,6 +48,8 @@ export function createApplicationRuntime({
   handleDeepLink,
   argv,
   platform,
+  appVersion = '',
+  onHandoverRelaunch,
   teardown = () => {}
 }: ApplicationRuntimeOptions) {
   const pendingDeepLinks: string[] = [];
@@ -82,14 +88,25 @@ export function createApplicationRuntime({
     window.webContents.once('did-finish-load', listener);
   };
 
+  let handingOverToNewVersion = false;
+
   const start = async () => {
     if (started) return true;
-    if (!host.requestSingleInstanceLock()) {
+    const lockData = appVersion ? { version: appVersion } : undefined;
+    if (!host.requestSingleInstanceLock(lockData)) {
       host.quit();
       return false;
     }
     started = true;
-    listen('second-instance', (_event: unknown, secondArgv: unknown) => {
+    listen('second-instance', (...args: unknown[]) => {
+      if (handingOverToNewVersion) return;
+      const secondArgv = args[1];
+      const additionalData = args.length >= 4 ? args[3] : args[2];
+      if (appVersion && shouldHandoverToSecondInstance(appVersion, additionalData)) {
+        handingOverToNewVersion = true;
+        onHandoverRelaunch?.();
+        return;
+      }
       focusMainWindow();
       dispatchDeepLink(findDeepLink(secondArgv));
     });

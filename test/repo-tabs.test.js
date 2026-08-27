@@ -2,11 +2,14 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 let RepoTabs;
+let splitVisibleAndOverflowRepos;
 try {
   const mod = require('../src/renderer/components/repo-tabs.mts');
   RepoTabs = mod.RepoTabs || mod.default || mod;
+  splitVisibleAndOverflowRepos = mod.splitVisibleAndOverflowRepos;
 } catch {
   RepoTabs = require('../src/renderer/components/repo-tabs');
+  splitVisibleAndOverflowRepos = RepoTabs.splitVisibleAndOverflowRepos;
 }
 
 function createStorage(initial = {}) {
@@ -103,4 +106,20 @@ test('selecting a reordered tab maps its display position to the backend reposit
 
   assert.deepEqual(calls, [1]);
   assert.equal(tabs.app.state.activeRepoIndex, 0);
+});
+
+test('overflow split keeps the active repository visible and moves the rest to the menu', () => {
+  const repos = ['a', 'b', 'c', 'd', 'e', 'f'].map(repo);
+  const { visible, overflow } = splitVisibleAndOverflowRepos(repos, 4, path => path.toLowerCase());
+  assert.equal(visible.length, 4);
+  assert.equal(visible[0].name, 'e');
+  assert.equal(overflow.length, 2);
+  assert.deepEqual(overflow.map(item => item.name), ['d', 'f']);
+});
+
+test('overflow split is empty when four or fewer repositories are open', () => {
+  const repos = ['a', 'b', 'c'].map(repo);
+  const { visible, overflow } = splitVisibleAndOverflowRepos(repos, 1, path => path);
+  assert.equal(visible.length, 3);
+  assert.equal(overflow.length, 0);
 });

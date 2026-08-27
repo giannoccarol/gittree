@@ -47,6 +47,7 @@ import { AiService } from './ai/ai-service.mts';
 import { createPty } from './agents/pty-factory.mts';
 import { createInspectorWindowController } from './inspector-window-controller.mts';
 import { createApplicationRuntime } from './application-runtime.mts';
+import { performHandoverRelaunch, startStaleInstallWatch } from './version-watch.mts';
 import { DiagnosticsExporter } from './diagnostics-exporter.mts';
 import { isWorkingTreeRepository } from './working-tree-repository.mts';
 import { convertWorkspaceProfile } from './workspace-profile-conversion.mts';
@@ -135,12 +136,22 @@ class MainApplication {
   this.processListenersAttached = false;
   this.allowWindowClose = false;
   this.closeConfirmationPending = false;
+  this.stopStaleInstallWatch = () => {};
   this.handleUnhandledRejection = this.handleUnhandledRejection.bind(this);
   this.handleUncaughtException = this.handleUncaughtException.bind(this);
   this.runtime = createApplicationRuntime({
     host: app,
     argv,
     platform,
+    appVersion: app.getVersion(),
+    onHandoverRelaunch: () => {
+      performHandoverRelaunch({
+        app,
+        onBeforeQuit: () => {
+          this.updateService?.destroy();
+        }
+      });
+    },
     initialize: () => this.initialize(),
     createWindow: () => this.createWindow(),
     getMainWindow: () => this.mainWindow,
@@ -216,6 +227,14 @@ class MainApplication {
     });
     this.mainWindow.webContents.once('did-finish-load', () => {
       this.updateService.initialize();
+      if (app.isPackaged) {
+        this.stopStaleInstallWatch?.();
+        this.stopStaleInstallWatch = startStaleInstallWatch({
+          app,
+          runningVersion: app.getVersion(),
+          notify: payload => this.sendToRenderer('app:stale-install', payload)
+        });
+      }
       this.sendWindowState();
     });
     for (const event of ['maximize', 'unmaximize', 'enter-full-screen', 'leave-full-screen']) {
@@ -523,6 +542,8 @@ class MainApplication {
     this.inspectorController = null;
     this.updateService?.destroy?.();
     this.updateService = null;
+    this.stopStaleInstallWatch?.();
+    this.stopStaleInstallWatch = () => {};
     this.hostingService?.destroy?.();
     this.hostingService = null;
     this.agentSessionService?.destroy?.();

@@ -2,12 +2,13 @@ const { EventEmitter } = require('node:events');
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { UpdateService } = require('../src/main/update-service.mts');
+const { UpdateService, supportsAutoInstall } = require('../src/main/update-service.mts');
 
-function createHarness({ packaged = true, version = '1.2.3' } = {}) {
+function createHarness({ packaged = true, version = '1.2.3', platform = 'win32', packageType = '' } = {}) {
   const sent = [];
   const scheduled = [];
   const cleared = [];
+  const opened = [];
   const updater = new EventEmitter();
   updater.checkForUpdates = async () => {};
   updater.downloadUpdate = async () => {};
@@ -20,6 +21,8 @@ function createHarness({ packaged = true, version = '1.2.3' } = {}) {
   const service = new UpdateService(window, {
     app: { isPackaged: packaged, getVersion: () => version },
     autoUpdater: updater,
+    platform,
+    openExternal: async url => { opened.push(url); },
     setTimeout(callback, delay) {
       scheduled.push(['timeout', delay, callback]);
       return timer;
@@ -35,7 +38,11 @@ function createHarness({ packaged = true, version = '1.2.3' } = {}) {
     clearTimeout(value) { cleared.push(['timeout', value]); },
     clearInterval(value) { cleared.push(['interval', value]); }
   });
-  return { service, updater, window, sent, scheduled, cleared };
+  service.packageType = packageType;
+  service.autoInstall = supportsAutoInstall(platform, packageType);
+  service.state.packageType = packageType;
+  service.state.autoInstall = service.autoInstall;
+  return { service, updater, window, sent, scheduled, cleared, opened };
 }
 
 test('unpackaged update service stays disabled and broadcasts safely', async () => {
@@ -88,7 +95,9 @@ test('packaged update service configures updater and follows updater events', ()
     currentVersion: '1.2.3-beta.1',
     availableVersion: null,
     progress: 0,
-    error: 'feed unavailable'
+    error: 'feed unavailable',
+    packageType: '',
+    autoInstall: true
   });
   updater.emit('error', 'offline');
   assert.equal(service.getState().error, 'offline');
@@ -125,4 +134,18 @@ test('update commands expose skip, error, download and install outcomes', async 
   service.setState({ status: 'downloaded' });
   assert.deepEqual(service.install(), { success: true });
   assert.ok(scheduled.some(item => item[0] === 'install' && item[1] === false && item[2] === true));
+});
+
+test('Linux pacman installs open the release page instead of quitAndInstall', () => {
+  const { service, scheduled, opened } = createHarness({
+    platform: 'linux',
+    packageType: 'pacman'
+  });
+  service.initialize();
+  assert.equal(service.getState().autoInstall, false);
+  assert.equal(service.autoUpdater.autoInstallOnAppQuit, false);
+  service.setState({ status: 'downloaded' });
+  assert.deepEqual(service.install(), { success: true, manual: true });
+  assert.equal(opened.length, 1);
+  assert.equal(scheduled.some(item => item[0] === 'install'), false);
 });

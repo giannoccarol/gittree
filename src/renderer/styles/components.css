@@ -144,12 +144,9 @@ input:focus-visible {
 }
 
 :root[data-theme="dark"] .btn-primary:disabled {
-  color: var(--surface-secondary);
+  color: var(--text-tertiary);
   background: var(--surface-secondary);
-}
-
-:root[data-theme="dark"] #btn-commit.btn-primary:not(:hover):not(:disabled) {
-  color: var(--primary);
+  border-color: var(--border-subtle);
 }
 
 .btn-primary:hover {

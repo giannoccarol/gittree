@@ -94,6 +94,37 @@ test('Application runtime dispatches startup deep links only after initializatio
   ]);
 });
 
+test('Application runtime hands over to a newer second instance instead of only focusing', async () => {
+  const calls = [];
+  const listeners = new Map();
+  const runtime = createApplicationRuntime({
+    host: {
+      requestSingleInstanceLock(data) {
+        calls.push(['lock', data]);
+        return true;
+      },
+      whenReady: () => Promise.resolve(),
+      on(event, listener) { listeners.set(event, listener); },
+      removeListener() {},
+      quit() { calls.push('quit'); }
+    },
+    initialize: async () => { calls.push('initialize'); },
+    createWindow: () => { calls.push('create-window'); },
+    getMainWindow: () => null,
+    getWindowCount: () => 1,
+    focusMainWindow: () => { calls.push('focus'); },
+    handleDeepLink: () => {},
+    appVersion: '0.23.0',
+    onHandoverRelaunch: () => { calls.push('handover'); },
+    argv: [],
+    platform: 'linux'
+  });
+
+  assert.equal(await runtime.start(), true);
+  listeners.get('second-instance')({}, [], '/tmp', { version: '0.23.1' });
+  assert.deepEqual(calls, [['lock', { version: '0.23.0' }], 'initialize', 'create-window', 'handover']);
+});
+
 test('Application runtime removes host and renderer listeners before teardown', async () => {
   const listeners = new Map();
   const removed = [];

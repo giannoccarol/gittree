@@ -14,6 +14,7 @@ export const NOTIFICATION_CHANNELS = {
   repoScanComplete: 'repo:scan-complete',
   operationLog: 'operation:log',
   updateState: 'update:state',
+  staleInstall: 'app:stale-install',
   agentTerminalData: 'agent:terminal-data',
   agentAttention: 'agent:attention',
   agentTaskChanged: 'agent:task-changed',
@@ -30,6 +31,11 @@ export interface NotificationPayloads {
   [NOTIFICATION_CHANNELS.repoScanComplete]: Record<string, unknown>;
   [NOTIFICATION_CHANNELS.operationLog]: string;
   [NOTIFICATION_CHANNELS.updateState]: unknown;
+  [NOTIFICATION_CHANNELS.staleInstall]: {
+    runningVersion: string;
+    installedVersion: string;
+    reason: 'version' | 'mtime';
+  };
   [NOTIFICATION_CHANNELS.agentTerminalData]: { taskId: unknown; data: string };
   [NOTIFICATION_CHANNELS.agentAttention]: { taskId: unknown };
   [NOTIFICATION_CHANNELS.agentTaskChanged]: unknown;

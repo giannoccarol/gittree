@@ -1238,8 +1238,14 @@ export class SettingsView {
         statusEl.textContent = `${t('settings.downloading')} ${state.progress}%`;
         break;
       case 'downloaded':
-        statusEl.textContent = t('settings.updateReady');
-        if (label) label.textContent = t('settings.installUpdate');
+        statusEl.textContent = state.autoInstall === false
+          ? t('updates.manualReady')
+          : t('settings.updateReady');
+        if (label) {
+          label.textContent = state.autoInstall === false
+            ? t('updates.manualInstall')
+            : t('settings.installUpdate');
+        }
         break;
       case 'error':
         statusEl.textContent = String(state.error || t('common.error'));

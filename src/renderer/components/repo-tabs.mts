@@ -1,3 +1,32 @@
+export const MAX_VISIBLE_REPO_TABS = 4;
+
+export function splitVisibleAndOverflowRepos<T extends { path: string }>(
+  repos: T[],
+  activeIndex: number,
+  keyFn: (path: string) => string,
+  maxVisible = MAX_VISIBLE_REPO_TABS
+): { visible: T[]; overflow: T[] } {
+  if (repos.length <= maxVisible) {
+    return { visible: [...repos], overflow: [] };
+  }
+  const visible: T[] = [];
+  const seen = new Set<string>();
+  const active = repos[activeIndex];
+  if (active) {
+    visible.push(active);
+    seen.add(keyFn(active.path));
+  }
+  for (const repo of repos) {
+    if (visible.length >= maxVisible) break;
+    const key = keyFn(repo.path);
+    if (seen.has(key)) continue;
+    visible.push(repo);
+    seen.add(key);
+  }
+  const overflow = repos.filter(repo => !seen.has(keyFn(repo.path)));
+  return { visible, overflow };
+}
+
 interface RepoEntry {
   path: string;
   name?: string;
@@ -34,6 +63,13 @@ export class RepoTabs {
   dragOverAfter: boolean;
   _syncRefreshToken: number;
   _syncTimer: ReturnType<typeof setInterval> | null;
+  overflowRoot: HTMLElement | null;
+  overflowMenu: HTMLElement | null;
+  overflowList: HTMLElement | null;
+  overflowSearch: HTMLInputElement | null;
+  overflowFilter: string;
+  overflowOpen: boolean;
+  handleDocumentPointerDown: (event: PointerEvent) => void;
   handleDragStart: (event: DragEvent) => void;
   handleDragOver: (event: DragEvent) => void;
   handleDrop: (event: DragEvent) => void;
@@ -59,6 +95,13 @@ export class RepoTabs {
     this.dragOverAfter = false;
     this._syncRefreshToken = 0;
     this._syncTimer = null;
+    this.overflowRoot = null;
+    this.overflowMenu = null;
+    this.overflowList = null;
+    this.overflowSearch = null;
+    this.overflowFilter = '';
+    this.overflowOpen = false;
+    this.handleDocumentPointerDown = event => this.onDocumentPointerDown(event);
 
     this.handleDragStart = event => this.onDragStart(event);
     this.handleDragOver = event => this.onDragOver(event);
@@ -74,9 +117,16 @@ export class RepoTabs {
     try {
       this.setRepositoryData(await window.gitTree.getRepos() as RepoEntry[]);
     } catch { /* repo list may be unavailable */ }
+    this.ensureOverflowChrome();
     this.render();
     this.refreshAllSync();
     this.startPeriodicSyncRefresh();
+  }
+
+  destroy(): void {
+    this.stopPeriodicSyncRefresh();
+    document.removeEventListener('pointerdown', this.handleDocumentPointerDown);
+    this.closeOverflowMenu();
   }
 
   startPeriodicSyncRefresh(): void {
@@ -126,51 +176,232 @@ export class RepoTabs {
 
   render(): void {
     this.container.replaceChildren();
-    this.container!.classList.toggle('has-pinned', this.pinnedKeys.size > 0);
-    this.repos.forEach((repo, i) => {
-      const el = document.createElement('div');
-      el.className = 'repo-tab';
-      const active = i === this.app.state.activeRepoIndex;
-      const pinned = this.isPinned(repo);
-      if (active) el.classList.add('active');
-      if (pinned) el.classList.add('is-pinned');
-      el.dataset.path = repo.path;
-      el.setAttribute('role', 'tab');
-      el.setAttribute('aria-selected', String(active));
-      el.tabIndex = active ? 0 : -1;
-      el.draggable = true;
+    this.container.classList.toggle('has-pinned', this.pinnedKeys.size > 0);
+    const { visible, overflow } = splitVisibleAndOverflowRepos(
+      this.repos,
+      this.app.state.activeRepoIndex,
+      path => this.repoKey(path)
+    );
+    this.updateOverflowChrome(overflow);
+    for (const repo of visible) {
+      const index = this.repos.findIndex(item => this.sameRepo(item.path, repo.path));
+      if (index >= 0) this.container.appendChild(this.createTabElement(repo, index));
+    }
+  }
 
-      const name = document.createElement('span');
-      name.className = 'repo-tab-name';
-      name.textContent = repo.name || '';
-      name.title = repo.path;
+  createTabElement(repo: RepoEntry, index: number): HTMLElement {
+    const el = document.createElement('div');
+    el.className = 'repo-tab';
+    const active = index === this.app.state.activeRepoIndex;
+    const pinned = this.isPinned(repo);
+    if (active) el.classList.add('active');
+    if (pinned) el.classList.add('is-pinned');
+    el.dataset.path = repo.path;
+    el.setAttribute('role', 'tab');
+    el.setAttribute('aria-selected', String(active));
+    el.tabIndex = active ? 0 : -1;
+    el.draggable = true;
 
-      const sync = this.createSyncIndicator(repo.path);
-      const pin = this.createTabControl(
-        'repo-tab-pin',
-        pinned ? 'tabs.unpin' : 'tabs.pin',
-        'ph-push-pin'
-      );
-      pin.classList.toggle('is-pinned', pinned);
-      pin.setAttribute('aria-pressed', String(pinned));
-      pin.onclick = event => {
-        event.stopPropagation();
-        this.togglePinned(repo.path);
-      };
+    const name = document.createElement('span');
+    name.className = 'repo-tab-name';
+    name.textContent = repo.name || '';
+    name.title = repo.path;
 
-      const close = this.createTabControl('repo-tab-close', 'common.close', 'ph-x');
-      close.onclick = e => { e.stopPropagation(); this.removeRepo(repo.path); };
+    const sync = this.createSyncIndicator(repo.path);
+    const pin = this.createTabControl(
+      'repo-tab-pin',
+      pinned ? 'tabs.unpin' : 'tabs.pin',
+      'ph-push-pin'
+    );
+    pin.classList.toggle('is-pinned', pinned);
+    pin.setAttribute('aria-pressed', String(pinned));
+    pin.onclick = event => {
+      event.stopPropagation();
+      this.togglePinned(repo.path);
+    };
 
-      el.append(name, pin);
-      if (sync) el.appendChild(sync);
-      el.appendChild(close);
-      el.onclick = event => {
-        if ((event.target as HTMLElement).closest('button')) return;
-        this.selectRepo(i);
-      };
-      el.onkeydown = event => this.handleTabKeydown(event, i);
-      this.container.appendChild(el);
+    const close = this.createTabControl('repo-tab-close', 'common.close', 'ph-x');
+    close.onclick = e => { e.stopPropagation(); this.removeRepo(repo.path); };
+
+    el.append(name, pin);
+    if (sync) el.appendChild(sync);
+    el.appendChild(close);
+    el.onclick = event => {
+      if ((event.target as HTMLElement).closest('button')) return;
+      this.selectRepo(index);
+    };
+    el.onkeydown = event => this.handleTabKeydown(event, index);
+    return el;
+  }
+
+  ensureOverflowChrome(): void {
+    if (this.overflowRoot) return;
+    const bar = this.container.parentElement;
+    const addButton = bar?.querySelector('#btn-add-repo-tab');
+    if (!bar || !addButton) return;
+
+    const root = document.createElement('div');
+    root.className = 'repo-tab-overflow';
+    root.hidden = true;
+
+    const trigger = document.createElement('button');
+    trigger.type = 'button';
+    trigger.className = 'btn btn-quiet repo-tab-overflow-trigger';
+    trigger.setAttribute('aria-haspopup', 'listbox');
+    trigger.setAttribute('aria-expanded', 'false');
+    trigger.title = t('tabs.more');
+    trigger.innerHTML = '<i class="ph ph-caret-down" aria-hidden="true"></i><span class="repo-tab-overflow-count"></span>';
+    trigger.onclick = event => {
+      event.stopPropagation();
+      this.toggleOverflowMenu();
+    };
+
+    const menu = document.createElement('div');
+    menu.className = 'repo-tab-overflow-menu is-hidden';
+    menu.setAttribute('role', 'presentation');
+    menu.innerHTML = `
+      <label class="repo-tab-overflow-search search-clearable">
+        <i class="ph ph-magnifying-glass" aria-hidden="true"></i>
+        <input type="search" class="repo-tab-overflow-input" autocomplete="off"
+          placeholder="${t('tabs.overflowSearch')}" aria-label="${t('tabs.overflowSearch')}">
+        <button type="button" class="search-clear-btn is-hidden" aria-label="${t('common.clearSearch')}">
+          <i class="ph ph-x" aria-hidden="true"></i>
+        </button>
+      </label>
+      <div class="repo-tab-overflow-list" role="listbox" aria-label="${t('tabs.overflowList')}"></div>
+    `;
+
+    root.append(trigger, menu);
+    bar.insertBefore(root, addButton);
+    this.overflowRoot = root;
+    this.overflowMenu = menu;
+    this.overflowList = menu.querySelector('.repo-tab-overflow-list');
+    this.overflowSearch = menu.querySelector('.repo-tab-overflow-input');
+    this.overflowSearch!.addEventListener('input', () => {
+      this.overflowFilter = this.overflowSearch!.value.trim().toLowerCase();
+      const clearButton = menu.querySelector('.search-clear-btn');
+      clearButton?.classList.toggle('is-hidden', !this.overflowFilter);
+      this.renderOverflowList(this.getOverflowRepos());
     });
+    this.overflowSearch!.addEventListener('keydown', event => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        this.closeOverflowMenu();
+      }
+    });
+    const clearButton = menu.querySelector<HTMLButtonElement>('.search-clear-btn');
+    clearButton?.addEventListener('click', () => {
+      this.overflowFilter = '';
+      if (this.overflowSearch) this.overflowSearch.value = '';
+      clearButton.classList.add('is-hidden');
+      this.renderOverflowList(this.getOverflowRepos());
+      this.overflowSearch?.focus();
+    });
+    document.addEventListener('pointerdown', this.handleDocumentPointerDown);
+  }
+
+  getOverflowRepos(): RepoEntry[] {
+    return splitVisibleAndOverflowRepos(
+      this.repos,
+      this.app.state.activeRepoIndex,
+      path => this.repoKey(path)
+    ).overflow;
+  }
+
+  updateOverflowChrome(overflow: RepoEntry[]): void {
+    this.ensureOverflowChrome();
+    if (!this.overflowRoot) return;
+    const hasOverflow = overflow.length > 0;
+    this.overflowRoot.hidden = !hasOverflow;
+    const count = this.overflowRoot.querySelector('.repo-tab-overflow-count');
+    if (count) count.textContent = hasOverflow ? String(overflow.length) : '';
+    const activeInOverflow = overflow.some(repo => (
+      this.repos.findIndex(item => this.sameRepo(item.path, repo.path)) === this.app.state.activeRepoIndex
+    ));
+    this.overflowRoot.querySelector('.repo-tab-overflow-trigger')
+      ?.classList.toggle('is-active', activeInOverflow);
+    if (!hasOverflow) this.closeOverflowMenu();
+    else if (this.overflowOpen) this.renderOverflowList(overflow);
+  }
+
+  renderOverflowList(overflow: RepoEntry[]): void {
+    if (!this.overflowList) return;
+    const filter = this.overflowFilter;
+    const filtered = filter
+      ? overflow.filter(repo => (
+        (repo.name || '').toLowerCase().includes(filter)
+          || repo.path.toLowerCase().includes(filter)
+      ))
+      : overflow;
+    this.overflowList.replaceChildren();
+    if (!filtered.length) {
+      const empty = document.createElement('div');
+      empty.className = 'repo-tab-overflow-empty';
+      empty.textContent = t('tabs.overflowEmpty');
+      this.overflowList.appendChild(empty);
+      return;
+    }
+    const fragment = document.createDocumentFragment();
+    for (const repo of filtered) {
+      const index = this.repos.findIndex(item => this.sameRepo(item.path, repo.path));
+      const active = index === this.app.state.activeRepoIndex;
+      const item = document.createElement('button');
+      item.type = 'button';
+      item.className = 'repo-tab-overflow-item';
+      item.setAttribute('role', 'option');
+      item.setAttribute('aria-selected', String(active));
+      if (active) item.classList.add('is-active');
+      if (this.isPinned(repo)) item.classList.add('is-pinned');
+
+      const label = document.createElement('span');
+      label.className = 'repo-tab-overflow-name';
+      label.textContent = repo.name || repo.path;
+      label.title = repo.path;
+
+      const meta = document.createElement('span');
+      meta.className = 'repo-tab-overflow-path';
+      meta.textContent = repo.path;
+
+      item.append(label, meta);
+      const sync = this.createSyncIndicator(repo.path);
+      if (sync) item.appendChild(sync);
+      item.onclick = () => {
+        if (index >= 0) this.selectRepo(index);
+        this.closeOverflowMenu();
+      };
+      fragment.appendChild(item);
+    }
+    this.overflowList.appendChild(fragment);
+  }
+
+  toggleOverflowMenu(): void {
+    if (this.overflowOpen) this.closeOverflowMenu();
+    else this.openOverflowMenu();
+  }
+
+  openOverflowMenu(): void {
+    if (!this.overflowMenu || !this.overflowRoot) return;
+    this.overflowOpen = true;
+    this.overflowMenu.classList.remove('is-hidden');
+    const trigger = this.overflowRoot.querySelector('.repo-tab-overflow-trigger');
+    trigger?.setAttribute('aria-expanded', 'true');
+    this.renderOverflowList(this.getOverflowRepos());
+    this.overflowSearch?.focus();
+  }
+
+  closeOverflowMenu(): void {
+    if (!this.overflowMenu || !this.overflowRoot) return;
+    this.overflowOpen = false;
+    this.overflowMenu.classList.add('is-hidden');
+    const trigger = this.overflowRoot.querySelector('.repo-tab-overflow-trigger');
+    trigger?.setAttribute('aria-expanded', 'false');
+  }
+
+  onDocumentPointerDown(event: PointerEvent): void {
+    if (!this.overflowOpen || !this.overflowRoot) return;
+    const target = event.target as Node | null;
+    if (target && this.overflowRoot.contains(target)) return;
+    this.closeOverflowMenu();
   }
 
   createTabControl(className: string, labelKey: string, iconName: string): HTMLButtonElement {
@@ -507,6 +738,7 @@ if (typeof window !== 'undefined') {
 }
 
 declare const module: { exports: unknown } | undefined;
-if (typeof module !== 'undefined' && (module as { exports?: unknown }).exports) {
-  (module as { exports: unknown }).exports = RepoTabs;
+if (typeof module !== 'undefined' && module.exports) {
+  Object.assign(RepoTabs, { splitVisibleAndOverflowRepos, MAX_VISIBLE_REPO_TABS });
+  module.exports = RepoTabs;
 }

@@ -13,6 +13,8 @@ GitTree utilizza `electron-updater` e i manifest generati da electron-builder ne
 
 Su Windows (`oneClick: false`) l’installazione fresh mantiene il wizard assistito (directory inclusa). Gli aggiornamenti lanciati da `quitAndInstall(false, true)` passano `--updated`: `build/installer.nsh` salta install-mode e finish page, lascia solo la progress bar e riavvia l’app.
 
+Su Linux, `quitAndInstall` è supportato solo per AppImage. I pacchetti Pacman e DEB aprono la pagina GitHub Releases, perché `electron-updater` non può sostituire in sicurezza un’installazione nativa (errore 127). Dopo un aggiornamento, il single-instance lock passa la versione alla nuova istanza: se parte un binario più recente mentre il vecchio processo è ancora attivo, l’istanza precedente si rilancia dal file installato e termina.
+
 Il renderer non riceve URL arbitrari e non può eseguire comandi di aggiornamento raw. Le uniche IPC esposte sono:
 
 - `update:get-state`
