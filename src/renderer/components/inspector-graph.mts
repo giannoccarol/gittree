@@ -75,7 +75,7 @@ export class InspectorGraph {
     this.laneCount = 1;
     this.selectedHash = null;
     this.revision = -1;
-    this.rowHeight = 40;
+    this.rowHeight = 38;
     this.overscan = 12;
     this.renderedRange = [-1, -1];
     this.raf = 0;
@@ -231,8 +231,16 @@ export class InspectorGraph {
       const data = this.rows[index];
       const existing = reusable.get(data.hash);
       const row = existing || spare.pop() || this.createRow();
-      if (!existing || row.dataset.hash !== data.hash) this.updateRow(row, data, index);
-      else this.updateRowPosition(row, data, index);
+      if (
+        !existing ||
+        row.dataset.hash !== data.hash ||
+        row.dataset.graphRevision !== String(this.revision)
+      ) {
+        this.updateRow(row, data, index);
+      } else {
+        this.updateRowPosition(row, data, index);
+      }
+      row.dataset.graphRevision = String(this.revision);
       fragment.appendChild(row);
     }
     this.layer.replaceChildren(fragment);
@@ -248,6 +256,7 @@ export class InspectorGraph {
 
   updateRow(row: HTMLElement, data: GraphRowData, index: number): void {
     row.dataset.hash = data.hash;
+    row.dataset.graphRevision = String(this.revision);
     row.replaceChildren(this.createGraphSvg(data));
     const branches = this.branchNames(data);
     row.setAttribute(

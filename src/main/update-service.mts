@@ -5,6 +5,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { createRequire } from 'node:module';
 import type { UpdateInfo } from 'builder-util-runtime';
+import type { UpdateDownloadedEvent } from 'electron-updater';
 
 // electron-updater is CommonJS: resolve it through require so the real
 // `autoUpdater` binding is available from this ESM module.
@@ -50,7 +51,7 @@ interface AutoUpdaterLike {
   on(event: string, listener: (...args: unknown[]) => void): unknown;
   removeListener(event: string, listener: (...args: unknown[]) => void): unknown;
   checkForUpdates(): Promise<unknown>;
-  downloadUpdate(): Promise<unknown>;
+  downloadUpdate(): Promise<string[]>;
   quitAndInstall(isSilent: boolean, isForceRunAfter: boolean): void;
 }
 
@@ -83,7 +84,7 @@ export function supportsAutoInstall(platform: string, packageType: string): bool
 
 export function supportsCachedPackageInstall(platform: string, packageType: string): boolean {
   if (platform !== 'linux' || packageType === 'appimage') return false;
-  return ['pacman', 'deb', 'rpm', 'native'].includes(packageType);
+  return packageType === 'pacman' || packageType === 'deb';
 }
 
 export function resolveLinuxCacheHome(env: NodeJS.ProcessEnv = process.env): string {
@@ -161,7 +162,8 @@ export function findPendingPackage(
   deps: {
     readdirSync?: typeof fs.readdirSync;
     existsSync?: typeof fs.existsSync;
-  } = {}
+  } = {},
+  expectedType: 'pacman' | 'deb' | 'rpm' | null = null
 ): string | null {
   const readdirSync = deps.readdirSync ?? fs.readdirSync;
   const existsSync = deps.existsSync ?? fs.existsSync;
@@ -171,7 +173,7 @@ export function findPendingPackage(
     try {
       for (const name of readdirSync(dir)) {
         const inferred = inferPackageTypeFromPath(name);
-        if (inferred) return path.join(dir, name);
+        if (inferred && (!expectedType || inferred === expectedType)) return path.join(dir, name);
       }
     } catch {
       continue;
@@ -340,12 +342,16 @@ export class UpdateService {
       progress: Math.max(0, Math.min(100, Math.round(progress.percent || 0))),
       error: null
     }));
-    this.listenToUpdater('update-downloaded', (info: UpdateInfo) => this.setState({
-      status: 'downloaded',
-      availableVersion: info.version,
-      progress: 100,
-      error: null
-    }));
+    this.listenToUpdater('update-downloaded', (info: UpdateDownloadedEvent) => {
+      const pendingPackagePath = this.rememberDownloadedPackage(info.downloadedFile);
+      this.setState({
+        status: 'downloaded',
+        availableVersion: info.version,
+        progress: 100,
+        error: null,
+        ...(pendingPackagePath ? { pendingPackagePath } : {})
+      });
+    });
     this.listenToUpdater('error', (error: unknown) => this.setState({
       status: 'error',
       error: error instanceof Error ? error.message : String(error)
@@ -378,7 +384,12 @@ export class UpdateService {
 
   findCachedPendingPackage(): string | null {
     if (!this.cachedInstall || this.platform !== 'linux') return null;
-    const pending = findPendingPackage(listPendingPackageDirs(this.cacheHome, this.updaterCacheDirNames));
+    const expectedType = resolvePackageTypeForInstall(this.packageType, null);
+    const pending = findPendingPackage(
+      listPendingPackageDirs(this.cacheHome, this.updaterCacheDirNames),
+      {},
+      expectedType
+    );
     if (!pending) return null;
     if (!pendingPackageNeedsInstall(pending, this.app.getVersion())) return null;
     return pending;
@@ -387,7 +398,8 @@ export class UpdateService {
   reconcilePendingState(): void {
     if (!this.cachedInstall || this.platform !== 'linux') return;
     const pendingDirs = listPendingPackageDirs(this.cacheHome, this.updaterCacheDirNames);
-    const rawPending = findPendingPackage(pendingDirs);
+    const expectedType = resolvePackageTypeForInstall(this.packageType, null);
+    const rawPending = findPendingPackage(pendingDirs, {}, expectedType);
     if (rawPending && !pendingPackageNeedsInstall(rawPending, this.app.getVersion())) {
       clearPendingPackages(pendingDirs);
       this.pendingPackagePath = null;
@@ -408,7 +420,7 @@ export class UpdateService {
       : null;
     this.pendingPackagePath = pending;
     if (!pending) return;
-    if (['downloading', 'checking', 'available'].includes(this.state.status)) return;
+    if (['downloading', 'checking', 'available', 'installing'].includes(this.state.status)) return;
     if (this.state.status !== 'downloaded') {
       this.setState({
         status: 'downloaded',
@@ -426,6 +438,20 @@ export class UpdateService {
 
   syncPendingState(): void {
     this.reconcilePendingState();
+  }
+
+  rememberDownloadedPackage(paths: unknown): string | null {
+    if (!this.cachedInstall) return null;
+    const expectedType = resolvePackageTypeForInstall(this.packageType, null);
+    const candidates = Array.isArray(paths) ? paths : [paths];
+    for (const candidate of candidates) {
+      if (typeof candidate !== 'string' || !candidate) continue;
+      const inferredType = inferPackageTypeFromPath(candidate);
+      if (!inferredType || inferredType !== expectedType || !fs.existsSync(candidate)) continue;
+      this.pendingPackagePath = candidate;
+      return candidate;
+    }
+    return null;
   }
 
   getState(): UpdateState {
@@ -464,7 +490,19 @@ export class UpdateService {
       return { success: true, manual: true, state: this.getState() };
     }
     try {
-      await this.autoUpdater.downloadUpdate();
+      const downloadedPaths = await this.autoUpdater.downloadUpdate();
+      if (this.cachedInstall) {
+        const pending = this.rememberDownloadedPackage(downloadedPaths) ?? this.findCachedPendingPackage();
+        if (!pending) {
+          throw new Error(`The downloaded update does not contain a ${this.packageType} package`);
+        }
+        this.setState({
+          status: 'downloaded',
+          progress: 100,
+          error: null,
+          pendingPackagePath: pending
+        });
+      }
       return { success: true, state: this.getState() };
     } catch (error) {
       this.setState({ status: 'error', error: (error as Error).message });
@@ -478,13 +516,11 @@ export class UpdateService {
     if (this.cachedInstall) {
       const pending = this.pendingPackagePath ?? this.findCachedPendingPackage();
       if (!pending) {
-        if (this.state.status === 'downloaded') {
-          await this.openExternal(RELEASE_URL);
-          return { success: true, manual: true, state: this.getState() };
-        }
+        const error = 'The downloaded package is missing. Download the update again.';
+        this.setState({ status: 'error', error, pendingPackagePath: null });
         return {
           success: false,
-          error: 'No downloaded update is ready to install',
+          error,
           state: this.getState()
         };
       }
@@ -493,6 +529,7 @@ export class UpdateService {
         return { success: false, error: 'Unsupported package format', state: this.getState() };
       }
       const command = buildCachedInstallCommand(packageType, pending);
+      this.setState({ status: 'installing', error: null, pendingPackagePath: pending });
       try {
         const exitCode = await this.runInstallCommand(command);
         if (exitCode === 0) {
@@ -508,15 +545,19 @@ export class UpdateService {
           this.app.quit();
           return { success: true, restartRequired: true, state: this.getState() };
         }
+        const error = `Package install exited with code ${exitCode}`;
+        this.setState({ status: 'downloaded', error, pendingPackagePath: pending });
         return {
           success: false,
-          error: `Package install exited with code ${exitCode}`,
+          error,
           state: this.getState()
         };
       } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        this.setState({ status: 'downloaded', error: message, pendingPackagePath: pending });
         return {
           success: false,
-          error: error instanceof Error ? error.message : String(error),
+          error: message,
           state: this.getState()
         };
       }

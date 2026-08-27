@@ -193,6 +193,7 @@ test('update commands expose skip, error, download and install outcomes', async 
 test('cached package helpers resolve pending files and install commands', () => {
   assert.equal(supportsCachedPackageInstall('linux', 'pacman'), true);
   assert.equal(supportsCachedPackageInstall('linux', 'appimage'), false);
+  assert.equal(supportsCachedPackageInstall('linux', 'native'), false);
   assert.equal(
     buildCachedInstallCommand('pacman', '/tmp/GitTree-1.0.0-linux-x64.pacman').join(' '),
     'pkexec pacman -U --noconfirm /tmp/GitTree-1.0.0-linux-x64.pacman'
@@ -204,6 +205,34 @@ test('cached package helpers resolve pending files and install commands', () => 
   fs.writeFileSync(path.join(pending, 'GitTree-1.0.0-linux-x64.pacman'), 'x');
   assert.equal(findPendingPackage(pending), path.join(pending, 'GitTree-1.0.0-linux-x64.pacman'));
   fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('Linux pacman keeps the verified path returned by electron-updater', async () => {
+  const cacheHome = fs.mkdtempSync(path.join(os.tmpdir(), 'gittree-cache-'));
+  const { service, updater, opened } = createHarness({
+    platform: 'linux',
+    packageType: 'pacman',
+    cacheHome
+  });
+  service.initialize();
+  service.setState({ status: 'available', availableVersion: '1.3.0' });
+
+  const alternatePending = path.join(cacheHome, 'custom-updater-cache', 'pending');
+  const downloadedPath = path.join(alternatePending, 'GitTree-1.3.0-linux-x64.pacman');
+  updater.downloadUpdate = async () => {
+    fs.mkdirSync(alternatePending, { recursive: true });
+    fs.writeFileSync(downloadedPath, 'verified package');
+    updater.emit('update-downloaded', { version: '1.3.0', downloadedFile: downloadedPath });
+    return [downloadedPath];
+  };
+
+  const result = await service.download();
+  assert.equal(result.success, true);
+  assert.equal(result.state.status, 'downloaded');
+  assert.equal(result.state.pendingPackagePath, downloadedPath);
+  assert.equal(opened.length, 0);
+
+  fs.rmSync(cacheHome, { recursive: true, force: true });
 });
 
 test('Linux pacman downloads through electron-updater and installs from cache', async () => {
@@ -271,7 +300,7 @@ test('Linux cached install ignores pending package already at current version', 
   fs.rmSync(cacheHome, { recursive: true, force: true });
 });
 
-test('Linux cached install falls back to GitHub when no pending package exists', async () => {
+test('Linux cached install reports a missing package instead of opening GitHub', async () => {
   const cacheHome = fs.mkdtempSync(path.join(os.tmpdir(), 'gittree-cache-'));
   const { service, opened } = createHarness({
     platform: 'linux',
@@ -279,7 +308,35 @@ test('Linux cached install falls back to GitHub when no pending package exists',
     cacheHome
   });
   service.setState({ status: 'downloaded' });
-  assert.deepEqual(await service.install(), { success: true, manual: true, state: service.getState() });
-  assert.equal(opened.length, 1);
+  const result = await service.install();
+  assert.equal(result.success, false);
+  assert.match(result.error, /missing/i);
+  assert.equal(result.state.status, 'error');
+  assert.equal(opened.length, 0);
+  fs.rmSync(cacheHome, { recursive: true, force: true });
+});
+
+test('Linux cached install exposes progress and keeps retry available after failure', async () => {
+  const cacheHome = fs.mkdtempSync(path.join(os.tmpdir(), 'gittree-cache-'));
+  const { service, sent } = createHarness({
+    platform: 'linux',
+    packageType: 'pacman',
+    cacheHome,
+    pendingPackage: 'GitTree-1.3.0-linux-x64.pacman'
+  });
+  service.initialize();
+  service.spawnProcess = () => {
+    const child = new EventEmitter();
+    queueMicrotask(() => child.emit('close', 126));
+    return child;
+  };
+
+  const result = await service.install();
+  assert.equal(result.success, false);
+  assert.equal(result.state.status, 'downloaded');
+  assert.match(result.state.error, /126/);
+  assert.ok(sent.some(([, state]) => state.status === 'installing'));
+  assert.ok(sent.some(([, state]) => state.status === 'downloaded' && /126/.test(state.error || '')));
+
   fs.rmSync(cacheHome, { recursive: true, force: true });
 });

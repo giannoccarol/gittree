@@ -79,6 +79,8 @@ export class GraphView {
   overscan: number;
   raf: number;
   renderedRange: [number, number];
+  renderedDataRevision: number;
+  resizeObserver: ResizeObserver | null;
   columnStorageKey: string;
   columnDefinitions: Record<string, ColumnDefinition>;
   columnWidths: Record<string, number>;
@@ -127,6 +129,8 @@ export class GraphView {
     this.overscan = 20;
     this.raf = 0;
     this.renderedRange = [-1, -1];
+    this.renderedDataRevision = -1;
+    this.resizeObserver = null;
     this.columnStorageKey = 'gittree.history.columns';
     this.columnDefinitions = {
       graph: { default: 84, min: 64, max: 240 },
@@ -155,6 +159,13 @@ export class GraphView {
     this.setupColumnResize();
     this.setupHistoryControls();
     this.container.addEventListener('scroll', () => this.scheduleViewport());
+    if (typeof ResizeObserver === 'function') {
+      this.resizeObserver = new ResizeObserver(() => {
+        this.renderedRange = [-1, -1];
+        this.scheduleViewport();
+      });
+      this.resizeObserver.observe(this.container);
+    }
     this.container.addEventListener('click', event => {
       const row = (event.target as HTMLElement).closest('.graph-row') as HTMLElement | null;
       if (row?.dataset.hash) this.selectFromEvent(row.dataset.hash, event);
@@ -192,16 +203,37 @@ export class GraphView {
     this.layoutState = { lanes: [] };
     this.laneCount = 1;
     this.renderedRange = [-1, -1];
+    this.renderedDataRevision = -1;
     this.dataRevision += 1;
     this.app.syncInspectorWorkspace?.();
     if (!keepContent) {
       this.layer.replaceChildren(this.emptyState('ph-circle-notch', t('history.loading')));
     }
     this.body.style.height = '100%';
-    const loaded = await this.loadNextPage(generation, { render: !preserveViewport });
-    if (!loaded || generation !== this.generation || !preserveViewport) return;
-    this.restoreViewportState(viewportState!);
-    this.renderViewport();
+    const loaded = await this.loadNextPage(generation, { render: false });
+    if (!loaded || generation !== this.generation) return;
+    if (preserveViewport) {
+      await this.ensureAnchorLoaded(viewportState!.anchorHash, generation);
+      if (generation !== this.generation) return;
+      this.restoreViewportState(viewportState!);
+    }
+    this.renderViewport(true);
+  }
+
+  async ensureAnchorLoaded(anchorHash: string | null, generation = this.generation): Promise<void> {
+    if (!anchorHash || generation !== this.generation) return;
+    const maxPages = 200;
+    let pagesLoaded = 0;
+    while (
+      generation === this.generation &&
+      this.hasMore &&
+      pagesLoaded < maxPages &&
+      !graphAnchorIsLoaded(anchorHash, this.rows, this.visibleRows)
+    ) {
+      const loaded = await this.loadNextPage(generation, { render: false });
+      if (!loaded) return;
+      pagesLoaded += 1;
+    }
   }
 
   async loadNextPage(generation = this.generation, options: { render?: boolean } = {}): Promise<boolean> {
@@ -320,6 +352,7 @@ export class GraphView {
     this.visibleRows = this.sortRows(rows);
     const height = Math.max(this.visibleRows.length * this.rowHeight, this.container!.clientHeight - 36);
     this.body.style.height = `${height}px`;
+    this.renderedRange = [-1, -1];
   }
 
   sortRows(rows: GraphLayoutRow[]): GraphLayoutRow[] {
@@ -347,8 +380,9 @@ export class GraphView {
     this.raf = requestAnimationFrame(() => {
       this.raf = 0;
       this.renderViewport();
+      if (this.loading) return;
       const available = Math.max(1, this.container!.scrollHeight - this.container!.clientHeight);
-      if (this.container!.scrollTop / available >= 0.85) this.loadNextPage();
+      if (this.container!.scrollTop / available >= 0.85) void this.loadNextPage();
     });
   }
 
@@ -364,8 +398,14 @@ export class GraphView {
     const start = Math.max(0, Math.floor(viewportTop / this.rowHeight) - this.overscan);
     const count = Math.ceil(this.container!.clientHeight / this.rowHeight) + this.overscan * 2;
     const end = Math.min(this.visibleRows.length, start + count);
-    if (!force && start === this.renderedRange[0] && end === this.renderedRange[1]) return;
+    if (
+      !force &&
+      start === this.renderedRange[0] &&
+      end === this.renderedRange[1] &&
+      this.renderedDataRevision === this.dataRevision
+    ) return;
     this.renderedRange = [start, end];
+    this.renderedDataRevision = this.dataRevision;
 
     const reusableRows = new Map<string, HTMLElement>();
     const spareRows: HTMLElement[] = [];
@@ -387,16 +427,13 @@ export class GraphView {
       const layoutRow = this.visibleRows[index];
       const hash = layoutRow.commit.hash;
       const reusable = reusableRows.get(hash);
-      const row = reusable || spareRows.pop() || this.createRow(layoutRow, index);
-      if (reusable) {
-        const selected = this.selectedHashes.has(hash);
-        row.style.transform = `translateY(${index * this.rowHeight}px)`;
-        row.classList.toggle('selected', selected);
-        row.setAttribute('aria-selected', String(selected));
-      } else if (row.dataset.hash !== hash) {
+      const row = reusable || spareRows.pop();
+      if (row) {
         this.updateRow(row, layoutRow, index);
+        fragment.appendChild(row);
+      } else {
+        fragment.appendChild(this.createRow(layoutRow, index));
       }
-      fragment.appendChild(row);
     }
     this.layer.replaceChildren(fragment);
   }
@@ -432,6 +469,7 @@ export class GraphView {
     const selected = this.selectedHashes.has(commit.hash);
     row.className = `graph-row${selected ? ' selected' : ''}`;
     row.dataset.hash = commit.hash;
+    row.dataset.graphRevision = String(this.dataRevision);
     row.style.transform = `translateY(${index * this.rowHeight}px)`;
     row.setAttribute('aria-selected', String(selected));
 
@@ -468,6 +506,7 @@ export class GraphView {
     const namespace = 'http://www.w3.org/2000/svg';
     const width = Math.min(240, Math.max(64, this.laneCount * 18 + 20));
     const x = (lane: number): number => 12 + lane * 18;
+    const midpoint = this.rowHeight / 2;
     const svg = document.createElementNS(namespace, 'svg');
     svg.setAttribute('class', 'graph-lanes');
     svg.setAttribute('viewBox', `0 0 ${width} ${this.rowHeight}`);
@@ -480,14 +519,14 @@ export class GraphView {
 
     const circle = document.createElementNS(namespace, 'circle');
     circle.setAttribute('cx', String(x(row.lane)));
-    circle.setAttribute('cy', '19');
+    circle.setAttribute('cy', String(midpoint));
     circle.setAttribute('r', String(row.parents.length > 1 ? 5 : 4));
     circle.setAttribute('class', `graph-lane-node graph-lane-${row.lane % 8}${row.parents.length > 1 ? ' is-merge' : ''}`);
     svg.appendChild(circle);
     if ((this.refsByHash.get(row.commit.hash) || []).some(ref => ref.type === 'head')) {
       const head = document.createElementNS(namespace, 'circle');
       head.setAttribute('cx', String(x(row.lane)));
-      head.setAttribute('cy', '19');
+      head.setAttribute('cy', String(midpoint));
       head.setAttribute('r', '8');
       head.setAttribute('class', 'graph-head-indicator');
       svg.appendChild(head);
@@ -642,6 +681,8 @@ export class GraphView {
       this.container.style.setProperty(`--graph-column-${column}`, `${width}px`);
     }
     this.updateColumnHandleLabels();
+    this.renderedRange = [-1, -1];
+    if (this.visibleRows.length) this.scheduleViewport();
   }
 
   persistColumnWidths(): void {
@@ -876,11 +917,21 @@ export class GraphView {
   }
 }
 
+export function graphAnchorIsLoaded(
+  anchorHash: string | null,
+  rows: Array<{ commit: { hash: string } }>,
+  visibleRows: Array<{ commit: { hash: string } }>
+): boolean {
+  if (!anchorHash) return true;
+  return visibleRows.some(row => row.commit.hash === anchorHash) ||
+    rows.some(row => row.commit.hash === anchorHash);
+}
+
 if (typeof window !== 'undefined') {
   (window as unknown as { GraphView: typeof GraphView }).GraphView = GraphView;
 }
 
 declare const module: { exports: unknown } | undefined;
 if (typeof module !== 'undefined' && (module as { exports?: unknown }).exports) {
-  (module as { exports: unknown }).exports = GraphView;
+  (module as { exports: unknown }).exports = { GraphView, graphAnchorIsLoaded };
 }

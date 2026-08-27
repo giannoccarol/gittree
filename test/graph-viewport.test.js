@@ -1,11 +1,15 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 let GraphView;
+let graphAnchorIsLoaded;
 try {
   const mod = require('../src/renderer/components/graph-view.mts');
   GraphView = mod.GraphView || mod.default || mod;
+  graphAnchorIsLoaded = mod.graphAnchorIsLoaded;
 } catch {
-  GraphView = require('../src/renderer/components/graph-view');
+  const mod = require('../src/renderer/components/graph-view');
+  GraphView = mod.GraphView || mod.default || mod;
+  graphAnchorIsLoaded = mod.graphAnchorIsLoaded;
 }
 
 function createView(scrollTop) {
@@ -76,4 +80,57 @@ test('inspector snapshot exposes only graph geometry and tooltip metadata', () =
       refs: [{ shortName: 'main', type: 'branch' }]
     }]
   });
+});
+
+test('graphAnchorIsLoaded finds anchors in visible or full topology rows', () => {
+  const rows = [{ commit: { hash: 'deep' } }];
+  const visible = [{ commit: { hash: 'top' } }];
+  assert.equal(graphAnchorIsLoaded(null, rows, visible), true);
+  assert.equal(graphAnchorIsLoaded('top', rows, visible), true);
+  assert.equal(graphAnchorIsLoaded('deep', rows, visible), true);
+  assert.equal(graphAnchorIsLoaded('missing', rows, visible), false);
+});
+
+test('ensureAnchorLoaded loads pages until the anchor commit is present', async () => {
+  const view = Object.create(GraphView.prototype);
+  view.generation = 1;
+  view.hasMore = true;
+  view.rows = [];
+  view.visibleRows = [];
+  let calls = 0;
+  view.loadNextPage = async () => {
+    calls += 1;
+    if (calls === 1) {
+      view.rows = [{ commit: { hash: 'page-1' } }];
+      view.visibleRows = [...view.rows];
+      view.hasMore = true;
+      return true;
+    }
+    view.rows.push({ commit: { hash: 'anchor-commit' } });
+    view.visibleRows = [...view.rows];
+    view.hasMore = false;
+    return true;
+  };
+
+  await view.ensureAnchorLoaded('anchor-commit', 1);
+
+  assert.equal(calls, 2);
+  assert.equal(graphAnchorIsLoaded('anchor-commit', view.rows, view.visibleRows), true);
+});
+
+test('ensureAnchorLoaded stops when generation changes', async () => {
+  const view = Object.create(GraphView.prototype);
+  view.generation = 2;
+  view.hasMore = true;
+  view.rows = [];
+  view.visibleRows = [];
+  let calls = 0;
+  view.loadNextPage = async () => {
+    calls += 1;
+    return true;
+  };
+
+  await view.ensureAnchorLoaded('missing', 1);
+
+  assert.equal(calls, 0);
 });

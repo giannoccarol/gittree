@@ -13,6 +13,8 @@ test('update-service: cached install only on Linux native packages', () => {
   assert.equal(supportsCachedPackageInstall('linux', 'pacman'), true);
   assert.equal(supportsCachedPackageInstall('linux', 'deb'), true);
   assert.equal(supportsCachedPackageInstall('linux', 'appimage'), false);
+  assert.equal(supportsCachedPackageInstall('linux', 'rpm'), false);
+  assert.equal(supportsCachedPackageInstall('linux', 'native'), false);
   assert.equal(supportsCachedPackageInstall('win32', 'pacman'), false);
 });
 
