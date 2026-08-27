@@ -181,6 +181,7 @@ export class BranchListView {
         this.selectedBranchKeys.clear();
         this.selectionAnchorKey = null;
         this.shouldReveal = true;
+        this.updateBatchBar();
       }
       this.render();
     } catch {

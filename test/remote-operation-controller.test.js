@@ -53,6 +53,7 @@ function createHarness(overrides = {}) {
     translate: key => key,
     notify: (message, type) => calls.push(['notify', message, type]),
     getCurrentRepository: () => overrides.currentRepo || repo,
+    getPushContext: overrides.getPushContext,
     isCurrentRepository: path => (overrides.currentRepo || repo).path === path,
     repoTabs: {
       setSyncBusy: (path, busy) => calls.push(['tabBusy', path, busy]),
@@ -113,6 +114,48 @@ test('remote failure skips view refresh and restores every toolbar button', asyn
   assert.equal(Object.values(buttons).every(button => !button.disabled), true);
   assert.equal(buttons['btn-fetch'].attributes['aria-busy'], 'false');
   assert.equal(buttons['btn-fetch'].icon.className, 'ph ph-cloud-arrow-down');
+});
+
+test('push uses set-upstream when the current branch has no tracking branch', async () => {
+  const pushCalls = [];
+  const { controller } = createHarness({
+    bridge: {
+      push: async (...args) => {
+        pushCalls.push(args);
+        return { success: true };
+      }
+    },
+    getPushContext: () => ({
+      remote: 'origin',
+      branch: 'feature/new',
+      setUpstream: true
+    })
+  });
+
+  await controller.run('push');
+
+  assert.deepEqual(pushCalls, [['C:\\repo', 'origin', 'feature/new', true]]);
+});
+
+test('push keeps upstream when the current branch is already tracked', async () => {
+  const pushCalls = [];
+  const { controller } = createHarness({
+    bridge: {
+      push: async (...args) => {
+        pushCalls.push(args);
+        return { success: true };
+      }
+    },
+    getPushContext: () => ({
+      remote: 'origin',
+      branch: 'main',
+      setUpstream: false
+    })
+  });
+
+  await controller.run('push');
+
+  assert.deepEqual(pushCalls, [['C:\\repo', 'origin', 'main', false]]);
 });
 
 test('running operation exposes one honest busy state and blocks concurrent actions', async () => {

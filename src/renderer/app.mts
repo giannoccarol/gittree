@@ -211,6 +211,18 @@ export class GitTreeApp {
       translate: t,
       notify: (message, type) => this.showToast(message, type),
       getCurrentRepository: () => this.state.repo,
+      getPushContext: () => {
+        const currentBranchMetadata = (this.components.branchList.metadata?.branches || [])
+          .find(branch => branch.kind === 'local' && branch.current);
+        if (!currentBranchMetadata) return null;
+        const upstream = currentBranchMetadata.upstream;
+        const remote = upstream?.split('/')[0] || 'origin';
+        return {
+          remote,
+          branch: currentBranchMetadata.name,
+          setUpstream: !upstream
+        };
+      },
       isCurrentRepository: repoPath => this.isCurrentRepo(repoPath),
       repoTabs: this.components.repoTabs,
       createLoadSession: repoPath => new RepositoryLoadSession(window.gitTree, repoPath),

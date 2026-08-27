@@ -407,12 +407,12 @@
   box-shadow: inset 2px 0 0 var(--primary);
 }
 
-/* Batch operations dock: floats above the sidebar bottom without reflowing it */
+/* Batch operations dock: floats above the pinned sidebar sections */
 .batch-operations-footer {
   position: absolute;
   left: var(--space-3);
   right: var(--space-3);
-  bottom: var(--space-3);
+  bottom: calc(100% + var(--space-2));
   z-index: var(--z-overlay);
   pointer-events: none;
   opacity: 0;

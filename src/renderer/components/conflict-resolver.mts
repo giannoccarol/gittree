@@ -1137,7 +1137,12 @@ export class ConflictResolver {
     this.hide();
     if (pushContext) {
       this.app.showToast(t('mergeWorkspace.pushing'), 'info');
-      const pushResult = await window.gitTree.push(repo.path, pushContext.remote, pushContext.branch) as { error?: string };
+      const pushResult = await window.gitTree.push(
+        repo.path,
+        pushContext.remote,
+        pushContext.branch,
+        true
+      ) as { error?: string };
       if (pushResult?.error) {
         this.app.showToast(t('mergeWorkspace.pushFailed', { error: pushResult.error }), 'error');
       } else {

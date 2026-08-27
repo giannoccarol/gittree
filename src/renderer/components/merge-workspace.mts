@@ -520,7 +520,7 @@ export class MergeWorkspace {
     const pushContext = this.pendingPush;
     const remoteName = pushContext?.remote || 'origin';
     const branchName = pushContext?.branch || this.mergeData!.target;
-    const pushResult = await window.gitTree.push(repo.path, remoteName, branchName) as { error?: string };
+    const pushResult = await window.gitTree.push(repo.path, remoteName, branchName, true) as { error?: string };
     this.setPushing(false);
     this.hide();
     this.pendingPush = null;

@@ -1,8 +1,19 @@
 type RemoteBridge = {
   fetch: (repoPath: string) => Promise<unknown>;
   pull: (repoPath: string) => Promise<unknown>;
-  push: (repoPath: string) => Promise<unknown>;
+  push: (
+    repoPath: string,
+    remote?: string,
+    branch?: string | null,
+    setUpstream?: boolean
+  ) => Promise<unknown>;
 };
+
+interface PushContext {
+  remote: string;
+  branch: string;
+  setUpstream: boolean;
+}
 
 type OperationAction = 'fetch' | 'pull' | 'push';
 
@@ -42,6 +53,7 @@ export interface RemoteOperationDependencies {
   translate: (key: string) => string;
   notify: (message: string, type?: string) => void;
   getCurrentRepository: () => { path?: string } | null;
+  getPushContext?: () => PushContext | null;
   isCurrentRepository: (repoPath?: string) => boolean;
   repoTabs: {
     setSyncBusy: (repoPath: string, busy: boolean) => void;
@@ -69,6 +81,7 @@ export class RemoteOperationController {
   translate: (key: string) => string;
   notify: (message: string, type?: string) => void;
   getCurrentRepository: () => { path?: string } | null;
+  getPushContext?: () => PushContext | null;
   isCurrentRepository: (repoPath?: string) => boolean;
   repoTabs: RemoteOperationDependencies['repoTabs'];
   createLoadSession: (repoPath: string) => unknown;
@@ -82,6 +95,7 @@ export class RemoteOperationController {
     translate,
     notify,
     getCurrentRepository,
+    getPushContext,
     isCurrentRepository,
     repoTabs,
     createLoadSession,
@@ -92,6 +106,7 @@ export class RemoteOperationController {
     this.translate = translate;
     this.notify = notify;
     this.getCurrentRepository = getCurrentRepository;
+    this.getPushContext = getPushContext;
     this.isCurrentRepository = isCurrentRepository;
     this.repoTabs = repoTabs;
     this.createLoadSession = createLoadSession;
@@ -107,24 +122,37 @@ export class RemoteOperationController {
   async run(action: OperationAction): Promise<{ error?: string } | null> {
     const config = operations[action];
     const repo = this.getCurrentRepository();
-    if (!config || !repo || this.busy) return null;
+    if (!config || !repo?.path || this.busy) return null;
 
-    const operation: CurrentOperation = { action, repoPath: repo.path, external: false };
+    const repoPath = repo.path;
+    const operation: CurrentOperation = { action, repoPath, external: false };
     this.currentOperation = operation;
     this.visualGeneration += 1;
     this.syncUI();
-    this.repoTabs.setSyncBusy(String(repo.path), true);
+    this.repoTabs.setSyncBusy(repoPath, true);
     this.notify(this.translate(config.progressKey));
 
     let outcome = 'error';
     let result: { error?: string } | undefined;
     try {
-      result = await (this.bridge[action] as (repoPath?: string) => Promise<{ error?: string }>)(repo.path);
+      if (action === 'push') {
+        const pushContext = this.getPushContext?.();
+        result = pushContext
+          ? await this.bridge.push(
+            repoPath,
+            pushContext.remote,
+            pushContext.branch,
+            pushContext.setUpstream
+          ) as { error?: string }
+          : await this.bridge.push(repoPath) as { error?: string };
+      } else {
+        result = await (this.bridge[action] as (repoPath?: string) => Promise<{ error?: string }>)(repoPath);
+      }
       if (result?.error) {
         this.notify(result.error, 'error');
         return result;
       }
-      await this.refreshAfter(action, String(repo.path));
+      await this.refreshAfter(action, repoPath);
       this.notify(this.translate(config.successKey), 'success');
       outcome = 'success';
       return result;
@@ -133,10 +161,10 @@ export class RemoteOperationController {
       this.notify(String(result.error), 'error');
       return result;
     } finally {
-      this.repoTabs.setSyncBusy(String(repo.path), false);
+      this.repoTabs.setSyncBusy(repoPath, false);
       if (this.currentOperation === operation) this.currentOperation = null;
       this.syncUI();
-      if (this.isCurrentRepository(repo.path)) {
+      if (this.isCurrentRepository(repoPath)) {
         await this.showCompletion(config.buttonId, outcome);
       }
     }
