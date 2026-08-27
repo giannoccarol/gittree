@@ -1,3 +1,10 @@
+## [0.26.1](https://github.com/giannoccarol/gittree/compare/v0.26.0...v0.26.1) (2026-08-27)
+
+
+### Bug Fixes
+
+* **updates:** make Linux package install retryable ([50985a9](https://github.com/giannoccarol/gittree/commit/50985a9726c75ac66d38d17fef343e37b130791a))
+
 # [0.26.0](https://github.com/giannoccarol/gittree/compare/v0.25.0...v0.26.0) (2026-08-27)
 
 
