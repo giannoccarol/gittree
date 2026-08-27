@@ -31,6 +31,7 @@ import { DialogService } from './dialog-service.mts';
 import { ToastService } from './toast-service.mts';
 import { Theme } from './theme.mts';
 import { HtmlEncoder } from './html-encoder.mts';
+import { initAiFeatureGate } from './ai-feature-gate.mts';
 
 interface AppState {
   repo: RepositoryEntry | null;
@@ -141,6 +142,7 @@ export class GitTreeApp {
   }
 
   async init(): Promise<void> {
+    initAiFeatureGate();
     this.components.welcome = new WelcomeScreen();
     this.components.repoTabs = new RepoTabs(byId('repo-tab-list'), this, {
       storage: localStorage,

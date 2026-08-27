@@ -1,4 +1,5 @@
 import type { GitTreeApp } from '../app.mts';
+import { isAgentsFeatureEnabled } from '../ai-feature-gate.mts';
 import type { LayoutFile } from './diff-layout.mts';
 import type { SplitRow, UnifiedRow } from './diff-parser.mts';
 
@@ -531,7 +532,7 @@ export class DiffViewer {
     label.className = 'diff-file-path';
     label.textContent = path;
     header.appendChild(label);
-    if (this.activeRepoPath && this.activeHash) {
+    if (this.activeRepoPath && this.activeHash && isAgentsFeatureEnabled()) {
       const blameButton = document.createElement('button');
       blameButton.type = 'button';
       blameButton.className = 'diff-file-blame';

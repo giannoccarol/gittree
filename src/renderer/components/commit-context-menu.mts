@@ -1,4 +1,5 @@
 import type { GitTreeApp } from '../app.mts';
+import { isAgentsFeatureEnabled } from '../ai-feature-gate.mts';
 
 interface CommitPreview {
   action: string;
@@ -127,13 +128,13 @@ export class CommitContextMenu {
         disabled: this.hashes.length !== 2,
         reason: this.hashes.length !== 2 ? t('commitMenu.compareRequiresTwo') : ''
       },
-      {
+      ...(isAgentsFeatureEnabled() ? [{
         action: 'explain-commit',
         icon: 'ph-sparkle',
         label: t('commitMenu.aiExplain'),
         disabled: this.hashes.length !== 1,
         reason: this.hashes.length !== 1 ? t('commitMenu.aiExplainSingle') : ''
-      },
+      }] : []),
       {
         action: 'create-tag',
         icon: 'ph-tag',

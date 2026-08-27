@@ -1,4 +1,5 @@
 import type { GitTreeApp } from '../app.mts';
+import { isAgentsFeatureEnabled } from '../ai-feature-gate.mts';
 
 interface ConflictBlock {
   startLine: number;
@@ -675,12 +676,13 @@ export class ConflictResolver {
             <button class="btn btn-small" data-choice="both">${this.esc(t('conflicts.acceptBoth'))}</button>
             <button class="btn btn-small" data-choice="smart" ${active.smartCombination === null ? 'disabled' : ''}>${this.esc(t('conflicts.smartCombination'))}</button>
             <button class="btn btn-small" data-choice="ignore">${this.esc(t('conflicts.ignore'))}</button>
+            ${isAgentsFeatureEnabled() ? `
             <button class="btn btn-small" id="conflict-ai-explain" type="button">
               <i class="ph ph-sparkle" aria-hidden="true"></i><span>${this.esc(t('conflicts.aiExplain'))}</span>
             </button>
             <button class="btn btn-small" id="conflict-ai-delegate" type="button">
               <i class="ph ph-robot" aria-hidden="true"></i><span>${this.esc(t('conflicts.aiDelegateToAgent'))}</span>
-            </button>
+            </button>` : ''}
           </div>
         ` : `<span class="conflict-manual-note">${this.esc(
           this.manualEdited ? t('conflicts.manualMode') : t('conflicts.noUnresolvedBlocks')

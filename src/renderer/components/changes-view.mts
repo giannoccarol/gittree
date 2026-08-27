@@ -1,6 +1,7 @@
 import type { ChangesFileList } from './changes-file-list.mts';
 import type { GitTreeApp } from '../app.mts';
 import type { NumberableHunk } from './diff-parser.mts';
+import { onAgentsFeatureEnabledChange } from '../ai-feature-gate.mts';
 
 interface ChangeFile {
   path: string;
@@ -146,6 +147,9 @@ export class ChangesView {
     });
     window.addEventListener('focus', () => this.syncPolling());
     window.addEventListener('blur', () => this.syncPolling());
+    onAgentsFeatureEnabledChange(enabled => {
+      if (!enabled) this.hideExplanation();
+    });
   }
 
   async load(repoPath: string): Promise<void> {

@@ -1,4 +1,5 @@
 import type { GitTreeApp } from '../app.mts';
+import { isAgentsFeatureEnabled } from '../ai-feature-gate.mts';
 
 interface PRSummary {
   provider: string;
@@ -1182,13 +1183,13 @@ export class PullRequestView {
           <label>${this.esc(t('pullRequests.createBodyField'))}
             <textarea name="body" class="pr-create-body" maxlength="65536" rows="5" placeholder="${this.esc(t('pullRequests.createBodyPlaceholder'))}"></textarea>
           </label>
-          <div class="pr-create-ai-row">
+          ${isAgentsFeatureEnabled() ? `<div class="pr-create-ai-row">
             <button type="button" class="btn btn-small" id="pr-ai-generate">
               <i class="ph ph-sparkle" aria-hidden="true"></i>
               <span>${this.esc(t('pullRequests.aiGenerate'))}</span>
             </button>
             <span id="pr-ai-status" class="settings-update-status" aria-live="polite"></span>
-          </div>
+          </div>` : ''}
           <div class="pr-create-grid">
             <label>${this.esc(t('pullRequests.createSource'))}
               <select name="source">${options}</select>
