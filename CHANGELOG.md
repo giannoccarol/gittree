@@ -1,3 +1,10 @@
+# [0.25.0](https://github.com/giannoccarol/gittree/compare/v0.24.3...v0.25.0) (2026-08-27)
+
+
+### Features
+
+* **ai:** integrate AI feature gate into various components ([d8461b2](https://github.com/giannoccarol/gittree/commit/d8461b24736d7c117c17df66078a3b24c85fccc8))
+
 ## [0.24.3](https://github.com/giannoccarol/gittree/compare/v0.24.2...v0.24.3) (2026-08-27)
 
 
