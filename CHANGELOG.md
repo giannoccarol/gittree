@@ -1,3 +1,10 @@
+# [0.26.0](https://github.com/giannoccarol/gittree/compare/v0.25.0...v0.26.0) (2026-08-27)
+
+
+### Features
+
+* **graph:** enhance graph view and inspector with anchor loading and rendering optimizations ([05a8593](https://github.com/giannoccarol/gittree/commit/05a85932e76042a7aa82f46721ea2359d0a1a736))
+
 # [0.25.0](https://github.com/giannoccarol/gittree/compare/v0.24.3...v0.25.0) (2026-08-27)
 
 
