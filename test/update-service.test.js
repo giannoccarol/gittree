@@ -13,8 +13,7 @@ const {
   buildCachedInstallCommand,
   resolvePackageTypeForInstall,
   parseVersionFromPackageName,
-  pendingPackageNeedsInstall,
-  clearPendingPackages
+  pendingPackageNeedsInstall
 } = require('../src/main/update-service.mts');
 
 function createHarness({

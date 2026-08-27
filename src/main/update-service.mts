@@ -144,9 +144,15 @@ export function clearPendingPackages(
     try {
       for (const name of readdirSync(dir)) {
         if (!inferPackageTypeFromPath(name) && name !== 'update-info.json') continue;
-        try { unlinkSync(path.join(dir, name)); } catch {}
+        try {
+          unlinkSync(path.join(dir, name));
+        } catch {
+          /* ignore unreadable entries */
+        }
       }
-    } catch {}
+    } catch {
+      /* ignore missing pending directory */
+    }
   }
 }
 
@@ -466,7 +472,7 @@ export class UpdateService {
     }
   }
 
-  async install(): Promise<{ success: boolean; error?: string; manual?: boolean; state?: UpdateState }> {
+  async install(): Promise<{ success: boolean; error?: string; manual?: boolean; restartRequired?: boolean; state?: UpdateState }> {
     this.syncPendingState();
 
     if (this.cachedInstall) {
