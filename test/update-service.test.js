@@ -1,14 +1,36 @@
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
 const { EventEmitter } = require('node:events');
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { UpdateService, supportsAutoInstall } = require('../src/main/update-service.mts');
+const {
+  UpdateService,
+  supportsAutoInstall,
+  supportsCachedPackageInstall,
+  findPendingPackage,
+  buildCachedInstallCommand,
+  resolvePackageTypeForInstall,
+  parseVersionFromPackageName,
+  pendingPackageNeedsInstall,
+  clearPendingPackages
+} = require('../src/main/update-service.mts');
 
-function createHarness({ packaged = true, version = '1.2.3', platform = 'win32', packageType = '' } = {}) {
+function createHarness({
+  packaged = true,
+  version = '1.2.3',
+  platform = 'win32',
+  packageType = '',
+  cacheHome = '',
+  pendingPackage = null
+} = {}) {
   const sent = [];
   const scheduled = [];
   const cleared = [];
   const opened = [];
+  const spawned = [];
+  let quitCalled = false;
   const updater = new EventEmitter();
   updater.checkForUpdates = async () => {};
   updater.downloadUpdate = async () => {};
@@ -18,11 +40,29 @@ function createHarness({ packaged = true, version = '1.2.3', platform = 'win32',
     webContents: { send: (...args) => sent.push(args) }
   };
   const timer = { unref() { scheduled.push(['unref']); } };
+  const pendingDir = cacheHome
+    ? path.join(cacheHome, 'gittree-updater', 'pending')
+    : '';
+  if (pendingPackage && pendingDir) {
+    fs.mkdirSync(pendingDir, { recursive: true });
+    fs.writeFileSync(path.join(pendingDir, pendingPackage), 'package');
+  }
   const service = new UpdateService(window, {
-    app: { isPackaged: packaged, getVersion: () => version },
+    app: {
+      isPackaged: packaged,
+      getVersion: () => version,
+      quit: () => { quitCalled = true; }
+    },
     autoUpdater: updater,
     platform,
+    cacheHome,
     openExternal: async url => { opened.push(url); },
+    spawnProcess: (command, args) => {
+      spawned.push([command, ...args]);
+      const child = new EventEmitter();
+      queueMicrotask(() => child.emit('close', 0));
+      return child;
+    },
     setTimeout(callback, delay) {
       scheduled.push(['timeout', delay, callback]);
       return timer;
@@ -40,9 +80,22 @@ function createHarness({ packaged = true, version = '1.2.3', platform = 'win32',
   });
   service.packageType = packageType;
   service.autoInstall = supportsAutoInstall(platform, packageType);
+  service.cachedInstall = supportsCachedPackageInstall(platform, packageType);
   service.state.packageType = packageType;
   service.state.autoInstall = service.autoInstall;
-  return { service, updater, window, sent, scheduled, cleared, opened };
+  service.state.cachedInstall = service.cachedInstall;
+  return {
+    service,
+    updater,
+    window,
+    sent,
+    scheduled,
+    cleared,
+    opened,
+    spawned,
+    pendingDir,
+    get quitCalled() { return quitCalled; }
+  };
 }
 
 test('unpackaged update service stays disabled and broadcasts safely', async () => {
@@ -97,7 +150,9 @@ test('packaged update service configures updater and follows updater events', ()
     progress: 0,
     error: 'feed unavailable',
     packageType: '',
-    autoInstall: true
+    autoInstall: true,
+    cachedInstall: false,
+    pendingPackagePath: null
   });
   updater.emit('error', 'offline');
   assert.equal(service.getState().error, 'offline');
@@ -111,7 +166,7 @@ test('packaged update service configures updater and follows updater events', ()
 test('update commands expose skip, error, download and install outcomes', async () => {
   const { service, updater, scheduled } = createHarness();
   assert.equal((await service.download()).success, false);
-  assert.equal(service.install().success, false);
+  assert.equal((await service.install()).success, false);
 
   let checks = 0;
   updater.checkForUpdates = async () => { checks += 1; };
@@ -132,20 +187,100 @@ test('update commands expose skip, error, download and install outcomes', async 
   assert.equal((await service.download()).error, 'download failed');
 
   service.setState({ status: 'downloaded' });
-  assert.deepEqual(service.install(), { success: true });
+  assert.deepEqual(await service.install(), { success: true, state: service.getState() });
   assert.ok(scheduled.some(item => item[0] === 'install' && item[1] === false && item[2] === true));
 });
 
-test('Linux pacman installs open the release page instead of quitAndInstall', () => {
-  const { service, scheduled, opened } = createHarness({
+test('cached package helpers resolve pending files and install commands', () => {
+  assert.equal(supportsCachedPackageInstall('linux', 'pacman'), true);
+  assert.equal(supportsCachedPackageInstall('linux', 'appimage'), false);
+  assert.equal(
+    buildCachedInstallCommand('pacman', '/tmp/GitTree-1.0.0-linux-x64.pacman').join(' '),
+    'pkexec pacman -U --noconfirm /tmp/GitTree-1.0.0-linux-x64.pacman'
+  );
+  assert.equal(resolvePackageTypeForInstall('native', '/tmp/GitTree-1.0.0-linux-x64.deb'), 'deb');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gittree-updater-'));
+  const pending = path.join(dir, 'pending');
+  fs.mkdirSync(pending, { recursive: true });
+  fs.writeFileSync(path.join(pending, 'GitTree-1.0.0-linux-x64.pacman'), 'x');
+  assert.equal(findPendingPackage(pending), path.join(pending, 'GitTree-1.0.0-linux-x64.pacman'));
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('Linux pacman downloads through electron-updater and installs from cache', async () => {
+  const cacheHome = fs.mkdtempSync(path.join(os.tmpdir(), 'gittree-cache-'));
+  const harness = createHarness({
     platform: 'linux',
-    packageType: 'pacman'
+    packageType: 'pacman',
+    cacheHome,
+    pendingPackage: 'GitTree-1.3.0-linux-x64.pacman'
   });
+  const { service, updater, opened, spawned } = harness;
   service.initialize();
   assert.equal(service.getState().autoInstall, false);
+  assert.equal(service.getState().cachedInstall, true);
   assert.equal(service.autoUpdater.autoInstallOnAppQuit, false);
+  assert.equal(service.getState().status, 'downloaded');
+  assert.match(service.getState().pendingPackagePath || '', /\.pacman$/);
+
+  let downloaded = false;
+  updater.downloadUpdate = async () => { downloaded = true; };
+  service.setState({ status: 'available' });
+  assert.equal((await service.download()).success, true);
+  assert.equal(downloaded, true);
+  assert.equal(opened.length, 0);
+
+  const pendingPath = service.getState().pendingPackagePath;
+  assert.deepEqual(await service.install(), {
+    success: true,
+    restartRequired: true,
+    state: service.getState()
+  });
+  assert.equal(spawned.length, 1);
+  assert.deepEqual(
+    spawned[0],
+    ['pkexec', 'pacman', '-U', '--noconfirm', pendingPath]
+  );
+  assert.equal(harness.quitCalled, true);
+  assert.equal(opened.length, 0);
+  assert.equal(fs.existsSync(path.join(cacheHome, 'gittree-updater', 'pending', 'GitTree-1.3.0-linux-x64.pacman')), false);
+
+  fs.rmSync(cacheHome, { recursive: true, force: true });
+});
+
+test('Linux cached install ignores pending package already at current version', () => {
+  const cacheHome = fs.mkdtempSync(path.join(os.tmpdir(), 'gittree-cache-'));
+  const pendingDir = path.join(cacheHome, 'gittree-updater', 'pending');
+  fs.mkdirSync(pendingDir, { recursive: true });
+  const packagePath = path.join(pendingDir, 'GitTree-1.4.0-linux-x64.pacman');
+  fs.writeFileSync(packagePath, 'package');
+  assert.equal(parseVersionFromPackageName(path.basename(packagePath)), '1.4.0');
+  assert.equal(pendingPackageNeedsInstall(packagePath, '1.4.0'), false);
+  assert.equal(pendingPackageNeedsInstall(packagePath, '1.3.0'), true);
+
+  const { service } = createHarness({
+    platform: 'linux',
+    packageType: 'pacman',
+    version: '1.4.0',
+    cacheHome
+  });
+  service.initialize();
+  assert.equal(service.getState().status, 'idle');
+  assert.equal(service.getState().pendingPackagePath, null);
+  assert.equal(fs.existsSync(packagePath), false);
+
+  fs.rmSync(cacheHome, { recursive: true, force: true });
+});
+
+test('Linux cached install falls back to GitHub when no pending package exists', async () => {
+  const cacheHome = fs.mkdtempSync(path.join(os.tmpdir(), 'gittree-cache-'));
+  const { service, opened } = createHarness({
+    platform: 'linux',
+    packageType: 'pacman',
+    cacheHome
+  });
   service.setState({ status: 'downloaded' });
-  assert.deepEqual(service.install(), { success: true, manual: true });
+  assert.deepEqual(await service.install(), { success: true, manual: true, state: service.getState() });
   assert.equal(opened.length, 1);
-  assert.equal(scheduled.some(item => item[0] === 'install'), false);
+  fs.rmSync(cacheHome, { recursive: true, force: true });
 });

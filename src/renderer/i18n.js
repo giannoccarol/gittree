@@ -841,6 +841,8 @@ const I18n = {
               ready: 'The update is ready. Restart GitTree to install it.',
               manualInstall: 'Open release page',
               manualReady: 'Update downloaded. Install the new package from the release page.',
+              installPackage: 'Install update',
+              cachedReady: 'Update downloaded. Install it with your system package manager.',
               staleInstall: 'GitTree {{running}} is running but {{installed}} is installed. Restart to load the new version.',
               failed: 'Update failed: {{error}}'
             },
@@ -1692,6 +1694,8 @@ const I18n = {
               ready: 'L’aggiornamento è pronto. Riavvia GitTree per installarlo.',
               manualInstall: 'Apri pagina release',
               manualReady: 'Aggiornamento scaricato. Installa il nuovo pacchetto dalla pagina release.',
+              installPackage: 'Installa aggiornamento',
+              cachedReady: 'Aggiornamento scaricato. Installalo con il package manager di sistema.',
               staleInstall: 'GitTree {{running}} è in esecuzione ma è installata la {{installed}}. Riavvia per caricare la nuova versione.',
               failed: 'Aggiornamento non riuscito: {{error}}'
             },

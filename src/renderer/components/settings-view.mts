@@ -1238,13 +1238,17 @@ export class SettingsView {
         statusEl.textContent = `${t('settings.downloading')} ${state.progress}%`;
         break;
       case 'downloaded':
-        statusEl.textContent = state.autoInstall === false
-          ? t('updates.manualReady')
-          : t('settings.updateReady');
+        statusEl.textContent = state.cachedInstall
+          ? t('updates.cachedReady')
+          : state.autoInstall === false
+            ? t('updates.manualReady')
+            : t('settings.updateReady');
         if (label) {
-          label.textContent = state.autoInstall === false
-            ? t('updates.manualInstall')
-            : t('settings.installUpdate');
+          label.textContent = state.cachedInstall
+            ? t('updates.installPackage')
+            : state.autoInstall === false
+              ? t('updates.manualInstall')
+              : t('settings.installUpdate');
         }
         break;
       case 'error':

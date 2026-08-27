@@ -76,6 +76,10 @@ test('update controls show progress and offer install once downloaded', () => {
   assert.equal(status.textContent, 'settings.updateReady');
   assert.equal(label.textContent, 'settings.installUpdate');
   assert.equal(button.disabled, false);
+
+  view.applyUpdateState(status, button, { status: 'downloaded', cachedInstall: true, progress: 100 });
+  assert.equal(status.textContent, 'updates.cachedReady');
+  assert.equal(label.textContent, 'updates.installPackage');
 });
 
 test('update controls restore the check label after a successful idle check', () => {

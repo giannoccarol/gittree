@@ -69,6 +69,7 @@ interface UpdateStatePayload {
   progress?: number;
   error?: string;
   autoInstall?: boolean;
+  cachedInstall?: boolean;
 }
 
 interface InspectorPayload extends Record<string, unknown> {
@@ -464,7 +465,10 @@ export class GitTreeApp {
       icon.className = 'ph ph-circle-notch';
       label.textContent = t('updates.downloading', { progress: state.progress });
     } else if (state.status === 'downloaded') {
-      if (state.autoInstall === false) {
+      if (state.cachedInstall) {
+        icon.className = 'ph ph-package';
+        label.textContent = t('updates.installPackage');
+      } else if (state.autoInstall === false) {
         icon.className = 'ph ph-arrow-square-out';
         label.textContent = t('updates.manualInstall');
       } else {
@@ -473,7 +477,11 @@ export class GitTreeApp {
       }
       if (previousStatus !== 'downloaded') {
         this.showToast(
-          state.autoInstall === false ? t('updates.manualReady') : t('updates.ready'),
+          state.cachedInstall
+            ? t('updates.cachedReady')
+            : state.autoInstall === false
+              ? t('updates.manualReady')
+              : t('updates.ready'),
           'success'
         );
       }

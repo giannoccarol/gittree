@@ -7,7 +7,14 @@ const {
   snapshotBinaryMtime,
   detectStaleInstall
 } = require('../src/main/version-watch.mts');
-const { supportsAutoInstall, readPackageType } = require('../src/main/update-service.mts');
+const { supportsAutoInstall, supportsCachedPackageInstall, readPackageType } = require('../src/main/update-service.mts');
+
+test('update-service: cached install only on Linux native packages', () => {
+  assert.equal(supportsCachedPackageInstall('linux', 'pacman'), true);
+  assert.equal(supportsCachedPackageInstall('linux', 'deb'), true);
+  assert.equal(supportsCachedPackageInstall('linux', 'appimage'), false);
+  assert.equal(supportsCachedPackageInstall('win32', 'pacman'), false);
+});
 
 test('update-service: auto install only on win/mac and Linux AppImage', () => {
   assert.equal(supportsAutoInstall('win32', ''), true);
