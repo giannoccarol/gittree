@@ -1,3 +1,10 @@
+## [0.24.1](https://github.com/giannoccarol/gittree/compare/v0.24.0...v0.24.1) (2026-08-27)
+
+
+### Bug Fixes
+
+* **updates:** pacman OTA install from cache and stale pending cleanup ([9201fae](https://github.com/giannoccarol/gittree/commit/9201fae1373637662f12539425cd14de0b09d976))
+
 # [0.24.0](https://github.com/giannoccarol/gittree/compare/v0.23.1...v0.24.0) (2026-08-27)
 
 
