@@ -1,3 +1,10 @@
+# [0.27.0](https://github.com/giannoccarol/gittree/compare/v0.26.1...v0.27.0) (2026-08-27)
+
+
+### Features
+
+* **dashboard:** add repository analytics component and localization ([a25a46c](https://github.com/giannoccarol/gittree/commit/a25a46c67588f13b18070f9a52e90acfd4910a1c))
+
 ## [0.26.1](https://github.com/giannoccarol/gittree/compare/v0.26.0...v0.26.1) (2026-08-27)
 
 
