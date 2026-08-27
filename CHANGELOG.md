@@ -1,3 +1,10 @@
+## [0.24.3](https://github.com/giannoccarol/gittree/compare/v0.24.2...v0.24.3) (2026-08-27)
+
+
+### Bug Fixes
+
+* **release:** corregge lint e typecheck per pipeline release ([3416c68](https://github.com/giannoccarol/gittree/commit/3416c6815e7458f36b1a0c199bff281bd7505f17))
+
 ## [0.24.2](https://github.com/giannoccarol/gittree/compare/v0.24.1...v0.24.2) (2026-08-27)
 
 
