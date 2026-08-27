@@ -240,6 +240,12 @@
   background: var(--surface-input);
 }
 
+.repo-tab-overflow-search:focus-within {
+  border-color: var(--border-focus);
+  outline: 2px solid var(--border-focus);
+  outline-offset: 2px;
+}
+
 .repo-tab-overflow-search > i {
   color: var(--text-tertiary);
 }
@@ -252,6 +258,12 @@
   color: var(--text-primary);
   font: inherit;
   font-size: var(--text-sm);
+}
+
+.repo-tab-overflow-input:focus,
+.repo-tab-overflow-input:focus-visible {
+  outline: none;
+  box-shadow: none;
 }
 
 .repo-tab-overflow-list {
