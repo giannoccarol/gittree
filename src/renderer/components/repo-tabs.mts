@@ -255,6 +255,9 @@ export class RepoTabs {
       event.stopPropagation();
       this.toggleOverflowMenu();
     };
+    trigger.addEventListener('pointerdown', event => {
+      event.stopPropagation();
+    });
 
     const menu = document.createElement('div');
     menu.className = 'repo-tab-overflow-menu is-hidden';

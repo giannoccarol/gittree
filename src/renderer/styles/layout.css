@@ -60,7 +60,8 @@
 }
 
 .repo-tab-container,
-.tab-add-btn {
+.tab-add-btn,
+.repo-tab-overflow {
   -webkit-app-region: no-drag;
 }
 
