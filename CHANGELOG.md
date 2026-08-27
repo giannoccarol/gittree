@@ -1,3 +1,10 @@
+## [0.24.2](https://github.com/giannoccarol/gittree/compare/v0.24.1...v0.24.2) (2026-08-27)
+
+
+### Bug Fixes
+
+* **ui:** prevent event propagation on pointerdown for repo tab overflow menu ([36bee6e](https://github.com/giannoccarol/gittree/commit/36bee6ea173bd4e9561235a5a8f73f98be7a92cf))
+
 ## [0.24.1](https://github.com/giannoccarol/gittree/compare/v0.24.0...v0.24.1) (2026-08-27)
 
 
