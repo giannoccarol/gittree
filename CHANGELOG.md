@@ -1,3 +1,10 @@
+# [0.28.0](https://github.com/giannoccarol/gittree/compare/v0.27.0...v0.28.0) (2026-08-27)
+
+
+### Features
+
+* **dashboard:** add dashboard button to index.html ([bc323b5](https://github.com/giannoccarol/gittree/commit/bc323b5f5a99324f461634ce007cf40c6d919f5a))
+
 # [0.27.0](https://github.com/giannoccarol/gittree/compare/v0.26.1...v0.27.0) (2026-08-27)
 
 
