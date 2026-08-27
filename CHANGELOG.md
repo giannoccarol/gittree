@@ -1,3 +1,10 @@
+# [0.24.0](https://github.com/giannoccarol/gittree/compare/v0.23.1...v0.24.0) (2026-08-27)
+
+
+### Features
+
+* **ui:** dropdown repo overflow, fix OTA Linux e contrasto tema scuro ([c6e9b46](https://github.com/giannoccarol/gittree/commit/c6e9b46f553b3452e24716855f32051509506acc))
+
 ## [0.23.1](https://github.com/giannoccarol/gittree/compare/v0.23.0...v0.23.1) (2026-08-27)
 
 
