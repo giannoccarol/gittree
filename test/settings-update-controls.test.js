@@ -32,12 +32,13 @@ test.after(() => {
 
 function createElements() {
   const label = { textContent: 'Check for updates' };
+  const icon = { className: 'ph ph-arrows-clockwise' };
   const button = {
     disabled: false,
-    querySelector: () => label
+    querySelector: selector => selector === 'i' ? icon : label
   };
   const status = { textContent: '' };
-  return { button, label, status };
+  return { button, icon, label, status };
 }
 
 test('update controls render the checking state and stay disabled', () => {
@@ -80,6 +81,33 @@ test('update controls show progress and offer install once downloaded', () => {
   view.applyUpdateState(status, button, { status: 'downloaded', cachedInstall: true, progress: 100 });
   assert.equal(status.textContent, 'updates.cachedReady');
   assert.equal(label.textContent, 'updates.installPackage');
+});
+
+test('update controls disable actions while the system package is installing', () => {
+  const { button, icon, label, status } = createElements();
+  const view = Object.create(SettingsView.prototype);
+
+  view.applyUpdateState(status, button, { status: 'installing', cachedInstall: true });
+
+  assert.equal(status.textContent, 'updates.installing');
+  assert.equal(label.textContent, 'updates.installing');
+  assert.equal(icon.className, 'ph ph-circle-notch');
+  assert.equal(button.disabled, true);
+});
+
+test('update controls keep the package install action available after a failed attempt', () => {
+  const { button, label, status } = createElements();
+  const view = Object.create(SettingsView.prototype);
+
+  view.applyUpdateState(status, button, {
+    status: 'downloaded',
+    cachedInstall: true,
+    error: 'Authorization cancelled'
+  });
+
+  assert.equal(status.textContent, 'updates.failed');
+  assert.equal(label.textContent, 'updates.installPackage');
+  assert.equal(button.disabled, false);
 });
 
 test('update controls restore the check label after a successful idle check', () => {

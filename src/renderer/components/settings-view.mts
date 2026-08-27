@@ -1050,7 +1050,8 @@ export class SettingsView {
       checkUpdateBtn.onclick = async () => {
         const status = this.updateState?.status;
         if (status === 'downloaded') {
-          await window.gitTree.installUpdate();
+          const result = await window.gitTree.installUpdate() as { state?: Record<string, unknown>; error?: string };
+          this.handleUpdateState(result?.state || { status: 'error', error: result?.error });
           return;
         }
         if (status === 'available') {
@@ -1225,24 +1226,37 @@ export class SettingsView {
     if (!statusEl || !button) return;
     const status = state?.status;
     const label = button.querySelector('span');
-    button.disabled = ['checking', 'downloading', 'disabled'].includes(status as string);
+    const icon = button.querySelector('i');
+    button.disabled = ['checking', 'downloading', 'installing', 'disabled'].includes(status as string);
     switch (status) {
       case 'checking':
         statusEl.textContent = t('settings.checking');
+        if (label) label.textContent = t('settings.checking');
+        if (icon) icon.className = 'ph ph-circle-notch';
         break;
       case 'available':
         statusEl.textContent = `${t('settings.updateAvailable')} (${state.availableVersion})`;
         if (label) label.textContent = t('settings.downloadUpdate');
+        if (icon) icon.className = 'ph ph-download-simple';
         break;
       case 'downloading':
         statusEl.textContent = `${t('settings.downloading')} ${state.progress}%`;
+        if (label) label.textContent = t('settings.downloading');
+        if (icon) icon.className = 'ph ph-circle-notch';
+        break;
+      case 'installing':
+        statusEl.textContent = t('updates.installing');
+        if (label) label.textContent = t('updates.installing');
+        if (icon) icon.className = 'ph ph-circle-notch';
         break;
       case 'downloaded':
-        statusEl.textContent = state.cachedInstall
-          ? t('updates.cachedReady')
-          : state.autoInstall === false
-            ? t('updates.manualReady')
-            : t('settings.updateReady');
+        statusEl.textContent = state.error
+          ? t('updates.failed', { error: state.error })
+          : state.cachedInstall
+            ? t('updates.cachedReady')
+            : state.autoInstall === false
+              ? t('updates.manualReady')
+              : t('settings.updateReady');
         if (label) {
           label.textContent = state.cachedInstall
             ? t('updates.installPackage')
@@ -1250,17 +1264,28 @@ export class SettingsView {
               ? t('updates.manualInstall')
               : t('settings.installUpdate');
         }
+        if (icon) {
+          icon.className = state.cachedInstall
+            ? 'ph ph-package'
+            : state.autoInstall === false
+              ? 'ph ph-arrow-square-out'
+              : 'ph ph-arrows-clockwise';
+        }
         break;
       case 'error':
         statusEl.textContent = String(state.error || t('common.error'));
         if (label) label.textContent = t('settings.checkUpdate');
+        if (icon) icon.className = 'ph ph-arrows-clockwise';
         break;
       case 'disabled':
         statusEl.textContent = t('settings.updateUnavailable');
+        if (label) label.textContent = t('settings.checkUpdate');
+        if (icon) icon.className = 'ph ph-arrows-clockwise';
         break;
       default:
         statusEl.textContent = t('settings.upToDate');
         if (label) label.textContent = t('settings.checkUpdate');
+        if (icon) icon.className = 'ph ph-arrows-clockwise';
     }
   }
 

@@ -451,10 +451,10 @@ export class GitTreeApp {
     const button = byId('btn-update') as HTMLButtonElement;
     const icon = button.querySelector('i') as HTMLElement;
     const label = button.querySelector('span') as HTMLElement;
-    button.disabled = state.status === 'downloading' || state.status === 'checking';
+    button.disabled = ['downloading', 'checking', 'installing'].includes(String(state.status));
     button.classList.toggle(
       'is-hidden',
-      !['available', 'downloading', 'downloaded'].includes(String(state.status))
+      !['available', 'downloading', 'downloaded', 'installing'].includes(String(state.status))
     );
 
     if (state.status === 'available') {
@@ -466,6 +466,9 @@ export class GitTreeApp {
     } else if (state.status === 'downloading') {
       icon.className = 'ph ph-circle-notch';
       label.textContent = t('updates.downloading', { progress: state.progress });
+    } else if (state.status === 'installing') {
+      icon.className = 'ph ph-circle-notch';
+      label.textContent = t('updates.installing');
     } else if (state.status === 'downloaded') {
       if (state.cachedInstall) {
         icon.className = 'ph ph-package';
@@ -477,7 +480,9 @@ export class GitTreeApp {
         icon.className = 'ph ph-arrows-clockwise';
         label.textContent = t('updates.restart');
       }
-      if (previousStatus !== 'downloaded') {
+      if (state.error && previousStatus !== 'downloaded') {
+        this.showToast(t('updates.failed', { error: state.error }), 'error');
+      } else if (!state.error && previousStatus !== 'downloaded') {
         this.showToast(
           state.cachedInstall
             ? t('updates.cachedReady')

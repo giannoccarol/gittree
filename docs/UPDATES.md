@@ -13,7 +13,7 @@ GitTree utilizza `electron-updater` e i manifest generati da electron-builder ne
 
 Su Windows (`oneClick: false`) l’installazione fresh mantiene il wizard assistito (directory inclusa). Gli aggiornamenti lanciati da `quitAndInstall(false, true)` passano `--updated`: `build/installer.nsh` salta install-mode e finish page, lascia solo la progress bar e riavvia l’app.
 
-Su Linux, `quitAndInstall` è supportato solo per AppImage. I pacchetti Pacman e DEB usano comunque `downloadUpdate()`: l’artefatto finisce in `~/.cache/<app>-updater/pending/`. L’installazione avviene con il package manager di sistema (`pkexec pacman -U`, `pkexec dpkg -i`, …) e non con `quitAndInstall`, che su pacman/deb fallisce (errore 127). Se il file in cache esiste già, lo stato resta `downloaded` e l’UI mostra **Installa** invece di rimandare a GitHub Releases. Dopo l’installazione la cache `pending/` viene svuotata; se il pacchetto in cache ha la stessa versione già installata (es. `pacman -U` manuale), viene ignorato e lo stato torna `idle`. Dopo un aggiornamento, il single-instance lock passa la versione alla nuova istanza: se parte un binario più recente mentre il vecchio processo è ancora attivo, l’istanza precedente si rilancia dal file installato e termina. **Importante:** pacman aggiorna i file su disco ma non il processo Electron già avviato — serve chiudere completamente l’app (anche dal tray) e riaprirla.
+Su Linux, `quitAndInstall` è supportato solo per AppImage. I pacchetti Pacman e DEB usano comunque `downloadUpdate()`: `electron-updater` seleziona dal manifest l’artefatto coerente con `resources/package-type`, ne verifica SHA-512 e restituisce il percorso esatto nella cache. GitTree conserva quel percorso invece di dedurlo dal nome della directory. L’installazione avviene con il package manager di sistema (`pkexec pacman -U`, `pkexec dpkg -i`) e non con `quitAndInstall`, che su pacman/deb può fallire. Se il file in cache esiste già, lo stato resta `downloaded` e l’UI mostra **Installa**; un file mancante viene riportato come errore ripristinabile e non apre silenziosamente GitHub Releases. Dopo l’installazione la cache `pending/` viene svuotata; se il pacchetto in cache ha la stessa versione già installata (es. `pacman -U` manuale), viene ignorato e lo stato torna `idle`. Pacchetti Linux non riconosciuti o non pubblicati da GitTree restano nel flusso manuale. Dopo un aggiornamento, il single-instance lock passa la versione alla nuova istanza: se parte un binario più recente mentre il vecchio processo è ancora attivo, l’istanza precedente si rilancia dal file installato e termina. **Importante:** pacman aggiorna i file su disco ma non il processo Electron già avviato — serve chiudere completamente l’app (anche dal tray) e riaprirla.
 
 Il renderer non riceve URL arbitrari e non può eseguire comandi di aggiornamento raw. Le uniche IPC esposte sono:
 
@@ -24,7 +24,7 @@ Il renderer non riceve URL arbitrari e non può eseguire comandi di aggiornament
 
 ## Stati
 
-`disabled → idle → checking → available → downloading → downloaded`
+`disabled → idle → checking → available → downloading → downloaded → installing`
 
 Gli errori manuali passano a `error`; gli errori dei controlli periodici non interrompono il lavoro dell’utente.
 

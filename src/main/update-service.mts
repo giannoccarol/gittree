@@ -399,9 +399,16 @@ export class UpdateService {
     if (!this.cachedInstall || this.platform !== 'linux') return;
     const pendingDirs = listPendingPackageDirs(this.cacheHome, this.updaterCacheDirNames);
     const expectedType = resolvePackageTypeForInstall(this.packageType, null);
-    const rawPending = findPendingPackage(pendingDirs, {}, expectedType);
+    const rememberedPending = this.pendingPackagePath
+      && inferPackageTypeFromPath(this.pendingPackagePath) === expectedType
+      && fs.existsSync(this.pendingPackagePath)
+      ? this.pendingPackagePath
+      : null;
+    const rawPending = rememberedPending ?? findPendingPackage(pendingDirs, {}, expectedType);
     if (rawPending && !pendingPackageNeedsInstall(rawPending, this.app.getVersion())) {
-      clearPendingPackages(pendingDirs);
+      clearPendingPackages(rememberedPending
+        ? [...pendingDirs, path.dirname(rememberedPending)]
+        : pendingDirs);
       this.pendingPackagePath = null;
       if (['available', 'downloaded', 'downloading'].includes(this.state.status)) {
         this.setState({
