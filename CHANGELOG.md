@@ -1,3 +1,10 @@
+## [0.23.1](https://github.com/giannoccarol/gittree/compare/v0.23.0...v0.23.1) (2026-08-27)
+
+
+### Bug Fixes
+
+* **push:** imposta upstream su push toolbar e corregge batch bar ([b777445](https://github.com/giannoccarol/gittree/commit/b777445f9800a6f238d73bbc2d61d14f2e3c2298))
+
 # [0.23.0](https://github.com/giannoccarol/gittree/compare/v0.22.3...v0.23.0) (2026-08-25)
 
 
