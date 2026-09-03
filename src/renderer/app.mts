@@ -756,10 +756,12 @@ export class GitTreeApp {
     const fromDirection = this.components.branchList.switchFromDirection;
     this.components.branchList.switchFromDirection = null;
     this.animateBranchSwitch(this.components.graphView.body, fromDirection);
+    const loadSession = new RepositoryLoadSession(window.gitTree, repo.path);
     await Promise.all([
       this.components.graphView.load(repo.path),
       this.components.changes.load(repo.path),
-      this.updateStatus(repo.path)
+      this.updateStatus(repo.path, loadSession),
+      this.components.branchList.load(repo.path, loadSession, { background: true })
     ]);
 
     const currentBranchMetadata = (this.components.branchList.metadata?.branches || [])
