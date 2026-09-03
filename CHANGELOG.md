@@ -1,3 +1,10 @@
+## [0.28.2](https://github.com/giannoccarol/gittree/compare/v0.28.1...v0.28.2) (2026-09-03)
+
+
+### Bug Fixes
+
+* **graph:** preserve row nodes on viewport-preserving reload ([34be289](https://github.com/giannoccarol/gittree/commit/34be2890370b2a81eebe9b8fa5ef26514d4ab386))
+
 ## [0.28.1](https://github.com/giannoccarol/gittree/compare/v0.28.0...v0.28.1) (2026-09-03)
 
 
