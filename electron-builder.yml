@@ -80,7 +80,7 @@ dmg:
   title: GitTree ${version}
 
 linux:
-  icon: icon.png
+  icon: icons
   category: Development
   executableName: gittree
   synopsis: Fast visual Git desktop client
