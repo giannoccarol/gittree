@@ -1,3 +1,10 @@
+## [0.28.1](https://github.com/giannoccarol/gittree/compare/v0.28.0...v0.28.1) (2026-09-03)
+
+
+### Bug Fixes
+
+* **search:** refresh local branch list after remote checkout ([86ae24a](https://github.com/giannoccarol/gittree/commit/86ae24aa9bc45d10fd53b87f60f1a192be2f05d8))
+
 # [0.28.0](https://github.com/giannoccarol/gittree/compare/v0.27.0...v0.28.0) (2026-08-27)
 
 
