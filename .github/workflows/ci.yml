@@ -35,6 +35,8 @@ jobs:
         run: npm run quality:full
         env:
           NODE_V8_COVERAGE: coverage
+      - name: Build application for E2E
+        run: npm run build:compile && node scripts/prepare-build-assets.js --renderer-only
       - name: Run Electron E2E
         run: xvfb-run -a npm run test:e2e
       - name: Prepare application assets
@@ -74,6 +76,8 @@ jobs:
         run: npm test
       - name: Run contract tests
         run: npm run test:contracts
+      - name: Build application for E2E
+        run: npm run build:compile && node scripts/prepare-build-assets.js --renderer-only
       - name: Run Electron E2E
         run: npm run test:e2e
       - name: Prepare application assets
@@ -105,6 +109,8 @@ jobs:
         run: npm ci
       - name: Run unit and integration tests
         run: npm test
+      - name: Build application for E2E
+        run: npm run build:compile && node scripts/prepare-build-assets.js --renderer-only
       - name: Run Electron E2E
         run: npm run test:e2e
       - name: Prepare application assets
