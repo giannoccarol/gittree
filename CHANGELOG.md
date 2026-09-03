@@ -1,3 +1,5 @@
+## [0.28.4](https://github.com/giannoccarol/gittree/compare/v0.28.3...v0.28.4) (2026-09-03)
+
 ## [0.28.3](https://github.com/giannoccarol/gittree/compare/v0.28.2...v0.28.3) (2026-09-03)
 
 
