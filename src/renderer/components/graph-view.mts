@@ -217,7 +217,7 @@ export class GraphView {
       if (generation !== this.generation) return;
       this.restoreViewportState(viewportState!);
     }
-    this.renderViewport(true);
+    this.renderViewport(!preserveViewport);
   }
 
   async ensureAnchorLoaded(anchorHash: string | null, generation = this.generation): Promise<void> {
