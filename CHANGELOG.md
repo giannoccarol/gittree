@@ -1,3 +1,10 @@
+## [0.28.3](https://github.com/giannoccarol/gittree/compare/v0.28.2...v0.28.3) (2026-09-03)
+
+
+### Bug Fixes
+
+* **repo-tabs:** keep stable tab order, promote overflow pick to last slot ([d5397c8](https://github.com/giannoccarol/gittree/commit/d5397c8aef7f6ea774332f272e25d1df7d39ae23))
+
 ## [0.28.2](https://github.com/giannoccarol/gittree/compare/v0.28.1...v0.28.2) (2026-09-03)
 
 
