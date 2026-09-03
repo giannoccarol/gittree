@@ -48,7 +48,7 @@
   cursor: grab;
   flex-shrink: 0;
   font-size: var(--text-sm);
-  transition: background var(--duration-fast) var(--ease-smooth), border-color var(--duration-fast) var(--ease-smooth), color var(--duration-fast) var(--ease-smooth), transform var(--duration-fast) var(--spring-gentle), box-shadow var(--duration-fast) var(--ease-smooth);
+  transition: transform var(--duration-fast) var(--spring-gentle), opacity var(--duration-fast) var(--ease-smooth);
 }
 
 .repo-tab.is-pinned {
@@ -88,13 +88,22 @@
   flex: 0 0 7px;
   border-radius: 50%;
   background: var(--border-strong);
-  transition: background var(--duration-fast) var(--ease-smooth), transform var(--duration-fast) var(--spring-gentle);
+  transition: transform var(--duration-fast) var(--spring-gentle), opacity var(--duration-fast) var(--ease-smooth);
 }
 
 .repo-tab:hover {
   border-color: var(--border-default);
   background: var(--surface-hover);
   color: var(--text-primary);
+}
+
+.repo-tab:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: 2px;
+}
+
+.repo-tab:focus-within .repo-tab-control {
+  opacity: 1;
 }
 
 .repo-tab.active {
