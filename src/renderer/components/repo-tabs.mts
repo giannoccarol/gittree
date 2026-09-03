@@ -2,29 +2,16 @@ export const MAX_VISIBLE_REPO_TABS = 4;
 
 export function splitVisibleAndOverflowRepos<T extends { path: string }>(
   repos: T[],
-  activeIndex: number,
-  keyFn: (path: string) => string,
+  _activeIndex: number,
+  _keyFn: (path: string) => string,
   maxVisible = MAX_VISIBLE_REPO_TABS
 ): { visible: T[]; overflow: T[] } {
+  // ponytail: stable order — visible tabs never reorder on selection.
+  // Only an overflow pick promotes itself into the last visible slot (see selectRepo).
   if (repos.length <= maxVisible) {
     return { visible: [...repos], overflow: [] };
   }
-  const visible: T[] = [];
-  const seen = new Set<string>();
-  const active = repos[activeIndex];
-  if (active) {
-    visible.push(active);
-    seen.add(keyFn(active.path));
-  }
-  for (const repo of repos) {
-    if (visible.length >= maxVisible) break;
-    const key = keyFn(repo.path);
-    if (seen.has(key)) continue;
-    visible.push(repo);
-    seen.add(key);
-  }
-  const overflow = repos.filter(repo => !seen.has(keyFn(repo.path)));
-  return { visible, overflow };
+  return { visible: repos.slice(0, maxVisible), overflow: repos.slice(maxVisible) };
 }
 
 interface RepoEntry {
@@ -682,12 +669,23 @@ export class RepoTabs {
   async selectRepo(index: number): Promise<void> {
     const repoToSelect = this.repos[index];
     if (!repoToSelect) return;
+    let targetIndex = index;
+    if (this.repos.length > MAX_VISIBLE_REPO_TABS && index >= MAX_VISIBLE_REPO_TABS) {
+      const lastVisibleIndex = MAX_VISIBLE_REPO_TABS - 1;
+      const lastVisible = this.repos[lastVisibleIndex];
+      if (lastVisible && this.isPinned(repoToSelect) === this.isPinned(lastVisible)) {
+        const [moved] = this.repos.splice(index, 1);
+        this.repos.splice(lastVisibleIndex, 0, moved);
+        this.persistLayout();
+        targetIndex = lastVisibleIndex;
+      }
+    }
     const backendIndex = this.backendRepos.findIndex(repo => (
       this.sameRepo(repo.path, repoToSelect.path)
     ));
     const repo = await window.gitTree.setActiveRepo(backendIndex) as RepoEntry | undefined;
     if (repo) {
-      this.app.state.activeRepoIndex = index;
+      this.app.state.activeRepoIndex = targetIndex;
       this.render();
       this.app.emit('repo:changed', repo);
     }

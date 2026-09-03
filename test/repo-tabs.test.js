@@ -108,13 +108,46 @@ test('selecting a reordered tab maps its display position to the backend reposit
   assert.equal(tabs.app.state.activeRepoIndex, 0);
 });
 
-test('overflow split keeps the active repository visible and moves the rest to the menu', () => {
+test('overflow split keeps stable order regardless of the active repository', () => {
   const repos = ['a', 'b', 'c', 'd', 'e', 'f'].map(repo);
   const { visible, overflow } = splitVisibleAndOverflowRepos(repos, 4, path => path.toLowerCase());
   assert.equal(visible.length, 4);
-  assert.equal(visible[0].name, 'e');
+  assert.deepEqual(visible.map(item => item.name), ['a', 'b', 'c', 'd']);
   assert.equal(overflow.length, 2);
-  assert.deepEqual(overflow.map(item => item.name), ['d', 'f']);
+  assert.deepEqual(overflow.map(item => item.name), ['e', 'f']);
+});
+
+test('selecting a visible tab keeps display order', async () => {
+  global.window = { gitTree: { setActiveRepo: async () => ({ path: 'C:\\work\\second' }) } };
+  const tabs = createTabs();
+  tabs.backendRepos = [repo('first'), repo('second'), repo('third')];
+  tabs.repos = [repo('first'), repo('second'), repo('third')];
+  await tabs.selectRepo(1);
+  assert.deepEqual(tabs.repos.map(item => item.name), ['first', 'second', 'third']);
+  assert.equal(tabs.app.state.activeRepoIndex, 1);
+});
+
+test('selecting an overflow tab promotes it into the last visible slot', async () => {
+  global.window = { gitTree: { setActiveRepo: async () => ({ path: 'C:\\work\\f' }) } };
+  const tabs = createTabs();
+  tabs.persistLayout = () => {};
+  tabs.backendRepos = ['a', 'b', 'c', 'd', 'e', 'f'].map(repo);
+  tabs.repos = ['a', 'b', 'c', 'd', 'e', 'f'].map(repo);
+  await tabs.selectRepo(5);
+  assert.deepEqual(tabs.repos.map(item => item.name), ['a', 'b', 'c', 'f', 'd', 'e']);
+  assert.equal(tabs.app.state.activeRepoIndex, 3);
+});
+
+test('overflow pick does not displace a pinned last visible tab', async () => {
+  global.window = { gitTree: { setActiveRepo: async () => ({ path: 'C:\\work\\e' }) } };
+  const tabs = createTabs();
+  tabs.persistLayout = () => {};
+  tabs.repos = ['a', 'b', 'c', 'd', 'e'].map(repo);
+  tabs.backendRepos = [...tabs.repos];
+  for (const name of ['a', 'b', 'c', 'd']) tabs.pinnedKeys.add(tabs.repoKey(`C:\\work\\${name}`));
+  await tabs.selectRepo(4);
+  assert.deepEqual(tabs.repos.map(item => item.name), ['a', 'b', 'c', 'd', 'e']);
+  assert.equal(tabs.app.state.activeRepoIndex, 4);
 });
 
 test('overflow split is empty when four or fewer repositories are open', () => {
