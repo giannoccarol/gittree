@@ -40,7 +40,7 @@ Semantic status colors are always paired with text or an icon. Never rely on col
 
 ### Typography
 
-- UI and body: platform-native system sans-serif stack.
+- UI and body: `DM Sans` primary, `Inter` fallback, self-hosted variable fonts (`styles/fonts.css`); system sans-serif stack as fallback.
 - Display headings: `--font-display`, semibold, tight negative tracking.
 - Code, hashes, branch names, paths, and keyboard hints: `--font-mono`.
 - Core scale: 11, 12, 13, 14, 16, 20, 28, and 40px.
