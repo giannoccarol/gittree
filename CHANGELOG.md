@@ -1,3 +1,10 @@
+## [0.28.5](https://github.com/giannoccarol/gittree/compare/v0.28.4...v0.28.5) (2026-09-04)
+
+
+### Bug Fixes
+
+* **linux:** install multi-size hicolor icons so launcher shows icon when app is closed ([687fcf6](https://github.com/giannoccarol/gittree/commit/687fcf65b7c4ffa0b83fb72d3bb52b1885eb0a97))
+
 ## [0.28.4](https://github.com/giannoccarol/gittree/compare/v0.28.3...v0.28.4) (2026-09-03)
 
 ## [0.28.3](https://github.com/giannoccarol/gittree/compare/v0.28.2...v0.28.3) (2026-09-03)
