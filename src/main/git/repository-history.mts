@@ -150,6 +150,7 @@ export class RepositoryHistory {
   async getGraphRefs(): Promise<GraphRef[]> {
     const raw = await this.git.raw([
       'for-each-ref',
+      // Annotated tags point at a tag object; peel to the commit so graph chips attach.
       '--format=%(refname)\t%(refname:short)\t%(if)%(*objectname)%(then)%(*objectname)%(else)%(objectname)%(end)\t%(upstream:short)',
       'refs/heads',
       'refs/remotes',
