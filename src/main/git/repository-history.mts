@@ -150,7 +150,7 @@ export class RepositoryHistory {
   async getGraphRefs(): Promise<GraphRef[]> {
     const raw = await this.git.raw([
       'for-each-ref',
-      '--format=%(refname)\t%(refname:short)\t%(objectname:peel)\t%(upstream:short)',
+      '--format=%(refname)\t%(refname:short)\t%(if)%(*objectname)%(then)%(*objectname)%(else)%(objectname)%(end)\t%(upstream:short)',
       'refs/heads',
       'refs/remotes',
       'refs/tags'
