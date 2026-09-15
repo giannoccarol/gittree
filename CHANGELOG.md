@@ -1,3 +1,10 @@
+## [0.28.7](https://github.com/giannoccarol/gittree/compare/v0.28.6...v0.28.7) (2026-09-15)
+
+
+### Bug Fixes
+
+* **linux:** enhance package installation error handling and command execution ([17e2321](https://github.com/giannoccarol/gittree/commit/17e2321fd6c830c591027dfe2abc60fd83c0ffcf))
+
 ## [0.28.6](https://github.com/giannoccarol/gittree/compare/v0.28.5...v0.28.6) (2026-09-15)
 
 
