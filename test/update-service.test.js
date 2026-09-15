@@ -13,7 +13,8 @@ const {
   buildCachedInstallCommand,
   resolvePackageTypeForInstall,
   parseVersionFromPackageName,
-  pendingPackageNeedsInstall
+  pendingPackageNeedsInstall,
+  formatInstallExitError
 } = require('../src/main/update-service.mts');
 
 function createHarness({
@@ -196,7 +197,7 @@ test('cached package helpers resolve pending files and install commands', () => 
   assert.equal(supportsCachedPackageInstall('linux', 'native'), false);
   assert.equal(
     buildCachedInstallCommand('pacman', '/tmp/GitTree-1.0.0-linux-x64.pacman').join(' '),
-    'pkexec pacman -U --noconfirm /tmp/GitTree-1.0.0-linux-x64.pacman'
+    '/usr/bin/pkexec /usr/bin/pacman -U --noconfirm --disable-sandbox --overwrite * /tmp/GitTree-1.0.0-linux-x64.pacman'
   );
   assert.equal(resolvePackageTypeForInstall('native', '/tmp/GitTree-1.0.0-linux-x64.deb'), 'deb');
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gittree-updater-'));
@@ -267,7 +268,7 @@ test('Linux pacman downloads through electron-updater and installs from cache', 
   assert.equal(spawned.length, 1);
   assert.deepEqual(
     spawned[0],
-    ['pkexec', 'pacman', '-U', '--noconfirm', pendingPath]
+    ['/usr/bin/pkexec', '/usr/bin/pacman', '-U', '--noconfirm', '--disable-sandbox', '--overwrite', '*', pendingPath]
   );
   assert.equal(harness.quitCalled, true);
   assert.equal(opened.length, 0);
@@ -334,9 +335,9 @@ test('Linux cached install exposes progress and keeps retry available after fail
   const result = await service.install();
   assert.equal(result.success, false);
   assert.equal(result.state.status, 'downloaded');
-  assert.match(result.state.error, /126/);
+  assert.match(result.state.error, /authorization failed/i);
   assert.ok(sent.some(([, state]) => state.status === 'installing'));
-  assert.ok(sent.some(([, state]) => state.status === 'downloaded' && /126/.test(state.error || '')));
+  assert.ok(sent.some(([, state]) => state.status === 'downloaded' && /authorization failed/i.test(state.error || '')));
 
   fs.rmSync(cacheHome, { recursive: true, force: true });
 });

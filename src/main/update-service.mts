@@ -58,9 +58,10 @@ interface AutoUpdaterLike {
 type SpawnProcess = (
   command: string,
   args: string[],
-  options: { stdio: 'ignore' }
+  options: { stdio: 'ignore' | Array<'ignore' | 'pipe'> }
 ) => {
   on(event: 'error' | 'close', listener: (...args: unknown[]) => void): unknown;
+  stderr?: { on(event: 'data', listener: (chunk: Buffer | string) => void): unknown };
 };
 
 export function readPackageType(
@@ -196,13 +197,44 @@ export function resolvePackageTypeForInstall(
   return null;
 }
 
+export function summarizeInstallStderr(stderr: string): string {
+  const lines = String(stderr || '')
+    .split(/\r?\n/)
+    .map(line => line.trim())
+    .filter(Boolean);
+  const conflict = lines.find(line => /conflict|conflitto|già presente|exists in filesystem/i.test(line));
+  const errorLine = lines.find(line => /^(error|errore):/i.test(line));
+  return (conflict || errorLine || lines.at(-1) || '').slice(0, 280);
+}
+
+export function formatInstallExitError(exitCode: number, stderr = ''): string {
+  if (exitCode === 126 || exitCode === 127) {
+    return 'Package install authorization failed. Enter your password in the system dialog and try again.';
+  }
+  const detail = summarizeInstallStderr(stderr);
+  return detail
+    ? `Package install exited with code ${exitCode}: ${detail}`
+    : `Package install exited with code ${exitCode}`;
+}
+
 export function buildCachedInstallCommand(
   packageType: 'pacman' | 'deb' | 'rpm',
   packagePath: string
 ): string[] {
   switch (packageType) {
     case 'pacman':
-      return ['pkexec', 'pacman', '-U', '--noconfirm', packagePath];
+      // Pacman 7 sandboxes local files under $HOME; leftover hicolor icons
+      // from earlier GitTree builds are unowned and conflict without --overwrite.
+      return [
+        '/usr/bin/pkexec',
+        '/usr/bin/pacman',
+        '-U',
+        '--noconfirm',
+        '--disable-sandbox',
+        '--overwrite',
+        '*',
+        packagePath
+      ];
     case 'deb':
       return ['pkexec', 'dpkg', '-i', packagePath];
     case 'rpm':
@@ -521,6 +553,9 @@ export class UpdateService {
     this.syncPendingState();
 
     if (this.cachedInstall) {
+      if (this.state.status === 'installing') {
+        return { success: false, error: 'An install is already in progress', state: this.getState() };
+      }
       const pending = this.pendingPackagePath ?? this.findCachedPendingPackage();
       if (!pending) {
         const error = 'The downloaded package is missing. Download the update again.';
@@ -538,7 +573,7 @@ export class UpdateService {
       const command = buildCachedInstallCommand(packageType, pending);
       this.setState({ status: 'installing', error: null, pendingPackagePath: pending });
       try {
-        const exitCode = await this.runInstallCommand(command);
+        const { exitCode, stderr } = await this.runInstallCommand(command);
         if (exitCode === 0) {
           clearPendingPackages(listPendingPackageDirs(this.cacheHome, this.updaterCacheDirNames));
           this.pendingPackagePath = null;
@@ -552,7 +587,7 @@ export class UpdateService {
           this.app.quit();
           return { success: true, restartRequired: true, state: this.getState() };
         }
-        const error = `Package install exited with code ${exitCode}`;
+        const error = formatInstallExitError(exitCode, stderr);
         this.setState({ status: 'downloaded', error, pendingPackagePath: pending });
         return {
           success: false,
@@ -581,11 +616,20 @@ export class UpdateService {
     return { success: true, state: this.getState() };
   }
 
-  runInstallCommand(command: string[]): Promise<number> {
+  runInstallCommand(command: string[]): Promise<{ exitCode: number; stderr: string }> {
     return new Promise((resolve, reject) => {
-      const child = this.spawnProcess(command[0], command.slice(1), { stdio: 'ignore' });
+      const child = this.spawnProcess(command[0], command.slice(1), {
+        stdio: ['ignore', 'ignore', 'pipe']
+      });
+      let stderr = '';
+      child.stderr?.on('data', chunk => {
+        stderr += String(chunk);
+      });
       child.on('error', reject);
-      child.on('close', code => resolve(typeof code === 'number' ? code : 1));
+      child.on('close', code => resolve({
+        exitCode: typeof code === 'number' ? code : 1,
+        stderr: stderr.trim()
+      }));
     });
   }
 
@@ -627,6 +671,8 @@ if (typeof module !== 'undefined' && module.exports) {
     clearPendingPackages,
     resolvePackageTypeForInstall,
     buildCachedInstallCommand,
+    formatInstallExitError,
+    summarizeInstallStderr,
     DEFAULT_UPDATER_CACHE_DIR_NAMES
   });
   module.exports = UpdateService;
