@@ -1,3 +1,10 @@
+# [0.29.0](https://github.com/giannoccarol/gittree/compare/v0.28.7...v0.29.0) (2026-09-15)
+
+
+### Features
+
+* **git:** enhance fetch and graph refs handling ([fe0d6f5](https://github.com/giannoccarol/gittree/commit/fe0d6f5f1043228f3fe150c9ef60622bb5307b93))
+
 ## [0.28.7](https://github.com/giannoccarol/gittree/compare/v0.28.6...v0.28.7) (2026-09-15)
 
 
