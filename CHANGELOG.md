@@ -1,3 +1,10 @@
+## [0.28.6](https://github.com/giannoccarol/gittree/compare/v0.28.5...v0.28.6) (2026-09-15)
+
+
+### Bug Fixes
+
+* **toast:** use compact header pills that do not block clicks ([cb3fcd8](https://github.com/giannoccarol/gittree/commit/cb3fcd81300d8360f0bd022d87fa3794cd49b67f))
+
 ## [0.28.5](https://github.com/giannoccarol/gittree/compare/v0.28.4...v0.28.5) (2026-09-04)
 
 
