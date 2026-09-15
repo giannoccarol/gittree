@@ -1,3 +1,10 @@
+## [0.29.2](https://github.com/giannoccarol/gittree/compare/v0.29.1...v0.29.2) (2026-09-15)
+
+
+### Bug Fixes
+
+* **git:** peel annotated tags onto graph commits ([ceb6521](https://github.com/giannoccarol/gittree/commit/ceb6521220edf5a257258d634b09965080294e76))
+
 ## [0.29.1](https://github.com/giannoccarol/gittree/compare/v0.29.0...v0.29.1) (2026-09-15)
 
 
