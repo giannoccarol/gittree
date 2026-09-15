@@ -1,3 +1,10 @@
+## [0.29.1](https://github.com/giannoccarol/gittree/compare/v0.29.0...v0.29.1) (2026-09-15)
+
+
+### Bug Fixes
+
+* **git:** improve objectname handling in getGraphRefs method ([4f0911e](https://github.com/giannoccarol/gittree/commit/4f0911e8382caef1adf0474826a4efd97e7f524c))
+
 # [0.29.0](https://github.com/giannoccarol/gittree/compare/v0.28.7...v0.29.0) (2026-09-15)
 
 
