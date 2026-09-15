@@ -151,6 +151,7 @@
   --detail-min: 300px;
   --detail-max: 620px;
   --toolbar-height: 72px;
+  --header-height: 54px;
   --statusbar-height: 28px;
   --search-height: 38px;
   --tab-bar-height: 38px;

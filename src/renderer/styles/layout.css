@@ -13,7 +13,7 @@
 }
 
 .app-header {
-  min-height: 54px;
+  min-height: var(--header-height);
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto auto;
   align-items: center;

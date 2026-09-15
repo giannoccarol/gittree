@@ -14,6 +14,8 @@ function createHarness() {
   const attributes = {};
   const timers = [];
   const listeners = { mouseenter: [], mouseleave: [] };
+  const messageElement = { textContent: '', title: '' };
+  const dismissButton = { onclick: null };
   const container = {
     get className() { return [...classes].join(' '); },
     set className(value) {
@@ -30,13 +32,10 @@ function createHarness() {
     matches: () => false,
     querySelector: selector => {
       if (selector === '.toast-message') {
-        return { textContent: '' };
-      }
-      if (selector === '.toast-progress') {
-        return { style: {} };
+        return messageElement;
       }
       if (selector === '.toast-dismiss') {
-        return { onclick: null };
+        return dismissButton;
       }
       return null;
     },
@@ -73,6 +72,21 @@ test('show applies kind class, aria-live and message text', () => {
   service.show('Boom', 'error');
   assert.equal(container.className, 'toast toast-error show');
   assert.equal(attributes['aria-live'], 'assertive');
+});
+
+test('show copies the message onto the title for truncated copy', () => {
+  const { service, container } = createHarness();
+  service.show('Saved', 'success');
+  const message = container.querySelector('.toast-message');
+  assert.equal(message.textContent, 'Saved');
+  assert.equal(message.title, 'Saved');
+});
+
+test('show renders a dismiss control without a lifetime progress bar', () => {
+  const { service, container } = createHarness();
+  service.show('Saved', 'success');
+  assert.equal(container.innerHTML.includes('toast-progress'), false);
+  assert.equal(container.innerHTML.includes('toast-dismiss'), true);
 });
 
 test('unknown kinds fall back to loading with its duration', () => {

@@ -82,12 +82,12 @@ export class ToastService {
     this.container!.innerHTML =
       `<span class="toast-badge" aria-hidden="true"><i class="ph ${TOAST_ICONS[kind]}"></i></span>` +
       `<span class="toast-message"></span>` +
-      `<button type="button" class="toast-dismiss" aria-label="${this.encode(this.translate('common.close'))}"><i class="ph ph-x" aria-hidden="true"></i></button>` +
-      `<span class="toast-progress" aria-hidden="true"></span>`;
-    const messageElement = this.container!.querySelector('.toast-message');
-    if (messageElement) messageElement.textContent = message;
-    const progress = this.container!.querySelector('.toast-progress') as HTMLElement | null;
-    if (progress) progress.style.animationDuration = `${duration}ms`;
+      `<button type="button" class="toast-dismiss" aria-label="${this.encode(this.translate('common.close'))}"><i class="ph ph-x" aria-hidden="true"></i></button>`;
+    const messageElement = this.container!.querySelector('.toast-message') as HTMLElement | null;
+    if (messageElement) {
+      messageElement.textContent = message;
+      messageElement.title = message;
+    }
     const dismissButton = this.container!.querySelector('.toast-dismiss') as HTMLElement | null;
     if (dismissButton) dismissButton.onclick = () => this.dismiss();
 

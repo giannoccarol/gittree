@@ -125,7 +125,7 @@ The desktop window is frameless. The repository tabs are the first visible row o
 
 - Dialog overlays use the flat translucent `--modal-backdrop` dim; dialog surfaces themselves use `--surface-primary` and stay fully opaque.
 - Dialogs are resizable with min/max clamps; resize never shrinks a surface below its usable minimum.
-- Toasts use borders and soft elevation; status is never communicated by color alone.
+- Toasts are compact opaque pills, centered just below the repository header. Status is never communicated by color alone. They stay non-blocking: pointer events pass through except the dismiss control, and they never show a countdown bar.
 - Merge and conflict views retain the same spacing, radius, component, and icon rules.
 
 ## Themes and localization
