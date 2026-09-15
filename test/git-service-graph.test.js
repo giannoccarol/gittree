@@ -1,8 +1,7 @@
-const path = require('node:path');
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { GitService } = require('../src/main/git-service.mts');
-const { createRepository, git } = require('./helpers/git-repository');
+const { createRepository } = require('./helpers/git-repository');
 
 test('graph pages expose topology parents and refs from every branch', async t => {
   const repo = createRepository();

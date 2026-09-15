@@ -195,6 +195,8 @@ test('cached package helpers resolve pending files and install commands', () => 
   assert.equal(supportsCachedPackageInstall('linux', 'pacman'), true);
   assert.equal(supportsCachedPackageInstall('linux', 'appimage'), false);
   assert.equal(supportsCachedPackageInstall('linux', 'native'), false);
+  assert.match(formatInstallExitError(127), /authorization failed/i);
+  assert.match(formatInstallExitError(1, 'errore: file in conflitto'), /file in conflitto/);
   assert.equal(
     buildCachedInstallCommand('pacman', '/tmp/GitTree-1.0.0-linux-x64.pacman').join(' '),
     '/usr/bin/pkexec /usr/bin/pacman -U --noconfirm --disable-sandbox --overwrite * /tmp/GitTree-1.0.0-linux-x64.pacman'
