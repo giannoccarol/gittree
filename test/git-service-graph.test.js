@@ -1,7 +1,8 @@
+const path = require('node:path');
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { GitService } = require('../src/main/git-service.mts');
-const { createRepository } = require('./helpers/git-repository');
+const { createRepository, git } = require('./helpers/git-repository');
 
 test('graph pages expose topology parents and refs from every branch', async t => {
   const repo = createRepository();
@@ -29,6 +30,49 @@ test('graph pages expose topology parents and refs from every branch', async t =
   assert.equal(page.nextOffset, page.commits.length);
   assert.ok(page.refs.some(ref => ref.fullName === 'refs/heads/main'));
   assert.ok(page.refs.some(ref => ref.fullName === 'refs/heads/feature/topic'));
+});
+
+test('graph refs peel annotated tags onto the target commit', async t => {
+  const repo = createRepository();
+  t.after(() => repo.cleanup());
+
+  repo.write('file.txt', 'tagged\n');
+  repo.git('add', '.');
+  repo.git('commit', '-m', 'tagged');
+  const head = repo.git('rev-parse', 'HEAD');
+  repo.git('tag', '-a', 'v1.1.343', '-m', 'Themis Frontend 1.1.343');
+  const tagObject = repo.git('rev-parse', 'v1.1.343');
+  assert.notEqual(tagObject, head);
+
+  const service = new GitService(repo.repository);
+  const refs = await service.getGraphRefs();
+  const tag = refs.find(ref => ref.fullName === 'refs/tags/v1.1.343');
+
+  assert.ok(tag);
+  assert.equal(tag.type, 'tag');
+  assert.equal(tag.commit, head);
+});
+
+test('fetch downloads annotated tags that point at commits already present', async t => {
+  const remote = createRepository();
+  t.after(() => remote.cleanup());
+  remote.write('file.txt', 'base\n');
+  remote.git('add', '.');
+  remote.git('commit', '-m', 'base');
+  const head = remote.git('rev-parse', 'HEAD');
+
+  const local = createRepository();
+  t.after(() => local.cleanup());
+  local.git('remote', 'add', 'origin', remote.repository);
+  local.git('fetch', 'origin');
+  local.git('checkout', '-b', 'main', 'origin/main');
+  assert.equal(local.git('tag', '-l'), '');
+
+  remote.git('tag', '-a', 'v1.1.343', '-m', 'release');
+  const service = new GitService(local.repository);
+  await service.fetch('origin');
+  assert.equal(local.git('tag', '-l'), 'v1.1.343');
+  assert.equal(local.git('rev-parse', 'v1.1.343^{commit}'), head);
 });
 
 test('compareCommits returns differing files with status and unified diff', async t => {

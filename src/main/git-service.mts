@@ -656,7 +656,10 @@ export class GitService {
   async fetch(remote = 'origin') {
     await this.assertRemote(remote);
     try {
-      const result = await this.git.fetch(remote);
+      const result = await this.git.fetch(remote, {
+        '--tags': null,
+        '--prune': null
+      });
       return { success: true, remote, result };
     } catch (err) {
       throw new Error(`Failed to fetch: ${err.message}`, { cause: err });
