@@ -1,5 +1,6 @@
 import type { GitTreeApp } from '../app.mts';
 import { isAgentsFeatureEnabled } from '../ai-feature-gate.mts';
+import { TagNameSuggestion } from '../tag-name-suggestion.mts';
 
 interface CommitPreview {
   action: string;
@@ -311,9 +312,28 @@ export class CommitContextMenu {
     return current.startsWith('it') ? 'it' : 'en';
   }
 
-  createTagDialog(repo: { path?: string }, hash: string): Promise<unknown> {
+  async tagSuggestionFor(repoPath: string | undefined): Promise<{ latest: string | null; next: string }> {
+    if (!repoPath) return TagNameSuggestion.suggest(null);
+    try {
+      return TagNameSuggestion.suggest(await window.gitTree.getTags(repoPath));
+    } catch {
+      return TagNameSuggestion.suggest(null);
+    }
+  }
+
+  async createTagDialog(repo: { path?: string }, hash: string): Promise<unknown> {
+    const suggestion = await this.tagSuggestionFor(repo.path);
     const overlay = document.getElementById('modal-overlay')!;
     const dialog = document.getElementById('modal-dialog')!;
+    const lastTag = suggestion.latest
+      ? `<div class="tag-create-last" id="tag-create-last">
+          <span class="tag-create-last-label">${this.esc(t('commitMenu.lastTag'))}</span>
+          <span class="tag-create-last-chip" title="${this.esc(suggestion.latest)}">
+            <i class="ph ph-tag" aria-hidden="true"></i>
+            <span>${this.esc(suggestion.latest)}</span>
+          </span>
+        </div>`
+      : '';
     return new Promise(resolve => {
       dialog.className = 'confirm-dialog tag-create-dialog';
       dialog.setAttribute('role', 'dialog');
@@ -326,8 +346,10 @@ export class CommitContextMenu {
           <label>
             <span>${this.esc(t('commitMenu.tagName'))}</span>
             <input name="name" maxlength="255" required autofocus
+              value="${this.esc(suggestion.next)}"${suggestion.latest ? ' aria-describedby="tag-create-last"' : ''}
               placeholder="${this.esc(t('commitMenu.tagNamePlaceholder'))}">
           </label>
+          ${lastTag}
           <label>
             <span>${this.esc(t('commitMenu.tagMessage'))}</span>
             <textarea name="message" maxlength="10000" rows="4"
