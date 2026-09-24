@@ -1,3 +1,10 @@
+# [0.30.0](https://github.com/giannoccarol/gittree/compare/v0.29.2...v0.30.0) (2026-09-24)
+
+
+### Features
+
+* **tags:** prefill the next tag in the create dialog ([bf6c88c](https://github.com/giannoccarol/gittree/commit/bf6c88c3fa0fc624a4a2d73410530a4c5a6ed74f))
+
 ## [0.29.2](https://github.com/giannoccarol/gittree/compare/v0.29.1...v0.29.2) (2026-09-15)
 
 
