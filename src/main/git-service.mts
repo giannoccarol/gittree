@@ -641,18 +641,51 @@ export class GitService {
     await this.assertNoPendingOperation();
     await this.assertRemote(remote);
     if (branch) await this.assertValidBranchName(branch);
+    const reconcile = await this.defaultPullReconcileOptions();
     try {
       const result = await this.git.pull(
         remote,
         // `branch === null` means "pull the tracked branch": pass undefined
         // through to simple-git instead of coercing null into the string "null".
         branch ?? undefined,
-        options as GitTaskOptions
+        { ...reconcile, ...(options as Record<string, unknown>) } as GitTaskOptions
       );
       return { success: true, remote, branch, result };
     } catch (err) {
       throw new Error(`Failed to pull: ${err.message}`, { cause: err });
     }
+  }
+
+  /**
+   * Git >= 2.33 refuses to pull diverged branches until the user chooses
+   * merge or rebase. Git for Windows writes `pull.rebase=false` at install
+   * time, Linux and macOS distributions do not, so the same pull failed only
+   * there. When the user has not chosen, keep Git's historical merge default;
+   * any configured `pull.rebase`, `pull.ff` or `branch.<name>.rebase` wins.
+   */
+  async defaultPullReconcileOptions(): Promise<Record<string, null>> {
+    let configured = '';
+    try {
+      ({ stdout: configured } = await execFileAsync(
+        'git',
+        ['config', '--get-regexp', '^(pull\\.(rebase|ff)|branch\\..*\\.rebase)$'],
+        { cwd: this.repoPath, encoding: 'utf8', windowsHide: true }
+      ));
+    } catch (error) {
+      // Exit code 1 means that no key matched.
+      if ((error as { code?: number }).code !== 1) return {};
+    }
+    const keys = configured.split(/\r?\n/).map(line => line.split(' ')[0]).filter(Boolean);
+    if (keys.some(key => key === 'pull.rebase' || key === 'pull.ff')) return {};
+    const branchKeys = keys.filter(key => key.startsWith('branch.'));
+    if (branchKeys.length) {
+      const current = await this.git.raw(['symbolic-ref', '--quiet', '--short', 'HEAD'])
+        .then(value => value.trim())
+        .catch(() => '');
+      if (current && branchKeys.includes(`branch.${current}.rebase`)) return {};
+    }
+    // GitTree cannot drive an editor, so the merge keeps Git's default message.
+    return { '--no-rebase': null, '--no-edit': null };
   }
 
   async fetch(remote = 'origin') {
