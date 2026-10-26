@@ -52,6 +52,8 @@ module.exports = [
       'out/**',
       'node_modules/**',
       'coverage/**',
+      // Agent worktrees are full repository copies with their own tsconfig.
+      '.claude/**',
       'package-lock.json'
     ]
   },
