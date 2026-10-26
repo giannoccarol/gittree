@@ -146,3 +146,152 @@ test('Escape cannot interrupt the merge while it is pushing', () => {
   documentMock.listeners[0]({ key: 'Escape' });
   assert.equal(workspace.container.classList.contains('is-hidden'), false);
 });
+
+function deferred() {
+  let resolve;
+  const promise = new Promise(done => { resolve = done; });
+  return { promise, resolve };
+}
+
+function createFakeElement(tag = 'div') {
+  return {
+    tag,
+    className: '',
+    textContent: '',
+    children: [],
+    style: { setProperty() {} },
+    appendChild(child) {
+      this.children.push(child);
+      return child;
+    }
+  };
+}
+
+function installFakeDom() {
+  global.document = {
+    createElement: tag => createFakeElement(tag),
+    createDocumentFragment: () => createFakeElement('#fragment'),
+    getElementById: () => null,
+    addEventListener() {},
+    removeEventListener() {}
+  };
+  global.HtmlEncoder = { encode: value => String(value ?? '') };
+  global.DiffParser = require('../src/renderer/components/diff-parser.mts');
+  global.t = (key, options) => (options ? `${key}:${JSON.stringify(options)}` : key);
+}
+
+function mergeComparisonBridge(overrides = {}) {
+  return {
+    compareBranches: async () => ({ commits: [], diff: '' }),
+    getLog: async () => ({ latest: null }),
+    getStatus: async () => ({ isClean: true }),
+    previewMerge: async () => ({ supported: true, conflictedFiles: [], changedFiles: [] }),
+    ...overrides
+  };
+}
+
+test('merge preview shows the real commit total when the commit list is capped', async () => {
+  const MergeWorkspace = loadMergeWorkspace(mergeComparisonBridge({
+    compareBranches: async () => ({
+      commits: [{ hash: 'a'.repeat(40), message: 'one' }],
+      totalCommits: 350,
+      diff: ''
+    })
+  }));
+  const workspace = new MergeWorkspace({ state: { repo: { path: '/repo' } }, showToast() {} });
+  workspace.showLoading = () => {};
+  workspace.renderMerge = () => {};
+
+  await workspace.open('feature', 'main');
+
+  assert.equal(workspace.mergeData.commitsCount, 350);
+  assert.equal(workspace.mergeData.commits.length, 1);
+  assert.equal(MergeWorkspace.commitCount({ commits: [{}, {}] }), 2);
+});
+
+test('closing the merge overlay while it loads discards the late preview', async () => {
+  const pending = deferred();
+  const MergeWorkspace = loadMergeWorkspace(mergeComparisonBridge({
+    compareBranches: () => pending.promise
+  }));
+  const toasts = [];
+  const workspace = new MergeWorkspace({
+    state: { repo: { path: '/repo' } },
+    showToast: message => toasts.push(message)
+  });
+  let renders = 0;
+  workspace.showLoading = () => {};
+  workspace.renderMerge = () => { renders += 1; };
+
+  const opening = workspace.open('feature', 'main');
+  workspace.hide();
+  pending.resolve({ commits: [], diff: '' });
+  await opening;
+
+  assert.equal(renders, 0);
+  assert.equal(workspace.mergeData, null);
+  assert.deepEqual(toasts, []);
+});
+
+test('a second merge click while a merge runs does not start another merge', async () => {
+  const pending = deferred();
+  let merges = 0;
+  const MergeWorkspace = loadMergeWorkspace({
+    merge: () => {
+      merges += 1;
+      return pending.promise;
+    }
+  });
+  const events = [];
+  const workspace = new MergeWorkspace({
+    state: { repo: { path: '/repo' } },
+    showToast() {},
+    emit: name => events.push(name),
+    components: { branchList: { metadata: null } }
+  });
+  workspace.mergeData = {
+    source: 'feature',
+    target: 'main',
+    commitsCount: 1,
+    commits: [],
+    targetCommit: null,
+    diff: '',
+    diffTruncated: false,
+    status: { isClean: true }
+  };
+  workspace.preview = { changedFiles: [] };
+  workspace.setBusy = () => {};
+  workspace.hide = () => {};
+
+  const first = workspace.executeMerge(false);
+  await workspace.executeMerge(false);
+  assert.equal(merges, 1);
+
+  pending.resolve({ success: true });
+  await first;
+  assert.equal(workspace.busy, false);
+  assert.deepEqual(events, ['refresh']);
+});
+
+test('merge diff preview renders a bounded number of rows', () => {
+  installFakeDom();
+  const mod = require('../src/renderer/components/merge-workspace.mts');
+  const MergeWorkspace = mod.MergeWorkspace || mod.default || mod;
+  const limit = mod.MERGE_PREVIEW_DIFF_LINES;
+  assert.ok(Number.isInteger(limit) && limit > 0);
+  const body = Array.from({ length: limit * 3 }, (_, index) => `+line ${index}`).join('\n');
+  const diff = `diff --git a/big.txt b/big.txt\n@@ -0,0 +1,${limit * 3} @@\n${body}`;
+  const workspace = new MergeWorkspace({ state: { repo: null }, showToast() {} });
+
+  const fragment = workspace.renderDiff(diff, false);
+  const scroll = fragment.children[0];
+  const rows = scroll.children.filter(child => child.className !== 'merge-overflow-note');
+  const note = scroll.children.at(-1);
+
+  assert.equal(rows.length, limit);
+  assert.equal(note.className, 'merge-overflow-note');
+  assert.match(note.textContent, /diffPreviewLimited/);
+
+  const truncated = workspace.renderDiff('diff --git a/x b/x\n+one', true);
+  assert.match(truncated.children[0].children.at(-1).textContent, /diffPreviewTruncated/);
+});

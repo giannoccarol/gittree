@@ -6,6 +6,14 @@ import {
   type GraphPage,
   type GraphRef
 } from './graph-history-index.mts';
+import { readBoundedGitOutput } from './bounded-git-output.mts';
+
+/**
+ * Upper bound for the diff returned by a branch comparison. A branch with
+ * thousands of commits can produce a diff of hundreds of megabytes; above this
+ * size the preview is cut at a line boundary and flagged as truncated.
+ */
+export const BRANCH_COMPARISON_DIFF_LIMIT = 1024 * 1024;
 
 export type { GraphCommit, GraphRef, GraphPage } from './graph-history-index.mts';
 
@@ -43,6 +51,8 @@ export interface RepositoryHistoryOptions {
 export class RepositoryHistory {
   private git: SimpleGit;
 
+  private repoPath: string;
+
   private assertSafeRef: (ref: string) => Promise<void> | void;
 
   private assertCommitish: (ref: string) => Promise<void> | void;
@@ -60,6 +70,7 @@ export class RepositoryHistory {
     validateRepositoryPath
   }: RepositoryHistoryOptions) {
     this.git = git;
+    this.repoPath = repoPath;
     this.assertSafeRef = assertSafeRef;
     this.assertCommitish = assertCommitish;
     this.validateRepositoryPath = validateRepositoryPath;
@@ -154,15 +165,24 @@ export class RepositoryHistory {
     this.assertSafeRef(baseBranch);
     this.assertSafeRef(compareBranch);
     try {
-      const [diff, log] = await Promise.all([
-        this.git.diff(['--no-ext-diff', `${baseBranch}...${compareBranch}`]),
-        this.getLog(maxCount, `${baseBranch}..${compareBranch}`)
+      const [diff, log, count] = await Promise.all([
+        readBoundedGitOutput(
+          this.repoPath,
+          ['diff', '--no-ext-diff', `${baseBranch}...${compareBranch}`],
+          BRANCH_COMPARISON_DIFF_LIMIT
+        ),
+        this.getLog(maxCount, `${baseBranch}..${compareBranch}`),
+        this.git.raw(['rev-list', '--count', `${baseBranch}..${compareBranch}`])
       ]);
+      const commits = log.all || [];
+      const totalCommits = Number.parseInt(count.trim(), 10);
       return {
         base: baseBranch,
         compare: compareBranch,
-        diff,
-        commits: log.all || []
+        diff: diff.text,
+        diffTruncated: diff.truncated,
+        commits,
+        totalCommits: Number.isFinite(totalCommits) ? totalCommits : commits.length
       };
     } catch (error) {
       throw new Error(`Failed to compare branches: ${(error as Error).message}`, { cause: error });

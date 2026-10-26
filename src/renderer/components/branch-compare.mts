@@ -40,12 +40,13 @@ export class BranchCompare {
         error?: string;
         commits?: CompareCommit[];
         diff?: string;
+        totalCommits?: number;
       };
       if (comparison?.error) throw new Error(comparison.error);
 
       this.data = {
         source, target,
-        commitsCount: comparison.commits?.length || 0,
+        commitsCount: BranchCompare.commitCount(comparison),
         commits: comparison.commits || [],
         diff: comparison.diff || ''
       };
@@ -103,6 +104,13 @@ export class BranchCompare {
     });
   }
 
+  /** Real ahead count: the commit list itself is capped by the main process. */
+  static commitCount(comparison: { commits?: unknown[]; totalCommits?: number } | null | undefined): number {
+    const total = Number(comparison?.totalCommits);
+    if (Number.isInteger(total) && total >= 0) return total;
+    return comparison?.commits?.length || 0;
+  }
+
   esc(value: unknown): string { return HtmlEncoder.encode(value); }
   fmtDate(d: unknown): string {
     if (!d) return '';
@@ -129,9 +137,10 @@ export class BranchCompare {
           const comparison = await window.gitTree.compareBranches(repo.path, names[i], names[j]) as {
             error?: string;
             commits?: CompareCommit[];
+            totalCommits?: number;
           };
           matrix[i][j] = comparison?.error ? { error: comparison.error } : {
-            commits: comparison.commits?.length || 0
+            commits: BranchCompare.commitCount(comparison)
           };
         }
       }

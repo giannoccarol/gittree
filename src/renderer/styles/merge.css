@@ -381,6 +381,10 @@
   font-size: var(--text-xs);
 }
 
+.merge-conflict-prediction-next {
+  margin-top: var(--space-2);
+}
+
 .merge-conflict-prediction-files {
   margin-top: var(--space-2);
   padding: var(--space-2) var(--space-3);

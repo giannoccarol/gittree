@@ -118,6 +118,12 @@ test('Git history queries preserve their public repository contract', async t =>
     );
     assert.match(comparison.diff, /feature-only\.txt/);
     assert.ok(Array.isArray(comparison.commits));
+    assert.equal(comparison.totalCommits, 2);
+    assert.equal(comparison.diffTruncated, false);
+
+    const capped = await service.getBranchComparison('main', 'feature/topic', 1);
+    assert.equal(capped.commits.length, 1);
+    assert.equal(capped.totalCommits, 2);
 
     await assert.rejects(
       service.getBranchComparison('--all', 'feature/topic', 10),

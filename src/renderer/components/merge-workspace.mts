@@ -1,5 +1,12 @@
 import type { GitTreeApp } from '../app.mts';
 
+/**
+ * Maximum diff rows rendered in the merge preview. Merging a long-lived
+ * branch can bring tens of thousands of diff lines; building a DOM row for
+ * each one froze the renderer, so the preview shows a bounded head instead.
+ */
+export const MERGE_PREVIEW_DIFF_LINES = 2000;
+
 interface MergeCommit {
   hash: string;
   message: string;
@@ -26,6 +33,14 @@ interface MergePreview {
   changedFiles?: string[] | null;
 }
 
+interface BranchComparison {
+  error?: string;
+  commits?: MergeCommit[];
+  diff?: string;
+  totalCommits?: number;
+  diffTruncated?: boolean;
+}
+
 interface PendingPush {
   remote: string;
   branch: string;
@@ -42,6 +57,7 @@ export class MergeWorkspace {
     commits: MergeCommit[];
     targetCommit: unknown;
     diff: string;
+    diffTruncated: boolean;
     status: MergeStatus;
   } | null;
   preview: MergePreview | null;
@@ -51,6 +67,8 @@ export class MergeWorkspace {
   onBackdropClick: ((event: MouseEvent) => void) | null;
   pendingPush: PendingPush | null;
   isRefreshing: boolean;
+  busy: boolean;
+  loadToken: number;
 
   constructor(app: GitTreeApp) {
     this.app = app;
@@ -64,9 +82,19 @@ export class MergeWorkspace {
     this.onBackdropClick = null;
     this.pendingPush = null;
     this.isRefreshing = false;
+    this.busy = false;
+    this.loadToken = 0;
+  }
+
+  static commitCount(comparison: BranchComparison | null | undefined): number {
+    const total = Number(comparison?.totalCommits);
+    if (Number.isInteger(total) && total >= 0) return total;
+    return comparison?.commits?.length || 0;
   }
 
   async open(source: string, target: string): Promise<void> {
+    if (this.busy) return;
+    const token = ++this.loadToken;
     this.sourceBranch = source;
     this.targetBranch = target;
     this.strategy = 'noff';
@@ -83,25 +111,29 @@ export class MergeWorkspace {
         window.gitTree.getStatus(repo.path),
         window.gitTree.previewMerge(repo.path, source)
       ]) as [
-        { error?: string; commits?: MergeCommit[]; diff?: string },
+        BranchComparison,
         { latest?: unknown },
         MergeStatus,
         MergePreview
       ];
+      // The user closed the overlay or opened another merge while loading.
+      if (token !== this.loadToken) return;
       if (comparison?.error) throw new Error(comparison.error);
 
       this.mergeData = {
         source, target,
-        commitsCount: comparison.commits?.length || 0,
+        commitsCount: MergeWorkspace.commitCount(comparison),
         commits: comparison.commits || [],
         targetCommit: logTgt.latest,
         diff: comparison.diff || '',
+        diffTruncated: Boolean(comparison.diffTruncated),
         status: status || {}
       };
       this.preview = preview && !preview.error ? preview : null;
 
       this.renderMerge();
     } catch (e) {
+      if (token !== this.loadToken) return;
       this.app.showToast('Error: ' + (e as Error).message, 'error');
       this.hide();
     }
@@ -110,8 +142,9 @@ export class MergeWorkspace {
   async refreshPreview(): Promise<void> {
     const repo = this.app.state.repo;
     const data = this.mergeData;
-    if (!repo || !data || this.isRefreshing) return;
+    if (!repo || !data || this.isRefreshing || this.busy) return;
     this.isRefreshing = true;
+    const token = this.loadToken;
     const btn = document.getElementById('merge-refresh-btn') as HTMLButtonElement | null;
     if (btn) {
       btn.disabled = true;
@@ -121,14 +154,16 @@ export class MergeWorkspace {
       const [status, preview, comparison] = await Promise.all([
         window.gitTree.getStatus(repo.path) as Promise<MergeStatus>,
         window.gitTree.previewMerge(repo.path, data.source) as Promise<MergePreview>,
-        window.gitTree.compareBranches(repo.path, data.target, data.source) as Promise<{ error?: string; commits?: MergeCommit[]; diff?: string }>
+        window.gitTree.compareBranches(repo.path, data.target, data.source) as Promise<BranchComparison>
       ]);
+      if (token !== this.loadToken) return;
       if (comparison && !comparison.error) {
         this.mergeData = {
           ...data,
-          commitsCount: comparison.commits?.length || 0,
+          commitsCount: MergeWorkspace.commitCount(comparison),
           commits: comparison.commits || [],
           diff: comparison.diff || '',
+          diffTruncated: Boolean(comparison.diffTruncated),
           status: status || {}
         };
       } else {
@@ -163,7 +198,7 @@ export class MergeWorkspace {
           <button id="merge-cancel-btn" class="btn"><i class="ph ph-x" aria-hidden="true"></i><span>${this.esc(t('common.close'))}</span></button>
         </div>
       </header>
-      <div class="empty-state"><i class="ph ph-circle-notch" aria-hidden="true" style="animation: project-loading-spin .8s linear infinite"></i><span>${this.esc(t('common.loading'))}</span></div>
+      <div class="empty-state"><i class="ph ph-circle-notch merge-pushing-spinner" aria-hidden="true"></i><span>${this.esc(t('common.loading'))}</span></div>
       </div>
     `;
     const cancel = document.getElementById('merge-cancel-btn');
@@ -185,6 +220,7 @@ export class MergeWorkspace {
     if (this.onBackdropClick) return;
     this.onBackdropClick = (event: MouseEvent) => {
       if (!this.container || this.container.classList.contains('is-hidden')) return;
+      if (this.busy) return;
       if (event.target === this.container) this.hide();
     };
     this.ensureContainer();
@@ -363,7 +399,7 @@ export class MergeWorkspace {
               </div>
               <div class="merge-conflict-prediction-detail">${this.esc(t('mergeWorkspace.conflictPredictionDetail'))}</div>
               <div class="merge-conflict-prediction-files">${this.esc(conflictList)}${conflictFiles.length > 6 ? ` ${this.esc(t('mergeWorkspace.conflictPredictionMore', { count: conflictFiles.length - 6 }))}` : ''}</div>
-              <div class="merge-conflict-prediction-detail" style="margin-top:8px">${this.esc(t('mergeWorkspace.conflictWillOpenResolver'))}</div>
+              <div class="merge-conflict-prediction-detail merge-conflict-prediction-next">${this.esc(t('mergeWorkspace.conflictWillOpenResolver'))}</div>
             </section>
           ` : ''}
           <section class="merge-section merge-diff-section">
@@ -371,7 +407,7 @@ export class MergeWorkspace {
               <span>${this.esc(t('mergeWorkspace.incomingChanges'))}</span>
               <span class="merge-section-count">${changedCount}</span>
             </div>
-            <div class="merge-diff-scroll" id="merge-diff-scroll">${this.renderDiff(d.diff)}</div>
+            <div class="merge-diff-scroll" id="merge-diff-scroll"></div>
           </section>
         </main>
       </div>
@@ -396,6 +432,9 @@ export class MergeWorkspace {
       </footer>
       </div>
     `;
+
+    const diffScroll = this.container!.querySelector<HTMLElement>('#merge-diff-scroll');
+    if (diffScroll) diffScroll.replaceChildren(this.renderDiff(d.diff, d.diffTruncated));
 
     const cancel = document.getElementById('merge-cancel-btn');
     if (cancel) cancel.onclick = () => this.hide();
@@ -425,22 +464,32 @@ export class MergeWorkspace {
     this.container!.classList.remove('is-hidden');
   }
 
-  renderDiff(diffText: string): string {
-    if (!diffText) {
-      return `<div class="empty-state">${this.esc(t('mergeWorkspace.noDiffPreview'))}</div>`;
-    }
-    const lines = DiffParser.parseUnified(diffText);
-    const scroll = document.createElement('div');
+  renderDiff(diffText: string, truncated = false): Node {
     const fragment = document.createDocumentFragment();
+    if (!diffText) {
+      const empty = document.createElement('div');
+      empty.className = 'empty-state';
+      empty.textContent = t('mergeWorkspace.noDiffPreview');
+      fragment.appendChild(empty);
+      return fragment;
+    }
+    const allLines = DiffParser.parseUnified(diffText);
+    const lines = allLines.length > MERGE_PREVIEW_DIFF_LINES
+      ? allLines.slice(0, MERGE_PREVIEW_DIFF_LINES)
+      : allLines;
+    const scroll = document.createElement('div');
     scroll.style.setProperty('--diff-gutter-digits', String(DiffParser.maxDigits(lines)));
-    lines.forEach(line => {
+    for (const line of lines) {
       if (line.kind === 'file') {
         const header = document.createElement('div');
         header.className = 'diff-file-header';
         const match = line.content.match(/diff --git a\/(.+) b\/(.+)/);
-        header.innerHTML = `<span class="diff-file-path">${this.esc(match ? match[2] : line.content)}</span>`;
-        fragment.appendChild(header);
-        return;
+        const path = document.createElement('span');
+        path.className = 'diff-file-path';
+        path.textContent = match ? match[2] : line.content;
+        header.appendChild(path);
+        scroll.appendChild(header);
+        continue;
       }
       const row = document.createElement('div');
       row.className = `diff-line ${line.kind === 'no-newline' ? 'header' : line.kind}`;
@@ -450,10 +499,18 @@ export class MergeWorkspace {
       content.className = 'diff-line-content';
       content.textContent = line.content;
       row.appendChild(content);
-      fragment.appendChild(row);
-    });
-    scroll.appendChild(fragment);
-    return scroll.innerHTML;
+      scroll.appendChild(row);
+    }
+    if (truncated || allLines.length > lines.length) {
+      const note = document.createElement('div');
+      note.className = 'merge-overflow-note';
+      note.textContent = truncated
+        ? t('mergeWorkspace.diffPreviewTruncated', { shown: lines.length })
+        : t('mergeWorkspace.diffPreviewLimited', { shown: lines.length, total: allLines.length });
+      scroll.appendChild(note);
+    }
+    fragment.appendChild(scroll);
+    return fragment;
   }
 
   lineNumber(value: number | null, side: string): HTMLElement {
@@ -465,81 +522,97 @@ export class MergeWorkspace {
 
   async executeMerge(andPush = false): Promise<void> {
     const repo = this.app.state.repo;
-    if (!repo) return;
+    if (!repo || !this.mergeData || this.busy) return;
     const changedFiles = this.preview?.changedFiles || null;
     if (this.hasBlockingChanges(this.mergeData?.status, changedFiles)) {
       this.app.showToast(t('mergeWorkspace.mergeBlocked'), 'error');
       return;
     }
-    this.app.showToast(t('mergeWorkspace.mergeStarted'));
+    const data = this.mergeData;
+    this.busy = true;
     this.pendingPush = null;
     if (andPush) {
       const metadata = this.app.components.branchList.metadata;
       const targetBranch = (metadata?.branches || []).find(
-        branch => branch.name === this.mergeData!.target && branch.kind === 'local'
+        branch => branch.name === data.target && branch.kind === 'local'
       );
       const remoteName = targetBranch?.upstream?.split('/')[0]
         || metadata?.remotes?.[0]?.name
         || 'origin';
-      this.pendingPush = { remote: remoteName, branch: this.mergeData!.target };
+      this.pendingPush = { remote: remoteName, branch: data.target };
     }
+    const actionButton = andPush ? 'merge-push-btn' : 'merge-only-btn';
+    this.setBusy(true, actionButton, t('mergeWorkspace.mergeStarted'));
+    this.app.showToast(t('mergeWorkspace.mergeStarted'));
 
-    const result = await window.gitTree.merge(repo.path, this.mergeData!.source, this.strategy) as {
-      error?: string;
-      conflictState?: { type?: string };
-    };
-    if (result.error) {
-      if (result.conflictState?.type) {
-        // Preserve merge context for conflict resolver
-        const pushContext = this.pendingPush;
-        this.hide();
-        await this.app.components.conflict.open(result.conflictState, pushContext ? { pushAfter: pushContext } : undefined);
-        // Also show operation banner
-        try {
-          const state = await window.gitTree.getOperationState(repo.path) as { type?: string; conflicts?: string[] };
-          if (state?.type) this.app.components.operationBanner?.setOperation(state as never);
-        } catch (_err) {
-          void _err;
+    let refresh = false;
+    try {
+      const result = await window.gitTree.merge(repo.path, data.source, this.strategy) as {
+        error?: string;
+        conflictState?: { type?: string };
+      };
+      if (result.error) {
+        if (result.conflictState?.type) {
+          // Preserve merge context for conflict resolver
+          const pushContext = this.pendingPush;
+          this.busy = false;
+          this.hide();
+          await this.app.components.conflict.open(result.conflictState, pushContext ? { pushAfter: pushContext } : undefined);
+          // Also show operation banner
+          try {
+            const state = await window.gitTree.getOperationState(repo.path) as { type?: string; conflicts?: string[] };
+            if (state?.type) this.app.components.operationBanner?.setOperation(state as never);
+          } catch (_err) {
+            void _err;
+          }
+        } else {
+          this.pendingPush = null;
+          this.busy = false;
+          // The merge did not start: restore the actionable preview.
+          this.renderMerge();
         }
-      } else {
-        this.pendingPush = null;
+        this.app.showToast(result.error, 'error');
+        return;
       }
-      this.app.showToast(result.error, 'error');
-      return;
-    }
 
-    if (!andPush) {
+      refresh = true;
+      if (!andPush) {
+        this.busy = false;
+        this.hide();
+        this.pendingPush = null;
+        this.app.showToast(t('mergeWorkspace.mergeCompleted'), 'success');
+        return;
+      }
+
+      this.setBusy(true, actionButton, t('mergeWorkspace.pushing'));
+      const pushContext = this.pendingPush;
+      const remoteName = pushContext?.remote || 'origin';
+      const branchName = pushContext?.branch || data.target;
+      const pushResult = await window.gitTree.push(repo.path, remoteName, branchName, true) as { error?: string };
+      this.busy = false;
       this.hide();
       this.pendingPush = null;
-      this.app.showToast(t('mergeWorkspace.mergeCompleted'), 'success');
-      this.app.emit('refresh');
-      return;
+      if (pushResult.error) {
+        this.app.showToast(t('mergeWorkspace.pushFailed', { error: pushResult.error }), 'error');
+      } else {
+        this.app.showToast(t('mergeWorkspace.mergeAndPushCompleted'), 'success');
+      }
+    } finally {
+      this.busy = false;
+      if (refresh) this.app.emit('refresh');
     }
-
-    this.setPushing(true);
-    const pushContext = this.pendingPush;
-    const remoteName = pushContext?.remote || 'origin';
-    const branchName = pushContext?.branch || this.mergeData!.target;
-    const pushResult = await window.gitTree.push(repo.path, remoteName, branchName, true) as { error?: string };
-    this.setPushing(false);
-    this.hide();
-    this.pendingPush = null;
-    if (pushResult.error) {
-      this.app.showToast(t('mergeWorkspace.pushFailed', { error: pushResult.error }), 'error');
-    } else {
-      this.app.showToast(t('mergeWorkspace.mergeAndPushCompleted'), 'success');
-    }
-    this.app.emit('refresh');
   }
 
-  setPushing(pushing: boolean): void {
+  setBusy(busy: boolean, activeButtonId: string | null = null, label = ''): void {
     if (!this.container) return;
-    this.container!.querySelectorAll('.merge-confirm, #merge-cancel-btn, #merge-refresh-btn').forEach(button => {
-      (button as HTMLButtonElement).disabled = pushing;
+    this.container.querySelectorAll(
+      '.merge-confirm, .merge-strategy-option, #merge-cancel-btn, #merge-refresh-btn, #merge-stash-btn, #merge-view-changes-btn'
+    ).forEach(button => {
+      (button as HTMLButtonElement).disabled = busy;
     });
-    const pushButton = this.container!.querySelector('#merge-push-btn');
-    if (pushButton && pushing) {
-      pushButton.innerHTML = `<i class="ph ph-circle-notch merge-pushing-spinner" aria-hidden="true"></i> ${this.esc(t('mergeWorkspace.pushing'))}`;
+    const activeButton = activeButtonId ? this.container.querySelector(`#${activeButtonId}`) : null;
+    if (activeButton && busy) {
+      activeButton.innerHTML = `<i class="ph ph-circle-notch merge-pushing-spinner" aria-hidden="true"></i> ${this.esc(label)}`;
     }
   }
 
@@ -564,6 +637,7 @@ export class MergeWorkspace {
     this.onKeydown = event => {
       if (event.key !== 'Escape') return;
       if (!this.container || this.container!.classList.contains('is-hidden')) return;
+      if (this.busy) return;
       const cancel = document.getElementById('merge-cancel-btn')! as HTMLButtonElement | null;
       if (!cancel || cancel.disabled) return;
       this.hide();
@@ -572,6 +646,8 @@ export class MergeWorkspace {
   }
 
   hide(): void {
+    // Responses of loads started before closing must not reopen the overlay.
+    this.loadToken += 1;
     if (this.onKeydown) {
       document.removeEventListener('keydown', this.onKeydown);
       this.onKeydown = null;
