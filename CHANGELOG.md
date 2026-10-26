@@ -1,3 +1,41 @@
+# [1.0.0](https://github.com/giannoccarol/gittree/compare/v0.30.0...v1.0.0) (2026-10-26)
+
+
+* feat(renderer)!: remove the repository analytics dashboard ([3edaaf0](https://github.com/giannoccarol/gittree/commit/3edaaf04f31fd580f0a9568ceef9ae0b1ca1a41c))
+
+
+### Bug Fixes
+
+* **changes:** report a persistent polling error once ([8c19005](https://github.com/giannoccarol/gittree/commit/8c19005c9929f24322fdb6b22f6e6e8ef9157465))
+* **conflicts:** ignore duplicate continue clicks and redundant reloads ([87651d0](https://github.com/giannoccarol/gittree/commit/87651d0106e50aceee101bdbc88ed7609b86c377))
+* **git:** clarify remote operation errors ([8979975](https://github.com/giannoccarol/gittree/commit/89799757fba315ec55412aba165125ab981db807))
+* **git:** keep notes and stash commits out of the history graph ([1d2f5e8](https://github.com/giannoccarol/gittree/commit/1d2f5e81fbd34b4e48bda747c5460c3540b37647))
+* **git:** merge diverged branches on pull when no strategy is configured ([5089dd0](https://github.com/giannoccarol/gittree/commit/5089dd0a964f6007995fe6b1ed9a66f8b792bc97))
+* **git:** read operation state with one process and allow long continue output ([19d3752](https://github.com/giannoccarol/gittree/commit/19d3752af4b07f5ef2ee9032d6c198b8fe8b5352))
+* **git:** refresh the graph snapshot when a linked worktree moves ([c61ae22](https://github.com/giannoccarol/gittree/commit/c61ae226a63b599fffeebb2c2bf73eb88814398b))
+* **git:** stage, unstage and discard more than 500 paths ([86aed2c](https://github.com/giannoccarol/gittree/commit/86aed2c3574b9e3cdf04b8b50dbcc1acad40778d))
+* **git:** stop stalled network operations with a timeout ([4e9174c](https://github.com/giannoccarol/gittree/commit/4e9174cfd8782be1703de599a41a4acef0c33a3d))
+* **merge:** keep the merge preview responsive on long branches ([0d13356](https://github.com/giannoccarol/gittree/commit/0d133567ebcc960405e8a7b0de6a0a44382393dd))
+* **types:** accept a null stderr from the update installer process ([86e8860](https://github.com/giannoccarol/gittree/commit/86e88603da2a6ccd1e861cb46793ed3102404cbf))
+
+
+### Features
+
+* **branches:** fast-forward other branches in batch pull ([f5c5616](https://github.com/giannoccarol/gittree/commit/f5c5616f6ce77b1bfc1103f54b0889a22849c20d))
+
+
+### Performance Improvements
+
+* **git:** serve graph pages from a cached history snapshot ([1cd7231](https://github.com/giannoccarol/gittree/commit/1cd72319371a28142c48eddd55387aaca6a3a7ad))
+* **graph:** page, filter and reload the history incrementally ([dc96c75](https://github.com/giannoccarol/gittree/commit/dc96c75a92b1b145964b95ad6613fa145741f151))
+* **graph:** track rendered row content without DOM reads ([8ae7cd2](https://github.com/giannoccarol/gittree/commit/8ae7cd27770166e42514a77c403b6eab414daf45))
+
+
+### BREAKING CHANGES
+
+* the repository analytics dashboard (Workspace
+intelligence) is no longer available.
+
 # [0.30.0](https://github.com/giannoccarol/gittree/compare/v0.29.2...v0.30.0) (2026-09-24)
 
 
