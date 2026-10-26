@@ -39,6 +39,7 @@ export class ChangesView {
   active: boolean;
   inflight: Promise<WorkingTreeSnapshot | null> | null;
   pollTimer: ReturnType<typeof setInterval> | null;
+  lastPollError: string | null;
   selected: { path: string; staged: boolean } | null;
   diffRequest: number;
   generatingCommit: boolean;
@@ -57,6 +58,7 @@ export class ChangesView {
     this.active = false;
     this.inflight = null;
     this.pollTimer = null;
+    this.lastPollError = null;
     this.selected = null;
     this.diffRequest = 0;
     this.generatingCommit = false;
@@ -156,6 +158,7 @@ export class ChangesView {
     if (this.repoPath !== repoPath) {
       this.repoPath = repoPath;
       this.snapshot = null;
+      this.lastPollError = null;
       this.identity = null;
       this.selected = null;
       this.hideExplanation();
@@ -177,6 +180,16 @@ export class ChangesView {
     }
   }
 
+  /**
+   * Polling repeats every 2 s; a persistent failure (for example a merge
+   * waiting for conflict resolution) is reported once, not on every tick.
+   */
+  reportPollError(message: string): void {
+    if (message === this.lastPollError) return;
+    this.lastPollError = message;
+    this.app.showToast(message, 'error');
+  }
+
   syncPolling(): void {
     if (this.pollTimer) clearInterval(this.pollTimer);
     this.pollTimer = null;
@@ -194,9 +207,10 @@ export class ChangesView {
         const snapshot = rawSnapshot as WorkingTreeSnapshot;
         if (pathAtStart !== this.repoPath) return null;
         if (snapshot?.error) {
-          this.app.showToast(snapshot.error, 'error');
+          this.reportPollError(String(snapshot.error));
           return null;
         }
+        this.lastPollError = null;
         if (force || snapshot.snapshotId !== this.snapshot?.snapshotId) {
           this.snapshot = snapshot;
           this.render();
@@ -204,7 +218,7 @@ export class ChangesView {
         return snapshot;
       })
       .catch((error: Error): null => {
-        this.app.showToast(error.message, 'error');
+        this.reportPollError(error.message);
         return null;
       })
       .finally(() => {
