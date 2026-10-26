@@ -17,7 +17,6 @@ import { ReflogView } from './components/reflog-view.mts';
 import { ConflictResolver } from './components/conflict-resolver.mts';
 import { OperationBanner } from './components/operation-banner.mts';
 import { GitFlow } from './components/gitflow.mts';
-import { RepositoryDashboard } from './components/repository-dashboard.mts';
 import { StatusBar } from './components/status-bar.mts';
 import { WorktreeAgentPanel } from './components/worktree-agent-panel.mts';
 import { RepositoryWorkspaceController, type RepositoryEntry } from './repository-workspace-controller.mts';
@@ -62,7 +61,6 @@ interface AppComponents {
   conflict: ConflictResolver;
   operationBanner: OperationBanner;
   gitflow: GitFlow;
-  dashboard: RepositoryDashboard;
   statusBar: StatusBar;
   worktreeAgents: WorktreeAgentPanel;
 }
@@ -193,17 +191,6 @@ export class GitTreeApp {
     this.components.operationBanner = new OperationBanner(this);
     this.components.operationBanner.mount();
     this.components.gitflow = new GitFlow(this);
-    this.components.dashboard = new RepositoryDashboard({
-      container: byId('repository-dashboard'),
-      button: byId('btn-dashboard'),
-      workspace: byId('workspace-body'),
-      bridge: window.gitTree,
-      translate: t,
-      encode: value => HtmlEncoder.encode(value),
-      getRepositories: () => this.components.repoTabs.repos,
-      storage: localStorage,
-      getLocale: () => window.i18next?.language || 'en'
-    });
     this.components.statusBar = new StatusBar();
     this.components.worktreeAgents = new WorktreeAgentPanel(this);
     this.repositoryWorkspace = new RepositoryWorkspaceController({
@@ -311,7 +298,6 @@ export class GitTreeApp {
     this.applyToolbarVisibility();
     this.setupGlobalShortcuts();
     await this.components.repoTabs.init();
-    this.components.dashboard.mount();
     this.components.settings.init();
     this.components.worktreeAgents.mount();
 
@@ -790,9 +776,6 @@ export class GitTreeApp {
     await this.openRepo(this.state.repo, options);
     this.components.repoTabs.refreshAllSync();
     await this.syncOperationBanner();
-    if (this.components.dashboard?.active) {
-      await this.components.dashboard.refresh({ force: true });
-    }
     if (!options.silent) this.showToast(t('feedback.refreshed'), 'success');
   }
 
@@ -878,7 +861,6 @@ export class GitTreeApp {
   }
 
   showWelcome(): void {
-    this.components.dashboard?.close();
     this.state.repo = null;
     this.components.operationBanner?.setOperation(null);
     this.components.changes?.setActive(false);
@@ -1025,7 +1007,6 @@ export class GitTreeApp {
     this.setInspectorState(this.inspectorState, false);
     this.components.inspectorWorkspace?.refreshTranslations();
     this.components.repoTabs?.render();
-    this.components.dashboard?.refreshTranslations();
     if (this.state.repo) {
       this.components.branchList.render();
       this.components.graphView.render();

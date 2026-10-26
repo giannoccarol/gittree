@@ -30,7 +30,6 @@
   <link rel="stylesheet" href="styles/repository-discovery.css">
   <link rel="stylesheet" href="styles/settings.css">
   <link rel="stylesheet" href="styles/gitflow.css">
-  <link rel="stylesheet" href="styles/repository-dashboard.css">
   <link rel="stylesheet" href="styles/reflog.css">
   <link rel="stylesheet" href="styles/agent-workspace.css">
 </head>
@@ -101,11 +100,6 @@
           title="Settings" data-i18n-title="settings.title">
           <i class="ph ph-gear-six"></i>
         </button>
-        <button id="btn-dashboard" class="btn-icon dashboard-trigger" type="button"
-          aria-pressed="false" title="Repository analytics" data-i18n-title="dashboard.open"
-          aria-label="Repository analytics" data-i18n-aria-label="dashboard.open">
-          <i class="ph ph-chart-line-up" aria-hidden="true"></i>
-        </button>
         <button class="btn-icon theme-toggle" type="button" title="Toggle theme" data-i18n-title="common.toggleTheme">
           <i class="ph ph-moon"></i>
         </button>
@@ -168,9 +162,6 @@
         </button>
       </div>
     </div>
-
-    <section id="repository-dashboard" class="repository-dashboard is-hidden" aria-label="Repository analytics"
-      data-i18n-aria-label="dashboard.open"></section>
 
     <div class="workspace-body" id="workspace-body">
       <aside id="sidebar" class="bento-panel sidebar">
@@ -734,7 +725,6 @@
 <script type="module" src="components/status-bar.mjs"></script>
 <script type="module" src="components/welcome.mjs"></script>
 <script type="module" src="components/gitflow.mjs"></script>
-<script type="module" src="components/repository-dashboard.mjs"></script>
 <script type="module" src="components/reflog-view.mjs"></script>
 <script type="module" src="components/worktree-agent-panel.mjs"></script>
 <script type="module" src="event-bus.mjs"></script>
