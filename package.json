@@ -20,6 +20,7 @@
     "perf:renderer": "node scripts/renderer-perf-benchmark.js",
     "perf:workspace": "node scripts/workspace-perf-benchmark.js",
     "perf:memory": "node scripts/memory-stress-benchmark.js",
+    "perf:history": "node scripts/history-perf-benchmark.js",
     "test:renderer-ui": "node scripts/renderer-ui-regression.js",
     "test": "node --test test/*.test.js",
     "test:contracts": "node --test test/license-configuration.test.js test/release-configuration.test.js test/i18n-parity.test.js test/hardening.test.js test/html-encoder.test.js test/dialog-service.test.js test/ipc-handler-registry.test.js test/git-ipc-handlers.test.js test/hosting-ipc-handlers.test.js test/repository-ipc-handlers.test.js test/window-application-ipc-handlers.test.js test/application-runtime.test.js test/diagnostics-exporter.test.js test/settings-diagnostics.test.js test/preload-contract.test.js test/ipc-parity.test.js",
