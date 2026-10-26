@@ -171,14 +171,20 @@ test('deep pages slice one cached order instead of walking history again', async
   const { index, commands } = createRecordedIndex(repo.repository);
 
   const first = await index.page(0, 200, null);
-  assert.deepEqual(commands().map(call => call.command), ['for-each-ref', 'rev-parse', 'rev-parse', 'log']);
+  assert.deepEqual(
+    commands().map(call => call.command),
+    ['for-each-ref', 'rev-parse', 'worktree', 'rev-parse', 'log']
+  );
 
   const second = await index.page(200, 200, first.snapshot);
   const secondCalls = commands();
   // The walk is followed by one refs check proving it matches the snapshot.
-  assert.deepEqual(secondCalls.map(call => call.command), ['rev-list', 'for-each-ref', 'rev-parse', 'log']);
-  assert.ok(secondCalls[3].args.includes('--stdin'));
-  assert.equal(secondCalls[3].input.trim().split('\n').length, 200, 'only uncached commits are read');
+  assert.deepEqual(
+    secondCalls.map(call => call.command),
+    ['rev-list', 'for-each-ref', 'rev-parse', 'worktree', 'log']
+  );
+  assert.ok(secondCalls[4].args.includes('--stdin'));
+  assert.equal(secondCalls[4].input.trim().split('\n').length, 200, 'only uncached commits are read');
 
   const deep = await index.page(600, 200, first.snapshot);
   assert.deepEqual(commands().map(call => call.command), ['log']);
@@ -202,15 +208,18 @@ test('a refresh after new commits reads metadata only for the new commits', asyn
   commands();
 
   const unchanged = await index.page(0, 300, token);
-  assert.deepEqual(commands().map(call => call.command), ['for-each-ref', 'rev-parse']);
+  assert.deepEqual(commands().map(call => call.command), ['for-each-ref', 'rev-parse', 'worktree']);
   assert.deepEqual(unchanged.refs, []);
 
   commitOnMain(repo, 'fetched one');
   commitOnMain(repo, 'fetched two');
   const refreshed = await index.page(0, 300, token);
   const refreshCalls = commands();
-  assert.deepEqual(refreshCalls.map(call => call.command), ['for-each-ref', 'rev-parse', 'rev-list', 'log']);
-  assert.equal(refreshCalls[3].input.trim().split('\n').length, 2);
+  assert.deepEqual(
+    refreshCalls.map(call => call.command),
+    ['for-each-ref', 'rev-parse', 'worktree', 'rev-list', 'log']
+  );
+  assert.equal(refreshCalls[4].input.trim().split('\n').length, 2);
   assert.deepEqual(
     refreshed.commits.map(commit => commit.hash),
     historyHashes(repo.repository).slice(0, 300)
@@ -233,4 +242,36 @@ test('the metadata cache stays bounded', async t => {
 
   assert.deepEqual(hashes, expected);
   assert.deepEqual(reread.commits.map(commit => commit.hash), expected.slice(0, 1000));
+});
+
+test('commits on a detached linked worktree refresh the snapshot', async t => {
+  const repo = createSyntheticRepository(t, 300);
+  const service = new GitService(repo.repository);
+  const first = await service.getGraphPage(0, 100);
+  const linked = `${repo.root}/linked`;
+  repo.git('worktree', 'add', '--detach', linked, 'main~10');
+  execFileSync('git', ['commit', '--allow-empty', '-m', 'detached in linked worktree'], {
+    cwd: linked,
+    env: {
+      ...process.env,
+      GIT_AUTHOR_NAME: 'GitTree Tests',
+      GIT_AUTHOR_EMAIL: 'gittree@example.test',
+      GIT_COMMITTER_NAME: 'GitTree Tests',
+      GIT_COMMITTER_EMAIL: 'gittree@example.test'
+    }
+  });
+  const detached = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: linked, encoding: 'utf8' }).trim();
+
+  const refreshed = [];
+  let token = null;
+  for (let offset = 0; ; offset += 100) {
+    const page = await service.getGraphPage(offset, 100, offset === 0 ? first.snapshot : token);
+    token = page.snapshot;
+    refreshed.push(...page.commits.map(commit => commit.hash));
+    if (!page.hasMore) break;
+  }
+
+  assert.notEqual(token, first.snapshot);
+  assert.ok(refreshed.includes(detached));
+  assert.deepEqual(refreshed, historyHashes(repo.repository));
 });

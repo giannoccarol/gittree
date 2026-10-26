@@ -354,11 +354,13 @@ export class GraphHistoryIndex {
       });
     } catch { /* HEAD may be unborn */ }
 
+    // `--all` also walks the HEAD of every linked worktree.
+    const worktrees = await this.git.raw(['worktree', 'list', '--porcelain']).catch(() => '');
     const shallow = await this.readShallowKey();
     const walked = lines.filter(line => !UNWALKED_REF.test(line)).join('\n');
     const replaceLines = lines.filter(line => line.startsWith('refs/replace/')).join('\n');
     return {
-      id: digest(`${walked}\0${headCommit}\0${shallow}`).slice(0, 32),
+      id: digest(`${walked}\0${headCommit}\0${worktrees}\0${shallow}`).slice(0, 32),
       graftKey: digest(`${replaceLines}\0${shallow}`),
       refs
     };
