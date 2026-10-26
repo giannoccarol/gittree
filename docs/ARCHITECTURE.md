@@ -44,7 +44,7 @@ globals or renderer state.
 | IPC registration and error envelopes | `src/main/ipc/` plus `src/preload.js` | IPC handler, parity and preload contract tests |
 | Repository admission, persistence, service reuse and queue identity | `src/main/repository-workspace.js` with `repo-manager.js` as storage Adapter | `test/repository-workspace.test.js`, repository IPC and RepoManager tests |
 | Git public operations | `src/main/git-service.js` | `test/git-service*.test.js` with deterministic real repositories |
-| Repository history, graph, refs and commit diff | `src/main/git/repository-history.js` behind `GitService` | `test/git-history-repository-contracts.test.js` and graph integration tests |
+| Repository history, graph, refs and commit diff | `src/main/git/repository-history.js` behind `GitService`; `graph-history-index.mts` owns graph snapshots, the cached order and commit metadata (ADR-0010) | `test/git-history-repository-contracts.test.js`, `test/git-graph-paging.test.js`, `test/graph-history-index.test.js` and `npm run perf:history` |
 | Repository status, snapshots, file and hunk operations | `src/main/git/repository-working-tree.js` plus the pure patch parser | working-tree contracts, integration tests and hardening tests |
 | Merge, rebase, cherry-pick, conflicts and recovery | `src/main/git/repository-operations.js` behind `GitService` | `test/repository-operations-contracts.test.js` and focused Git integration tests |
 | Repository path, Git Adapter and common-directory serialization | `src/main/git/repository-session.js` and `repository-queue.js` | Repository session and linked-worktree workspace tests |

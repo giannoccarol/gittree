@@ -34,6 +34,13 @@ Privacy-first: no accounts, no telemetry, no repository upload.
 - **Repository history** — the read-only Git capability for log, graph, refs,
   commit comparisons and commit diff/detail queries within one Repository
   session.
+- **Graph snapshot** — the history graph for one refs state, identified by a
+  fingerprint of the walked refs, the HEADs of the repository's worktrees and
+  the shallow boundary. Repository
+  history caches its topological order and immutable commit metadata, so graph
+  pages are slices instead of fresh walks; callers pass the snapshot id back to
+  keep paging on one ordering and to learn whether a refresh changed anything
+  (ADR-0010).
 - **Repository working tree** — the Git capability that observes status,
   creates Working tree snapshots and owns safe file/hunk stage, unstage and
   discard operations.

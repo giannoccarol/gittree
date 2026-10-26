@@ -118,6 +118,7 @@ Sensitive reports: [SECURITY.md](SECURITY.md).
 | `npm run audit:design` | Design-system rules |
 | `npm run screenshots:readme` | Regenerate deterministic README screenshots |
 | `npm run perf:renderer` | Renderer benchmark |
+| `npm run perf:history` | Commit-history loading benchmark on a synthetic repository |
 | `npm run dist:win` / `dist:mac` / `dist:linux` | Platform installers |
 
 ```text

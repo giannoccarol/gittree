@@ -1,0 +1,178 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-10-26T12:46:58.422Z",
+  "environment": {
+    "platform": "linux",
+    "architecture": "x64",
+    "node": "24.19.0",
+    "git": "git version 2.56.0",
+    "cpu": "Intel(R) Core(TM) Ultra 7 155H",
+    "logicalCpus": 22
+  },
+  "scenarios": [
+    {
+      "commits": 60000,
+      "commitGraph": false,
+      "buildMs": 5568.5021959999995,
+      "firstPageMs": 618.7916779999996,
+      "fullHistory": {
+        "totalMs": 2619.5773739999986,
+        "loadedRows": 60000,
+        "bridgeCalls": 120,
+        "refsTransferred": 931,
+        "bridgeCall": {
+          "totalMs": 2448.829513999998,
+          "averageMs": 20.406912616666652,
+          "p50Ms": 9.398811000000023,
+          "p95Ms": 23.886742999999115,
+          "maxMs": 586.0222550000008,
+          "samples": 120
+        },
+        "pageLoad": {
+          "totalMs": 1999.8363990000016,
+          "averageMs": 16.805347890756316,
+          "p50Ms": 10.514439999999922,
+          "p95Ms": 25.305803000001106,
+          "maxMs": 497.3883079999996,
+          "samples": 119
+        },
+        "rendererAppend": {
+          "totalMs": 137.0291400000042,
+          "averageMs": 1.1515053781512956,
+          "p50Ms": 0.9484729999985575,
+          "p95Ms": 2.6121839999996155,
+          "maxMs": 4.33834300000035,
+          "samples": 119
+        }
+      },
+      "svgBuildsOnScroll": 3,
+      "interactions": {
+        "queryFilterMs": 24.20816200000081,
+        "authorFilterMs": 5.7926619999998366,
+        "sortByAuthorMs": 57.90829699999995,
+        "sortByDateMs": 55.59786199999871,
+        "topologyMs": 17.124665999999706
+      },
+      "typingBurst": {
+        "applyFilterCalls": 1,
+        "totalMs": 251.70645200000035
+      },
+      "reloadAfterFetch": {
+        "totalMs": 340.17462400000113,
+        "anchorRow": 20000,
+        "anchorPreserved": true,
+        "bridgeCalls": 21,
+        "bridgeCall": {
+          "totalMs": 322.0009850000024,
+          "averageMs": 15.333380238095353,
+          "p50Ms": 1.239316000001054,
+          "p95Ms": 6.183978999999454,
+          "maxMs": 292.2550479999991,
+          "samples": 21
+        },
+        "queueProbeDuringReload": {
+          "totalMs": 297.19045600000027,
+          "averageMs": 297.19045600000027,
+          "p50Ms": 297.19045600000027,
+          "p95Ms": 297.19045600000027,
+          "maxMs": 297.19045600000027,
+          "samples": 1
+        }
+      },
+      "reloadUnchanged": {
+        "totalMs": 25.897877999999764,
+        "bridgeCalls": 1,
+        "bridgeCall": {
+          "totalMs": 24.82867200000146,
+          "averageMs": 24.82867200000146,
+          "p50Ms": 24.82867200000146,
+          "p95Ms": 24.82867200000146,
+          "maxMs": 24.82867200000146,
+          "samples": 1
+        }
+      }
+    },
+    {
+      "commits": 60000,
+      "commitGraph": true,
+      "buildMs": 6006.8904299999995,
+      "firstPageMs": 81.89883000000009,
+      "fullHistory": {
+        "totalMs": 1564.2527410000002,
+        "loadedRows": 60000,
+        "bridgeCalls": 120,
+        "refsTransferred": 931,
+        "bridgeCall": {
+          "totalMs": 1468.5987109999987,
+          "averageMs": 12.238322591666655,
+          "p50Ms": 9.295687999998336,
+          "p95Ms": 17.946479000002,
+          "maxMs": 134.34185100000104,
+          "samples": 120
+        },
+        "pageLoad": {
+          "totalMs": 1481.9983140000022,
+          "averageMs": 12.453767344537834,
+          "p50Ms": 10.097732000001997,
+          "p95Ms": 18.827476000000388,
+          "maxMs": 135.07853700000123,
+          "samples": 119
+        },
+        "rendererAppend": {
+          "totalMs": 93.41535500000464,
+          "averageMs": 0.7850029831933163,
+          "p50Ms": 0.6884679999984655,
+          "p95Ms": 1.398510000000897,
+          "maxMs": 3.7620159999987663,
+          "samples": 119
+        }
+      },
+      "svgBuildsOnScroll": 3,
+      "interactions": {
+        "queryFilterMs": 16.561925000001793,
+        "authorFilterMs": 3.5657159999973373,
+        "sortByAuthorMs": 56.92887100000007,
+        "sortByDateMs": 42.44873899999948,
+        "topologyMs": 1.8557500000024447
+      },
+      "typingBurst": {
+        "applyFilterCalls": 1,
+        "totalMs": 250.5864419999998
+      },
+      "reloadAfterFetch": {
+        "totalMs": 163.81492799999978,
+        "anchorRow": 20000,
+        "anchorPreserved": true,
+        "bridgeCalls": 21,
+        "bridgeCall": {
+          "totalMs": 142.59603699999934,
+          "averageMs": 6.790287476190445,
+          "p50Ms": 1.7437739999986661,
+          "p95Ms": 8.412047999998322,
+          "maxMs": 101.003262000002,
+          "samples": 21
+        },
+        "queueProbeDuringReload": {
+          "totalMs": 107.22364200000084,
+          "averageMs": 107.22364200000084,
+          "p50Ms": 107.22364200000084,
+          "p95Ms": 107.22364200000084,
+          "maxMs": 107.22364200000084,
+          "samples": 1
+        }
+      },
+      "reloadUnchanged": {
+        "totalMs": 30.034362000002147,
+        "bridgeCalls": 1,
+        "bridgeCall": {
+          "totalMs": 29.540202000000136,
+          "averageMs": 29.540202000000136,
+          "p50Ms": 29.540202000000136,
+          "p95Ms": 29.540202000000136,
+          "maxMs": 29.540202000000136,
+          "samples": 1
+        }
+      }
+    }
+  ]
+}
