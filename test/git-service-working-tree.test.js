@@ -149,6 +149,8 @@ test('stages and unstages more than 500 untracked files before the first commit'
 test('stages, unstages and discards more than 500 tracked and untracked files', async t => {
   const repo = createRepository();
   t.after(() => repo.cleanup());
+  // Git for Windows enables core.autocrlf system-wide; keep checkouts byte-exact.
+  repo.git('config', 'core.autocrlf', 'false');
   const tracked = writeBulkFiles(repo, 'tracked', 'base');
   repo.git('add', '.');
   repo.git('commit', '-m', 'base');

@@ -51,7 +51,9 @@ function createRepository() {
       fs.writeFileSync(target, content);
     },
     cleanup() {
-      fs.rmSync(root, { recursive: true, force: true });
+      // On Windows a process that just exited (or a child Git left behind
+      // after a timeout) can keep the directory busy for a moment.
+      fs.rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
     }
   };
 }
