@@ -59,12 +59,13 @@ La release ufficiale viene generata automaticamente a ogni push su `master` tram
 
 ### Schema di versione
 
-Finché il prodotto resta in anteprima, GitTree usa versioni **`0.x.y`**. Il numero
-minor non rappresenta una percentuale di completamento: dopo `0.9.x` la linea
-successiva è `0.10.x`, mentre `1.0.0` è riservata alla dichiarazione di stabilità.
+GitTree segue SemVer standard a partire dalla **`1.0.0`**, la dichiarazione di
+stabilità che chiude la fase di anteprima `0.x.y`.
 
-- le **nuove funzionalità** (`feat:`) e i breaking change producono una **minor** (`0.9.8` → `0.10.0`);
-- `fix:`, `perf:`, `refactor:` e `style:` producono una **patch** (`0.9.8` → `0.9.9`);
+- i **breaking change** (`feat!:`/`fix!:` o footer `BREAKING CHANGE:`) producono una **major** (`1.4.2` → `2.0.0`);
+  il primo breaking change dopo `0.30.x` porta quindi la linea a `1.0.0`;
+- le **nuove funzionalità** (`feat:`) producono una **minor** (`1.0.3` → `1.1.0`);
+- `fix:`, `perf:`, `refactor:` e `style:` producono una **patch** (`1.0.0` → `1.0.1`);
 - `docs:`, `chore:`, `test:`, `ci:`, `build:` non aprono una release.
 
 Non creare tag a mano e non usare `npm version` per i rilasci ufficiali: lo fa il workflow.

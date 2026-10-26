@@ -106,8 +106,8 @@ The contributor-facing ownership map and dependency direction live in
 
 ## Conventions
 
-- Conventional Commits (`feat`/`fix`/`perf`/`refactor`/`style` bump; `feat` and
-  breaking → minor on the 0.x line, the rest → patch).
+- Conventional Commits (`feat`/`fix`/`perf`/`refactor`/`style` bump; breaking →
+  major from 1.0.0 on, `feat` → minor, the rest → patch).
 - ESLint flat config, error-level rules, enforced in CI.
 - Every feature ships English + Italian i18n keys (enforced by
   `test/i18n-parity.test.js`).

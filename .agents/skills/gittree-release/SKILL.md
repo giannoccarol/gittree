@@ -49,7 +49,7 @@ For GitLab, use only the public Application ID from a non-confidential applicati
 
 ## 3. Prepare the version
 
-Do not bump versions by hand for official releases. Push Conventional Commits to `master` and let `.github/workflows/versioning.yml` create the next `0.3.N` patch tag. Only intervene manually when recovering a broken tag or documenting an intentional line change away from `0.3.x`.
+Do not bump versions by hand for official releases. Push Conventional Commits to `master` and let `.github/workflows/versioning.yml` create the next SemVer tag (`.releaserc`: breaking → major, `feat` → minor, fixes → patch; the first breaking change after `0.30.x` opens `1.0.0`). Only intervene manually when recovering a broken tag.
 
 ## 4. Run release gates
 

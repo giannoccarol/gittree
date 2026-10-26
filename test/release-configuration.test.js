@@ -92,7 +92,7 @@ test('electron-builder emits installable and update-compatible artifacts', () =>
   assert.match(nsh, /\$\{isUpdated\}/);
 });
 
-test('semantic-release maps feat and breaking to minor, fixes to patch', () => {
+test('semantic-release follows SemVer from 1.0.0: breaking to major, feat to minor, fixes to patch', () => {
   const releaserc = JSON.parse(fs.readFileSync(path.join(root, '.releaserc'), 'utf8'));
   const analyzer = releaserc.plugins.find(plugin => (
     Array.isArray(plugin) && plugin[0] === '@semantic-release/commit-analyzer'
@@ -100,7 +100,7 @@ test('semantic-release maps feat and breaking to minor, fixes to patch', () => {
   assert.ok(analyzer, 'commit-analyzer plugin missing');
   const rules = analyzer[1].releaseRules || [];
   assert.equal(rules.find(item => item.type === 'feat')?.release, 'minor');
-  assert.equal(rules.find(item => item.breaking === true)?.release, 'minor');
+  assert.equal(rules.find(item => item.breaking === true)?.release, 'major');
   for (const type of ['fix', 'perf', 'refactor', 'style']) {
     const rule = rules.find(item => item.type === type);
     assert.equal(rule?.release, 'patch', `${type} must bump patch only`);
@@ -114,8 +114,10 @@ test('semantic-release maps feat and breaking to minor, fixes to patch', () => {
 
   const releaseGuide = fs.readFileSync(path.join(root, 'docs', 'RELEASING.md'), 'utf8');
   assert.doesNotMatch(releaseGuide, /0\.4\.N|v0\.3\.\*/);
-  assert.match(releaseGuide, /0\.9\.8` → `0\.10\.0/);
-  assert.match(releaseGuide, /1\.0\.0.*stabilità/);
+  assert.match(releaseGuide, /`1\.0\.0` → `1\.0\.1`/);
+  assert.match(releaseGuide, /`1\.0\.3` → `1\.1\.0`/);
+  assert.match(releaseGuide, /`1\.4\.2` → `2\.0\.0`/);
+  assert.match(releaseGuide, /1\.0\.0`\*\*, la dichiarazione di\s+stabilità/);
 });
 
 test('the master application icon is release ready', () => {
