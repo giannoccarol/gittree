@@ -66,13 +66,14 @@ test('guards snapshots and validates path lists through stagePaths', async t => 
   const { snapshotId } = await service.getWorkingTree();
   await service.assertWorkingTreeSnapshot(snapshotId);
   assert.deepEqual(service.validatePathList(['new.txt', 'new.txt']), ['new.txt']);
+  assert.deepEqual(service.validatePathList(Array(501).fill('new.txt')), ['new.txt']);
   await assert.rejects(
     service.stagePaths(snapshotId, []),
-    /Select between 1 and 500 repository paths/
+    /Select at least one repository path/
   );
   await assert.rejects(
-    service.stagePaths(snapshotId, Array(501).fill('new.txt')),
-    /Select between 1 and 500 repository paths/
+    service.stagePaths(snapshotId, 'new.txt'),
+    /Select at least one repository path/
   );
   await assert.rejects(
     service.stagePaths(snapshotId, ['../outside.txt']),

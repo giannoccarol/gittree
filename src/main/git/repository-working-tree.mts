@@ -204,9 +204,13 @@ export class RepositoryWorkingTree {
     }
   }
 
+  /**
+   * Validates every renderer-supplied path. There is no upper bound: "Stage
+   * all" sends the whole snapshot, which lists each untracked file one by one.
+   */
   validatePathList(paths: unknown): string[] {
-    if (!Array.isArray(paths) || paths.length === 0 || paths.length > 500) {
-      throw new Error('Select between 1 and 500 repository paths');
+    if (!Array.isArray(paths) || paths.length === 0) {
+      throw new Error('Select at least one repository path');
     }
     return [...new Set(paths.map(filePath => this.validateRepositoryPath(filePath)))];
   }
@@ -214,7 +218,7 @@ export class RepositoryWorkingTree {
   async stagePaths(snapshotId: string, paths: unknown): Promise<MutationResult> {
     await this.assertWorkingTreeSnapshot(snapshotId);
     const safePaths = this.validatePathList(paths);
-    await this.git.add(['--', ...safePaths]);
+    await this.runGitWithPathspecs(['add'], safePaths);
     return { success: true, snapshot: await this.getWorkingTree() };
   }
 
@@ -223,12 +227,12 @@ export class RepositoryWorkingTree {
     const safePaths = this.validatePathList(paths);
     try {
       await this.git.revparse(['--verify', 'HEAD']);
-      await this.git.raw(['restore', '--staged', '--', ...safePaths]);
+      await this.runGitWithPathspecs(['restore', '--staged'], safePaths);
     } catch (error) {
       if (!/unknown revision|needed a single revision|ambiguous argument/i.test((error as Error).message)) {
         throw error;
       }
-      await this.git.raw(['rm', '--cached', '--ignore-unmatch', '--', ...safePaths]);
+      await this.runGitWithPathspecs(['rm', '--cached', '--ignore-unmatch'], safePaths);
     }
     return { success: true, snapshot: await this.getWorkingTree() };
   }
@@ -249,7 +253,7 @@ export class RepositoryWorkingTree {
       else tracked.push(relativePath);
     }
     if (tracked.length) {
-      await this.git.raw(['restore', '--worktree', '--', ...tracked]);
+      await this.runGitWithPathspecs(['restore', '--worktree'], tracked);
     }
     for (const relativePath of untrackedToRemove) {
       await nodeFs.promises.rm(nodePath.resolve(this.repoPath, relativePath), {
@@ -376,6 +380,17 @@ export class RepositoryWorkingTree {
     args.push('-');
     await this.runGitWithInput(args, patch);
     return { success: true, snapshot: await this.getWorkingTree() };
+  }
+
+  /**
+   * Feeds validated paths through stdin instead of argv, so large selections
+   * never hit the OS command-line limit (about 32K characters on Windows).
+   */
+  runGitWithPathspecs(args: string[], paths: string[]): Promise<string> {
+    return this.runGitWithInput(
+      [...args, '--pathspec-from-file=-', '--pathspec-file-nul'],
+      paths.map(filePath => `${filePath}\0`).join('')
+    );
   }
 
   runGitWithInput(args: string[], input: string): Promise<string> {
