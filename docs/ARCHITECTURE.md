@@ -46,6 +46,7 @@ globals or renderer state.
 | Git public operations | `src/main/git-service.js` | `test/git-service*.test.js` with deterministic real repositories |
 | Repository history, graph, refs and commit diff | `src/main/git/repository-history.js` behind `GitService`; `graph-history-index.mts` owns graph snapshots, the cached order and commit metadata (ADR-0010) | `test/git-history-repository-contracts.test.js`, `test/git-graph-paging.test.js`, `test/graph-history-index.test.js` and `npm run perf:history` |
 | Repository status, snapshots, file and hunk operations | `src/main/git/repository-working-tree.js` plus the pure patch parser | working-tree contracts, integration tests and hardening tests |
+| Network commands, terminal-prompt suppression and inactivity timeout | `src/main/git/remote-transport.mts`, applied to the Repository session Adapter | `test/git-service-network.test.js` with a stalled fake SSH remote |
 | Merge, rebase, cherry-pick, conflicts and recovery | `src/main/git/repository-operations.js` behind `GitService` | `test/repository-operations-contracts.test.js` and focused Git integration tests |
 | Repository path, Git Adapter and common-directory serialization | `src/main/git/repository-session.js` and `repository-queue.js` | Repository session and linked-worktree workspace tests |
 | Hosting credentials, auth, retry and error policy | `src/main/hosting-service.js` and the credential vault | hosting service and IPC contract tests |

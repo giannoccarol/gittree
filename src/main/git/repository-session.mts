@@ -2,6 +2,7 @@ import * as nodePath from 'node:path';
 import { spawn } from 'node:child_process';
 import { simpleGit, type SimpleGit } from 'simple-git';
 import { RepositoryQueue } from './repository-queue.mts';
+import { RemoteTransport, readNetworkTimeout, routeNetworkCommands } from './remote-transport.mts';
 
 export interface RepositorySessionOptions {
   createGit?: typeof simpleGit;
@@ -11,7 +12,8 @@ export interface RepositorySessionOptions {
 /**
  * Internal git unit owning one normalized repository path, the simple-git
  * adapter and one per-repository queue while GitService remains the stable
- * public facade.
+ * public facade. The adapter's network commands go through the remote
+ * transport (prompt suppression and inactivity timeout).
  */
 export class RepositorySession {
   path: string;
@@ -27,6 +29,11 @@ export class RepositorySession {
     this.path = nodePath.resolve(repositoryPath);
     this.git = createGit(this.path);
     this.queue = queue;
+    const transport = new RemoteTransport({
+      repoPath: this.path,
+      readTimeoutSeconds: () => readNetworkTimeout(this.git)
+    });
+    routeNetworkCommands(this.git, transport);
   }
 
   isCurrent(): boolean {

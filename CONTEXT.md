@@ -20,7 +20,8 @@ Privacy-first: no accounts, no telemetry, no repository upload.
   selection, an approved scan, clone completion or a validated deep link.
 - **Repository session** — the internal Git unit that owns a normalized path,
   the `simple-git` Adapter and one per-repository queue while `GitService`
-  remains the stable public Interface.
+  remains the stable public Interface. The Adapter's network commands go
+  through the Remote transport.
 - **Repository workspace controller** — the renderer lifecycle owner for one
   Repository activation. It restores view state, gives the graph first visual
   priority, coordinates supporting reads and prevents stale tab loads from
@@ -44,6 +45,11 @@ Privacy-first: no accounts, no telemetry, no repository upload.
 - **Repository working tree** — the Git capability that observes status,
   creates Working tree snapshots and owns safe file/hunk stage, unstage and
   discard operations.
+- **Remote transport** — the Git capability that runs the Repository session
+  Adapter's network commands (`fetch`, `pull`, `push`, `ls-remote`, also
+  through `raw`) with `GIT_TERMINAL_PROMPT=0` and an inactivity timeout
+  (`gittree.networkTimeout`, default 300 s), so a silent remote cannot hold
+  the per-repo queue forever.
 - **Repository operations** — the Git capability that owns the complete
   preflight, execution, conflict and recovery cycle for merge, rebase and
   cherry-pick, including operation-state detection and conflict resolution.

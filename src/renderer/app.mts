@@ -30,6 +30,7 @@ import { WorkspaceResizeController } from './workspace-resize-controller.mts';
 import { EventBus } from './event-bus.mts';
 import { DialogService } from './dialog-service.mts';
 import { ToastService } from './toast-service.mts';
+import { localizeGitError } from './git-error-localizer.mts';
 import { Theme } from './theme.mts';
 import { HtmlEncoder } from './html-encoder.mts';
 import { initAiFeatureGate } from './ai-feature-gate.mts';
@@ -1042,7 +1043,7 @@ export class GitTreeApp {
   }
 
   showToast(message: string, type = ''): void {
-    this.toasts.show(message, type);
+    this.toasts.show(type === 'error' ? localizeGitError(message, t) : message, type);
   }
 
   dismissToast(): void {

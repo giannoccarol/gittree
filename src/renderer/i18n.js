@@ -927,6 +927,9 @@ const I18n = {
               pushComplete: 'Push complete',
               stashApplied: 'Stash applied',
               branchCreated: 'Branch {{branch}} created'
+            },
+            errors: {
+              networkTimeout: '{{command}} stopped: the remote did not respond within {{seconds}} s. Check the connection and try again.'
             }
           }
         },
@@ -1844,6 +1847,9 @@ const I18n = {
               pushComplete: 'Push completato',
               stashApplied: 'Stash applicato',
               branchCreated: 'Branch {{branch}} creato'
+            },
+            errors: {
+              networkTimeout: '{{command}} interrotto: il remote non ha risposto entro {{seconds}} s. Controlla la connessione e riprova.'
             }
           }
         }

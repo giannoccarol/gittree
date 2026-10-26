@@ -62,6 +62,18 @@ Push publishes commits from the current local branch to its configured remote. B
 
 GitTree never stores Git passwords or private SSH keys. Authentication remains delegated to the credential helper, SSH agent or operating-system tooling already configured for Git.
 
+## Network timeout
+
+Fetch, pull, push, tag publishing and remote branch deletion stop when the remote sends nothing for **300 seconds**; the error names the Git command that was stopped. Git never waits for a password typed in a terminal (`GIT_TERMINAL_PROMPT=0`), so use a credential helper, an SSH agent or an askpass program.
+
+While a network command runs, the other actions on the same repository wait for it. To change the limit, set `gittree.networkTimeout` in seconds, globally or for one repository; `0` turns the limit off:
+
+```bash
+git config --global gittree.networkTimeout 600
+```
+
+When a pull is stopped, the download that Git started for it may keep retrying in the background until the connection fails.
+
 ## Working tree changes
 
 The **Changes** view splits the working tree into **Unstaged** and **Staged** lists. Each file row can be staged or unstaged as a whole; opening a file shows its diff with **Stage hunk** / **Unstage hunk** actions for partial staging.
