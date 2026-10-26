@@ -27,3 +27,7 @@ resolved so every linked worktree of one Git repository maps to the same queue.
   directories stay fully parallel.
 - Synchronous helpers (`parseNameStatus`, validation) are not queued.
 - The renderer's 2s poll waits behind a push — locally this is milliseconds.
+- Network commands hold the queue for their whole transfer. The remote
+  transport bounds that wait with an inactivity timeout
+  (`gittree.networkTimeout`); ADR-0009 proposes letting reads proceed during
+  transfers.
