@@ -60,9 +60,17 @@ interface GraphSnapshot extends RefsState {
   eagerOrder: boolean;
 }
 
-// `--topo-order --date-order` is kept verbatim: the later flag wins, so the
-// walk is date ordered under the topological constraint, exactly as before.
-const GRAPH_WALK = ['--all', '--topo-order', '--date-order'];
+// Notes and the stash are not history: their commits would show up as
+// unlabeled rows. `--topo-order --date-order` is kept verbatim: the later flag
+// wins, so the walk is date ordered under the topological constraint.
+const GRAPH_WALK = [
+  '--exclude=refs/notes/*',
+  '--exclude=refs/stash',
+  '--all',
+  '--topo-order',
+  '--date-order'
+];
+const UNWALKED_REF = /^refs\/(notes\/|stash\t)/;
 const GRAPH_FORMAT = '--format=%H%x1f%P%x1f%an%x1f%ae%x1f%aI%x1f%s';
 const REF_FORMAT = '--format=%(refname)\t%(refname:short)\t'
   // Annotated tags point at a tag object; peel to the commit so graph chips attach.
@@ -347,9 +355,10 @@ export class GraphHistoryIndex {
     } catch { /* HEAD may be unborn */ }
 
     const shallow = await this.readShallowKey();
+    const walked = lines.filter(line => !UNWALKED_REF.test(line)).join('\n');
     const replaceLines = lines.filter(line => line.startsWith('refs/replace/')).join('\n');
     return {
-      id: digest(`${raw}\0${headCommit}\0${shallow}`).slice(0, 32),
+      id: digest(`${walked}\0${headCommit}\0${shallow}`).slice(0, 32),
       graftKey: digest(`${replaceLines}\0${shallow}`),
       refs
     };

@@ -10,7 +10,8 @@ const FORMAT = '--format=%H%x1f%P%x1f%an%x1f%ae%x1f%aI%x1f%s';
 // Independent reference: the full topological history as git prints it in one walk.
 function fullHistory(repository) {
   const raw = execFileSync('git', [
-    'log', '--all', '--topo-order', '--date-order', '-z', FORMAT
+    'log', '--exclude=refs/notes/*', '--exclude=refs/stash', '--all',
+    '--topo-order', '--date-order', '-z', FORMAT
   ], { cwd: repository, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
   return raw.split('\0')
     .map(record => record.replace(/^[\r\n]+|[\r\n]+$/g, ''))
@@ -175,20 +176,29 @@ test('graph includes commits reachable only from a detached HEAD', async t => {
   assert.ok(pages[0].page.refs.some(ref => ref.type === 'head' && ref.commit === detached));
 });
 
-test('graph walk currently includes stash and notes commits', async t => {
+test('graph walk keeps stash and notes commits out of the history', async t => {
   const repo = createSyntheticRepository(t, 120);
+  const service = new GitService(repo.repository);
+  const before = await service.getGraphPage(0, 500);
   repo.write('wip.txt', 'work in progress\n');
   repo.git('add', 'wip.txt');
   repo.git('stash', 'push', '-m', 'parked work');
   repo.git('notes', 'add', '-m', 'review note', 'main~1');
-  const stash = repo.git('rev-parse', 'refs/stash');
-  const notes = repo.git('rev-parse', 'refs/notes/commits');
-  const service = new GitService(repo.repository);
+  repo.git('notes', '--ref=review/deep', 'add', '-m', 'nested note', 'main~2');
+  const hidden = [
+    repo.git('rev-parse', 'refs/stash'),
+    repo.git('rev-parse', 'refs/stash^2'),
+    repo.git('rev-parse', 'refs/notes/commits'),
+    repo.git('rev-parse', 'refs/notes/review/deep')
+  ];
 
+  const after = await service.getGraphPage(0, 500, before.snapshot);
   const commits = (await collectPages(service, 500)).flatMap(({ page }) => page.commits);
   const hashes = new Set(commits.map(commit => commit.hash));
 
-  assert.equal(hashes.has(stash), true);
-  assert.equal(hashes.has(notes), true);
+  hidden.forEach(hash => assert.equal(hashes.has(hash), false, hash));
   assert.deepEqual(commits, fullHistory(repo.repository));
+  assert.equal(commits.length, 120);
+  assert.equal(after.snapshot, before.snapshot, 'stash and notes do not change the graph snapshot');
+  assert.deepEqual(after.refs, []);
 });

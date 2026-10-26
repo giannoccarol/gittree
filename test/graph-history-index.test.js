@@ -9,7 +9,9 @@ const { createRepository } = require('./helpers/git-repository');
 const { writeSyntheticHistory } = require('./helpers/synthetic-history');
 
 function historyHashes(repository) {
-  return execFileSync('git', ['rev-list', '--all', '--topo-order', '--date-order'], {
+  return execFileSync('git', [
+    'rev-list', '--exclude=refs/notes/*', '--exclude=refs/stash', '--all', '--topo-order', '--date-order'
+  ], {
     cwd: repository,
     encoding: 'utf8'
   }).split('\n').filter(Boolean);
