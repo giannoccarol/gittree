@@ -53,8 +53,11 @@ const bridge = {
     ipcRenderer.invoke('git:log', repoPath, maxCount, branch),
 
   getGraphPage: (repoPath: unknown, options: unknown = {}): Promise<unknown> => {
-    const typedOptions = options as { offset?: unknown; limit?: unknown };
-    return ipcRenderer.invoke('git:graph-page', repoPath, (typedOptions.offset as number) || 0, (typedOptions.limit as number) || 500);
+    const typedOptions = options as { offset?: unknown; limit?: unknown; snapshot?: unknown };
+    const args: unknown[] = [repoPath, (typedOptions.offset as number) || 0, (typedOptions.limit as number) || 500];
+    // The snapshot token is optional so callers without one keep the original arguments.
+    if (typeof typedOptions.snapshot === 'string') args.push(typedOptions.snapshot);
+    return ipcRenderer.invoke('git:graph-page', ...args);
   },
 
   getDiff: (repoPath: unknown, commitHash: unknown, file: unknown): Promise<unknown> =>

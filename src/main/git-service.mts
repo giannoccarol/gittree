@@ -55,6 +55,8 @@ export class GitService {
     });
     this.history = new RepositoryHistory({
       git: this.git,
+      repoPath: this.repoPath,
+      rawWithInput: (args, input) => this.session.rawWithInput(args, input),
       assertSafeRef: ref => this.assertSafeRef(ref),
       assertCommitish: ref => this.assertCommitish(ref),
       validateRepositoryPath: filePath => this.validateRepositoryPath(filePath)
@@ -81,8 +83,8 @@ export class GitService {
     return this.history.getLog(maxCount, branch);
   }
 
-  async getGraphPage(offset: unknown = 0, limit: unknown = 500) {
-    return this.history.getGraphPage(offset, limit);
+  async getGraphPage(offset: unknown = 0, limit: unknown = 500, snapshot: unknown = null) {
+    return this.history.getGraphPage(offset, limit, snapshot);
   }
 
   async getGraphRefs() {

@@ -102,6 +102,18 @@ test('preload subscriptions forward one payload and dispose the exact listener',
   assert.equal(removed[0].listener, listener);
 });
 
+test('preload forwards the graph snapshot token only when it is a string', async () => {
+  const { bridge, invokes } = loadBridge();
+
+  await bridge.getGraphPage('repo', { offset: 500, limit: 1000, snapshot: 'abc123' });
+  await bridge.getGraphPage('repo', { offset: 500, snapshot: { forged: true } });
+
+  assert.deepEqual(invokes.map(call => [call.channel, ...call.args]), [
+    ['git:graph-page', 'repo', 500, 1000, 'abc123'],
+    ['git:graph-page', 'repo', 500, 500]
+  ]);
+});
+
 test('preload preserves observable defaults', async () => {
   const { bridge, invokes } = loadBridge();
 

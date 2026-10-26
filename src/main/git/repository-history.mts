@@ -1,30 +1,13 @@
 import type { SimpleGit } from 'simple-git';
 import { parseWorkingDiff, type WorkingDiff } from './patch-parser.mts';
 import { parseBlamePorcelain, type BlameRow } from './blame-parser.mts';
+import {
+  GraphHistoryIndex,
+  type GraphPage,
+  type GraphRef
+} from './graph-history-index.mts';
 
-export interface GraphCommit {
-  hash: string;
-  parents: string[];
-  subject: string;
-  authorName: string;
-  authorEmail: string;
-  date: string;
-}
-
-export interface GraphRef {
-  fullName: string;
-  shortName: string;
-  type: 'branch' | 'remote' | 'tag' | 'head';
-  commit: string;
-  upstream: string;
-}
-
-export interface GraphPage {
-  commits: GraphCommit[];
-  refs: GraphRef[];
-  nextOffset: number;
-  hasMore: boolean;
-}
+export type { GraphCommit, GraphRef, GraphPage } from './graph-history-index.mts';
 
 export interface NameStatusFile {
   path: string;
@@ -50,6 +33,8 @@ export interface BlameResult {
 
 export interface RepositoryHistoryOptions {
   git: SimpleGit;
+  repoPath: string;
+  rawWithInput: (args: string[], input: string) => Promise<string>;
   assertSafeRef: (ref: string) => Promise<void> | void;
   assertCommitish: (ref: string) => Promise<void> | void;
   validateRepositoryPath: (filePath: string) => string;
@@ -64,8 +49,12 @@ export class RepositoryHistory {
 
   private validateRepositoryPath: (filePath: string) => string;
 
+  private graphIndex: GraphHistoryIndex;
+
   constructor({
     git,
+    repoPath,
+    rawWithInput,
     assertSafeRef,
     assertCommitish,
     validateRepositoryPath
@@ -74,6 +63,10 @@ export class RepositoryHistory {
     this.assertSafeRef = assertSafeRef;
     this.assertCommitish = assertCommitish;
     this.validateRepositoryPath = validateRepositoryPath;
+    this.graphIndex = new GraphHistoryIndex({
+      git: { raw: args => git.raw(args), rawWithInput },
+      repoPath
+    });
   }
 
   async getLog(maxCount: unknown = 100, branch: string | null = null) {
@@ -88,54 +81,22 @@ export class RepositoryHistory {
     }
   }
 
-  async getGraphPage(offset: unknown = 0, limit: unknown = 500): Promise<GraphPage> {
+  async getGraphPage(
+    offset: unknown = 0,
+    limit: unknown = 500,
+    snapshot: unknown = null
+  ): Promise<GraphPage> {
     const safeOffset = Math.max(0, Number.isFinite(Number(offset)) ? Number(offset) : 0);
     const safeLimit = Math.min(
       1000,
       Math.max(1, Number.isFinite(Number(limit)) ? Number(limit) : 500)
     );
     try {
-      const raw = await this.git.raw([
-        'log',
-        '--all',
-        '--topo-order',
-        '--date-order',
-        '--parents',
-        '-z',
-        `--skip=${safeOffset}`,
-        `--max-count=${safeLimit + 1}`,
-        '--format=%H%x1f%P%x1f%an%x1f%ae%x1f%aI%x1f%s'
-      ]);
-      const parsed = raw
-        .split('\0')
-        .map(record => record.replace(/^[\r\n]+|[\r\n]+$/g, ''))
-        .filter(Boolean)
-        .map(record => {
-          const [
-            hash,
-            parentText = '',
-            authorName = '',
-            authorEmail = '',
-            date = '',
-            ...subjectParts
-          ] = record.split('\x1f');
-          return {
-            hash,
-            parents: parentText ? parentText.split(/\s+/).filter(Boolean) : [],
-            subject: subjectParts.join('\x1f'),
-            authorName,
-            authorEmail,
-            date
-          };
-        });
-      const hasMore = parsed.length > safeLimit;
-      const commits = parsed.slice(0, safeLimit);
-      return {
-        commits,
-        refs: await this.getGraphRefs(),
-        nextOffset: safeOffset + commits.length,
-        hasMore
-      };
+      return await this.graphIndex.page(
+        safeOffset,
+        safeLimit,
+        GraphHistoryIndex.normalizeToken(snapshot)
+      );
     } catch (error) {
       if (
         /does not have any commits|your current branch .* does not have any commits/i
@@ -148,37 +109,7 @@ export class RepositoryHistory {
   }
 
   async getGraphRefs(): Promise<GraphRef[]> {
-    const raw = await this.git.raw([
-      'for-each-ref',
-      // Annotated tags point at a tag object; peel to the commit so graph chips attach.
-      '--format=%(refname)\t%(refname:short)\t%(if)%(*objectname)%(then)%(*objectname)%(else)%(objectname)%(end)\t%(upstream:short)',
-      'refs/heads',
-      'refs/remotes',
-      'refs/tags'
-    ]);
-    const refs: GraphRef[] = raw
-      .split(/\r?\n/)
-      .filter(Boolean)
-      .map(line => {
-        const [fullName, shortName, commit, upstream = ''] = line.split('\t');
-        let type: GraphRef['type'] = 'branch';
-        if (fullName.startsWith('refs/remotes/')) type = 'remote';
-        else if (fullName.startsWith('refs/tags/')) type = 'tag';
-        return { fullName, shortName, type, commit, upstream };
-      })
-      .filter(ref => !ref.fullName.endsWith('/HEAD'));
-
-    try {
-      const headCommit = (await this.git.revparse(['HEAD'])).trim();
-      refs.push({
-        fullName: 'HEAD',
-        shortName: 'HEAD',
-        type: 'head',
-        commit: headCommit,
-        upstream: ''
-      });
-    } catch { /* HEAD may be unborn */ }
-    return refs;
+    return this.graphIndex.readRefs();
   }
 
   async getDiff(commitHash: string | null = null, file: string | null = null): Promise<string> {
