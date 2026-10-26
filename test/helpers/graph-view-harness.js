@@ -41,8 +41,12 @@ function createElement(tagName = 'div') {
     append(...nodes) { nodes.forEach(node => element.appendChild(node)); },
     appendChild(node) {
       if (node && node.isFragment) {
-        node.children.forEach(child => element.appendChild(child));
+        const moved = node.children;
         node.children = [];
+        moved.forEach(child => {
+          if (child && typeof child === 'object') child.parentNode = null;
+          element.appendChild(child);
+        });
         return node;
       }
       if (node && node.parentNode && node.parentNode !== element) node.parentNode.removeChild(node);

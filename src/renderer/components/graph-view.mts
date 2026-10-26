@@ -51,6 +51,30 @@ interface ViewportState {
   selectionAnchor: string | null;
 }
 
+interface GraphPageResponse {
+  error?: string;
+  refs?: GraphRefEntry[];
+  commits?: GraphCommitData[];
+  nextOffset?: number;
+  hasMore?: boolean;
+  snapshot?: string;
+}
+
+interface FilterCriteria {
+  globalNeedle: string;
+  filterNeedle: string;
+  author: string;
+  ref: string;
+}
+
+type RowComparator = (left: GraphLayoutRow, right: GraphLayoutRow) => number;
+
+const PAGE_SIZE = 500;
+// Reloads fetch larger slices: main serves them from its cached order.
+const RELOAD_PAGE_SIZE = 1000;
+const MAX_ANCHOR_ROWS = 100_000;
+const FILTER_QUERY_DEBOUNCE_MS = 150;
+
 
 export class GraphView {
   container: HTMLElement;
@@ -101,6 +125,13 @@ export class GraphView {
   filterRef: HTMLSelectElement | null;
   sortSelect: HTMLSelectElement | null;
   filterClear: HTMLElement | null;
+  snapshot: string | null;
+  rowContentRevision: number;
+  authors: Map<string, string>;
+  authorOptionsDirty: boolean;
+  filterQueryTimer: ReturnType<typeof setTimeout> | null;
+  timestampCache: WeakMap<GraphCommitData, number>;
+  collators: Map<string, Intl.Collator>;
 
   constructor(container: HTMLElement, body: HTMLElement, app: GitTreeApp) {
     this.container = container;
@@ -151,6 +182,13 @@ export class GraphView {
     this.filterRef = null;
     this.sortSelect = null;
     this.filterClear = null;
+    this.snapshot = null;
+    this.rowContentRevision = 0;
+    this.authors = new Map();
+    this.authorOptionsDirty = true;
+    this.filterQueryTimer = null;
+    this.timestampCache = new WeakMap();
+    this.collators = new Map();
 
     this.layer = document.createElement('div');
     this.layer.className = 'graph-virtual-layer';
@@ -188,20 +226,21 @@ export class GraphView {
     const keepContent = this.repoPath === repoPath && this.rows.length > 0;
     const preserveViewport = keepContent && options.preserveViewport === true;
     const viewportState = preserveViewport ? this.captureViewportState() : null;
+    if (this.repoPath === repoPath) this.flushFilterQuery();
+    else this.cancelFilterQuery();
+    const knownSnapshot = preserveViewport ? this.snapshot : null;
+    const previousView = this.historyViewKey();
     this.repoPath = repoPath;
     this.restoreHistoryState();
-    this.rows = [];
-    this.visibleRows = [];
-    this.hashes.clear();
-    this.refsByHash.clear();
+    if (preserveViewport) {
+      await this.reloadPreservingViewport(generation, knownSnapshot, viewportState!, previousView);
+      return;
+    }
+    this.resetHistoryData();
     this.selectedHashes.clear();
     this.selectedHash = null;
     this.selectionAnchor = null;
-    this.offset = 0;
-    this.hasMore = true;
     this.loading = false;
-    this.layoutState = { lanes: [] };
-    this.laneCount = 1;
     this.renderedRange = [-1, -1];
     this.renderedDataRevision = -1;
     this.dataRevision += 1;
@@ -212,69 +251,126 @@ export class GraphView {
     this.body.style.height = '100%';
     const loaded = await this.loadNextPage(generation, { render: false });
     if (!loaded || generation !== this.generation) return;
-    if (preserveViewport) {
-      await this.ensureAnchorLoaded(viewportState!.anchorHash, generation);
-      if (generation !== this.generation) return;
-      this.restoreViewportState(viewportState!);
-    }
-    this.renderViewport(!preserveViewport);
+    this.renderViewport(true);
   }
 
-  async ensureAnchorLoaded(anchorHash: string | null, generation = this.generation): Promise<void> {
-    if (!anchorHash || generation !== this.generation) return;
-    const maxPages = 200;
-    let pagesLoaded = 0;
-    while (
-      generation === this.generation &&
-      this.hasMore &&
-      pagesLoaded < maxPages &&
-      !graphAnchorIsLoaded(anchorHash, this.rows, this.visibleRows)
-    ) {
-      const loaded = await this.loadNextPage(generation, { render: false });
-      if (!loaded) return;
-      pagesLoaded += 1;
+  /**
+   * Refreshes the same repository after a fetch, pull or push without dropping
+   * the visible history: an unchanged snapshot keeps every row, otherwise the
+   * new history up to the viewport anchor is staged and swapped in once.
+   */
+  async reloadPreservingViewport(
+    generation: number,
+    knownSnapshot: string | null,
+    viewportState: ViewportState,
+    previousView: string
+  ): Promise<void> {
+    this.loading = true;
+    try {
+      const staged = await this.fetchStagedHistory(generation, knownSnapshot, viewportState.anchorHash);
+      if (!staged || generation !== this.generation) return;
+      if (staged === 'unchanged') {
+        if (this.historyViewKey() !== previousView) this.applyFilter();
+        this.restoreViewportState(viewportState);
+        this.renderViewport();
+        return;
+      }
+      this.resetHistoryData();
+      this.snapshot = staged[0]?.snapshot ?? null;
+      for (const page of staged) this.mergeRefs(page.refs || []);
+      this.appendCommits(staged.flatMap(page => page.commits || []));
+      const last = staged[staged.length - 1];
+      this.offset = last?.nextOffset ?? 0;
+      this.hasMore = Boolean(last?.hasMore);
+      this.applyFilter();
+      this.updateAuthorOptions();
+      this.updateGraphWidth();
+      this.renderedRange = [-1, -1];
+      this.renderedDataRevision = -1;
+      this.dataRevision += 1;
+      this.restoreViewportState(viewportState);
+      this.app.syncInspectorWorkspace?.();
+      this.renderViewport();
+    } catch (error) {
+      if (generation !== this.generation) return;
+      this.resetHistoryData();
+      this.selectedHashes.clear();
+      this.selectedHash = null;
+      this.selectionAnchor = null;
+      this.dataRevision += 1;
+      this.app.syncInspectorWorkspace?.();
+      this.body.style.height = '100%';
+      this.layer.replaceChildren(this.emptyState('ph-warning-circle', (error as Error).message));
+    } finally {
+      if (generation === this.generation) this.loading = false;
     }
+  }
+
+  async fetchStagedHistory(
+    generation: number,
+    knownSnapshot: string | null,
+    anchorHash: string | null
+  ): Promise<GraphPageResponse[] | 'unchanged' | null> {
+    let reference = knownSnapshot;
+    for (let attempt = 1; ; attempt += 1) {
+      const first = await this.requestPage(0, PAGE_SIZE, reference);
+      if (generation !== this.generation) return null;
+      if (reference && first.snapshot === reference) return 'unchanged';
+      const pages = [first];
+      const hashes = new Set((first.commits || []).map(commit => commit.hash));
+      let last = first;
+      let moved = false;
+      while (anchorHash && !hashes.has(anchorHash) && last.hasMore && hashes.size < MAX_ANCHOR_ROWS) {
+        const next = await this.requestPage(
+          last.nextOffset ?? hashes.size,
+          RELOAD_PAGE_SIZE,
+          first.snapshot ?? null
+        );
+        if (generation !== this.generation) return null;
+        moved = Boolean(first.snapshot && next.snapshot && next.snapshot !== first.snapshot);
+        if (moved) break;
+        pages.push(next);
+        for (const commit of next.commits || []) hashes.add(commit.hash);
+        last = next;
+      }
+      // History moving again while staging restarts from the new state, a
+      // bounded number of times; the pages gathered so far stay consistent.
+      if (!moved || attempt >= 3) return pages;
+      reference = null;
+    }
+  }
+
+  async requestPage(offset: number, limit: number, snapshot: string | null): Promise<GraphPageResponse> {
+    const request: { offset: number; limit: number; snapshot?: string } = { offset, limit };
+    if (snapshot) request.snapshot = snapshot;
+    const page = await window.gitTree.getGraphPage(this.repoPath, request) as GraphPageResponse;
+    if (page?.error) throw new Error(page.error);
+    return page || {};
   }
 
   async loadNextPage(generation = this.generation, options: { render?: boolean } = {}): Promise<boolean> {
     if (!this.repoPath || !this.hasMore || this.loading) return false;
     this.loading = true;
     try {
-      const page = await window.gitTree.getGraphPage(this.repoPath, {
-        offset: this.offset,
-        limit: 500
-      }) as {
-        error?: string;
-        refs?: GraphRefEntry[];
-        commits?: GraphCommitData[];
-        nextOffset?: number;
-        hasMore?: boolean;
-      };
+      const page = await this.requestPage(this.offset, PAGE_SIZE, this.offset > 0 ? this.snapshot : null);
       if (generation !== this.generation) return false;
-      if (page?.error) throw new Error(page.error);
-
-      for (const ref of page.refs || []) {
-        if (!this.refsByHash.has(ref.commit)) this.refsByHash.set(ref.commit, []);
-        const bucket = this.refsByHash.get(ref.commit);
-        if (!bucket!.some(existing => existing.fullName === ref.fullName)) bucket!.push(ref);
+      if (this.offset > 0 && this.snapshot && page.snapshot && page.snapshot !== this.snapshot) {
+        // The history this view is paging through changed: reload around the viewport.
+        this.loading = false;
+        void this.load(this.repoPath, { preserveViewport: true });
+        return false;
       }
-
-      const commits = (page.commits || []).filter(commit => {
-        if (this.hashes.has(commit.hash)) return false;
-        this.hashes.add(commit.hash);
-        return true;
-      });
-      const layout = (window as unknown as { GraphLayout: WindowGraphLayout }).GraphLayout.layoutGraph(commits, this.layoutState);
-      this.rows.push(...layout.rows);
-      this.layoutState = layout.nextState;
-      this.laneCount = Math.max(this.laneCount, Number(layout.laneCount) || 0);
+      if (this.offset === 0) this.snapshot = page.snapshot ?? null;
+      const refsChanged = this.mergeRefs(page.refs || []);
+      const added = this.appendCommits(page.commits || []);
       this.offset = page.nextOffset ?? 0;
       this.hasMore = Boolean(page.hasMore);
-      this.applyFilter();
+      if (refsChanged) this.applyFilter();
+      else this.appendVisibleRows(added);
       this.updateAuthorOptions();
       this.updateGraphWidth();
-      if (options.render !== false) this.renderViewport(true);
       this.dataRevision += 1;
+      if (options.render !== false) this.renderViewport();
       this.app.syncInspectorWorkspace?.();
       return true;
     } catch (error) {
@@ -286,6 +382,65 @@ export class GraphView {
     } finally {
       if (generation === this.generation) this.loading = false;
     }
+  }
+
+  resetHistoryData(): void {
+    this.rows = [];
+    this.visibleRows = [];
+    this.hashes.clear();
+    this.refsByHash.clear();
+    this.authors.clear();
+    this.authorOptionsDirty = true;
+    this.snapshot = null;
+    this.offset = 0;
+    this.hasMore = true;
+    this.layoutState = { lanes: [] };
+    this.laneCount = 1;
+    this.rowContentRevision += 1;
+  }
+
+  /** Lays out commits that are new to this view and appends their rows. */
+  appendCommits(commits: GraphCommitData[]): GraphLayoutRow[] {
+    const fresh = commits.filter(commit => {
+      if (this.hashes.has(commit.hash)) return false;
+      this.hashes.add(commit.hash);
+      return true;
+    });
+    if (!fresh.length) return [];
+    const layout = (window as unknown as { GraphLayout: WindowGraphLayout }).GraphLayout.layoutGraph(fresh, this.layoutState);
+    for (const row of layout.rows) {
+      this.rows.push(row);
+      const key = row.commit.authorEmail || row.commit.authorName;
+      if (key && !this.authors.has(key)) {
+        this.authors.set(key, row.commit.authorName || key);
+        this.authorOptionsDirty = true;
+      }
+    }
+    this.layoutState = layout.nextState;
+    const laneCount = Math.max(this.laneCount, Number(layout.laneCount) || 0);
+    if (laneCount !== this.laneCount) {
+      // Lane count sets every row's SVG width, so rendered rows must refresh.
+      this.laneCount = laneCount;
+      this.rowContentRevision += 1;
+    }
+    return layout.rows;
+  }
+
+  /** Merges ref badges; returns whether any commit gained a ref. */
+  mergeRefs(refs: GraphRefEntry[]): boolean {
+    let changed = false;
+    for (const ref of refs) {
+      let bucket = this.refsByHash.get(ref.commit);
+      if (!bucket) {
+        bucket = [];
+        this.refsByHash.set(ref.commit, bucket);
+      }
+      if (bucket.some(existing => existing.fullName === ref.fullName)) continue;
+      bucket.push(ref);
+      changed = true;
+    }
+    if (changed) this.rowContentRevision += 1;
+    return changed;
   }
 
   captureViewportState(): ViewportState {
@@ -328,51 +483,126 @@ export class GraphView {
   }
 
   applyFilter(): void {
-    const globalNeedle = this.searchTerm.trim().toLowerCase();
-    const filterNeedle = this.filters.query.trim().toLowerCase();
-    const rows = this.rows.filter(row => {
-      const commit = row.commit;
-      const searchable = `${commit.subject} ${commit.hash} ${commit.authorName} ${commit.authorEmail || ''}`
-        .toLowerCase();
-      if (globalNeedle && !searchable.includes(globalNeedle)) return false;
-      if (filterNeedle && !searchable.includes(filterNeedle)) return false;
-      if (
-        this.filters.author &&
-        (commit.authorEmail || commit.authorName) !== this.filters.author
-      ) return false;
-      const refs = this.refsByHash.get(commit.hash) || [];
-      if (this.filters.ref === 'branches' && !refs.some(ref => ['branch', 'remote'].includes(ref.type))) {
-        return false;
-      }
-      if (this.filters.ref === 'tags' && !refs.some(ref => ref.type === 'tag')) return false;
-      if (this.filters.ref === 'head' && !refs.some(ref => ref.type === 'head')) return false;
-      if (this.filters.ref === 'none' && refs.length) return false;
-      return true;
-    });
+    const criteria = this.filterCriteria();
+    const rows = this.rows.filter(row => this.rowMatches(row, criteria));
     this.visibleRows = this.sortRows(rows);
+    this.updateBodyHeight();
+    this.renderedRange = [-1, -1];
+  }
+
+  /**
+   * Adds newly loaded rows to the visible history without re-filtering or
+   * re-sorting what is already visible: matches are appended in topology mode
+   * or stably merged into the sorted rows, which equals a full stable sort.
+   */
+  appendVisibleRows(added: GraphLayoutRow[]): void {
+    if (added.length) {
+      const criteria = this.filterCriteria();
+      const matches = added.filter(row => this.rowMatches(row, criteria));
+      if (matches.length) {
+        if (this.sortMode === 'topology') {
+          this.visibleRows = this.visibleRows.concat(matches);
+        } else {
+          const compare = this.createRowComparator(this.rows);
+          this.visibleRows = mergeSortedRows(this.visibleRows, stableSort(matches, compare), compare);
+        }
+      }
+    }
+    this.updateBodyHeight();
+    this.renderedRange = [-1, -1];
+  }
+
+  updateBodyHeight(): void {
     const height = Math.max(this.visibleRows.length * this.rowHeight, this.container!.clientHeight - 36);
     this.body.style.height = `${height}px`;
-    this.renderedRange = [-1, -1];
+  }
+
+  filterCriteria(): FilterCriteria {
+    return {
+      globalNeedle: this.searchTerm.trim().toLowerCase(),
+      filterNeedle: this.filters.query.trim().toLowerCase(),
+      author: this.filters.author,
+      ref: this.filters.ref
+    };
+  }
+
+  rowMatches(row: GraphLayoutRow, criteria: FilterCriteria): boolean {
+    const commit = row.commit;
+    if (criteria.globalNeedle || criteria.filterNeedle) {
+      const searchable = `${commit.subject} ${commit.hash} ${commit.authorName} ${commit.authorEmail || ''}`
+        .toLowerCase();
+      if (criteria.globalNeedle && !searchable.includes(criteria.globalNeedle)) return false;
+      if (criteria.filterNeedle && !searchable.includes(criteria.filterNeedle)) return false;
+    }
+    if (criteria.author && (commit.authorEmail || commit.authorName) !== criteria.author) return false;
+    if (criteria.ref === 'all') return true;
+    const refs = this.refsByHash.get(commit.hash) || [];
+    if (criteria.ref === 'branches' && !refs.some(ref => ['branch', 'remote'].includes(ref.type))) {
+      return false;
+    }
+    if (criteria.ref === 'tags' && !refs.some(ref => ref.type === 'tag')) return false;
+    if (criteria.ref === 'head' && !refs.some(ref => ref.type === 'head')) return false;
+    if (criteria.ref === 'none' && refs.length) return false;
+    return true;
+  }
+
+  timestampFor(commit: GraphCommitData): number {
+    let timestamp = this.timestampCache.get(commit);
+    if (timestamp === undefined) {
+      timestamp = Date.parse(commit.date);
+      this.timestampCache.set(commit, timestamp);
+    }
+    return timestamp;
+  }
+
+  collator(sensitivity?: 'base'): Intl.Collator {
+    const key = `${i18next.language}|${sensitivity || ''}`;
+    let collator = this.collators.get(key);
+    if (!collator) {
+      collator = new Intl.Collator(i18next.language, sensitivity ? { sensitivity } : undefined);
+      this.collators.set(key, collator);
+    }
+    return collator;
   }
 
   sortRows(rows: GraphLayoutRow[]): GraphLayoutRow[] {
     if (this.sortMode === 'topology') return rows;
-    const sorted = [...rows];
-    const compareText = (left: string, right: string): number => left.localeCompare(
-      right,
-      i18next.language,
-      { sensitivity: 'base' }
-    );
-    sorted.sort((left, right) => {
-      const a = left.commit;
-      const b = right.commit;
-      if (this.sortMode === 'date-desc') return Date.parse(b.date) - Date.parse(a.date);
-      if (this.sortMode === 'date-asc') return Date.parse(a.date) - Date.parse(b.date);
-      if (this.sortMode === 'author') return compareText(a.authorName, b.authorName);
-      if (this.sortMode === 'subject') return compareText(a.subject, b.subject);
-      return compareText(a.hash, b.hash);
-    });
-    return sorted;
+    return stableSort(rows, this.createRowComparator(rows));
+  }
+
+  /**
+   * Builds the comparator for the active sort mode with keys computed once:
+   * cached timestamps instead of Date.parse per comparison, a reusable
+   * Intl.Collator, and author names ranked once so rows compare by integer.
+   */
+  createRowComparator(rows: GraphLayoutRow[]): RowComparator {
+    const compareText = this.collator('base').compare;
+    if (this.sortMode === 'date-desc') {
+      return (left, right) => this.timestampFor(right.commit) - this.timestampFor(left.commit);
+    }
+    if (this.sortMode === 'date-asc') {
+      return (left, right) => this.timestampFor(left.commit) - this.timestampFor(right.commit);
+    }
+    if (this.sortMode === 'author') {
+      const names = [...new Set(rows.map(row => row.commit.authorName))].sort(compareText);
+      const ranks = new Map<string, number>();
+      let rank = 0;
+      names.forEach((name, index) => {
+        if (index > 0 && compareText(names[index - 1], name) !== 0) rank += 1;
+        ranks.set(name, rank);
+      });
+      return (left, right) => (
+        (ranks.get(left.commit.authorName) ?? 0) - (ranks.get(right.commit.authorName) ?? 0)
+      );
+    }
+    if (this.sortMode === 'subject') {
+      return (left, right) => compareText(left.commit.subject, right.commit.subject);
+    }
+    return (left, right) => compareText(left.commit.hash, right.commit.hash);
+  }
+
+  historyViewKey(): string {
+    return JSON.stringify([this.filters, this.sortMode, this.searchTerm]);
   }
 
   scheduleViewport(): void {
@@ -467,11 +697,17 @@ export class GraphView {
   updateRow(row: HTMLElement, layoutRow: GraphLayoutRow, index: number): void {
     const commit = layoutRow.commit;
     const selected = this.selectedHashes.has(commit.hash);
+    const contentKey = this.rowContentKey();
+    const contentIsCurrent = row.dataset.hash === commit.hash &&
+      row.dataset.graphRevision === contentKey;
     row.className = `graph-row${selected ? ' selected' : ''}`;
     row.dataset.hash = commit.hash;
-    row.dataset.graphRevision = String(this.dataRevision);
+    row.dataset.graphRevision = contentKey;
     row.style.transform = `translateY(${index * this.rowHeight}px)`;
     row.setAttribute('aria-selected', String(selected));
+    // A reused row already showing this commit only moves; its lanes, badges
+    // and text are rebuilt only when the content revision changed.
+    if (contentIsCurrent) return;
 
     const [graph, message, author, date, hash] = row.children as unknown as [
       HTMLElement, HTMLElement, HTMLElement, HTMLElement, HTMLElement
@@ -493,6 +729,11 @@ export class GraphView {
     date.textContent = this.fmtDate(commit.date);
     date.title = date.textContent;
     hash.textContent = commit.hash.slice(0, 7);
+  }
+
+  /** Identity of everything a row renders besides its position and selection. */
+  rowContentKey(): string {
+    return `${this.rowContentRevision}:${this.sortMode === 'topology' ? 'lanes' : 'marker'}`;
   }
 
   createSortMarker(): HTMLElement {
@@ -713,10 +954,7 @@ export class GraphView {
     this.filterRef = document.getElementById('history-filter-ref')! as HTMLSelectElement | null;
     this.sortSelect = document.getElementById('history-sort')! as HTMLSelectElement | null;
     this.filterClear = document.getElementById('history-filter-clear')!;
-    this.filterQuery?.addEventListener('input', () => {
-      this.filters.query = this.filterQuery!.value;
-      this.commitHistoryState();
-    });
+    this.filterQuery?.addEventListener('input', () => this.scheduleFilterQuery());
     this.filterAuthor?.addEventListener('change', () => {
       this.filters.author = this.filterAuthor!.value;
       this.commitHistoryState();
@@ -730,11 +968,38 @@ export class GraphView {
       this.commitHistoryState();
     });
     this.filterClear?.addEventListener('click', () => {
+      this.cancelFilterQuery();
       this.filters = { query: '', author: '', ref: 'all' };
       this.syncHistoryControls();
       this.commitHistoryState();
       this.filterQuery?.focus();
     });
+  }
+
+  /** Typing re-filters once the query settles instead of on every keystroke. */
+  scheduleFilterQuery(): void {
+    this.cancelFilterQuery();
+    this.filterQueryTimer = setTimeout(() => this.commitFilterQuery(), FILTER_QUERY_DEBOUNCE_MS);
+  }
+
+  commitFilterQuery(): void {
+    this.filterQueryTimer = null;
+    const query = this.filterQuery?.value ?? '';
+    if (query === this.filters.query) return;
+    this.filters.query = query;
+    this.commitHistoryState();
+  }
+
+  flushFilterQuery(): void {
+    if (this.filterQueryTimer === null) return;
+    clearTimeout(this.filterQueryTimer);
+    this.commitFilterQuery();
+  }
+
+  cancelFilterQuery(): void {
+    if (this.filterQueryTimer === null) return;
+    clearTimeout(this.filterQueryTimer);
+    this.filterQueryTimer = null;
   }
 
   commitHistoryState(): void {
@@ -747,26 +1012,24 @@ export class GraphView {
   updateAuthorOptions(): void {
     if (!this.filterAuthor) return;
     const selected = this.filters.author;
-    const authors = new Map<string, string>();
-    for (const row of this.rows) {
-      const email = row.commit.authorEmail || row.commit.authorName;
-      if (!email || authors.has(email)) continue;
-      authors.set(email, row.commit.authorName || email);
+    if (this.authorOptionsDirty) {
+      this.authorOptionsDirty = false;
+      const first = document.createElement('option');
+      first.value = '';
+      first.textContent = t('history.allAuthors');
+      const compareNames = this.collator().compare;
+      const options = [...this.authors]
+        .sort((left, right) => compareNames(left[1], right[1]))
+        .map(([email, name]) => {
+          const option = document.createElement('option');
+          option.value = email;
+          option.textContent = name;
+          return option;
+        });
+      this.filterAuthor.replaceChildren(first, ...options);
     }
-    const first = document.createElement('option');
-    first.value = '';
-    first.textContent = t('history.allAuthors');
-    const options = [...authors]
-      .sort((left, right) => left[1].localeCompare(right[1], i18next.language))
-      .map(([email, name]) => {
-        const option = document.createElement('option');
-        option.value = email;
-        option.textContent = name;
-        return option;
-      });
-    this.filterAuthor.replaceChildren(first, ...options);
-    this.filterAuthor!.value = authors.has(selected) ? selected : '';
-    if (selected && !authors.has(selected) && !this.hasMore) {
+    this.filterAuthor!.value = this.authors.has(selected) ? selected : '';
+    if (selected && !this.authors.has(selected) && !this.hasMore) {
       this.filters.author = '';
       this.persistHistoryState();
     }
@@ -900,6 +1163,10 @@ export class GraphView {
   }
 
   render(): void {
+    // Language changes re-render dates and the author options label.
+    this.rowContentRevision += 1;
+    this.authorOptionsDirty = true;
+    this.updateAuthorOptions();
     this.applyFilter();
     this.renderViewport(true);
   }
@@ -917,14 +1184,28 @@ export class GraphView {
   }
 }
 
-export function graphAnchorIsLoaded(
-  anchorHash: string | null,
-  rows: Array<{ commit: { hash: string } }>,
-  visibleRows: Array<{ commit: { hash: string } }>
-): boolean {
-  if (!anchorHash) return true;
-  return visibleRows.some(row => row.commit.hash === anchorHash) ||
-    rows.some(row => row.commit.hash === anchorHash);
+function stableSort(rows: GraphLayoutRow[], compare: RowComparator): GraphLayoutRow[] {
+  return [...rows].sort(compare);
+}
+
+/** Stable merge of two sorted lists; ties keep `left` (earlier topology) first. */
+function mergeSortedRows(
+  left: GraphLayoutRow[],
+  right: GraphLayoutRow[],
+  compare: RowComparator
+): GraphLayoutRow[] {
+  const merged: GraphLayoutRow[] = new Array(left.length + right.length);
+  let leftIndex = 0;
+  let rightIndex = 0;
+  let index = 0;
+  while (leftIndex < left.length && rightIndex < right.length) {
+    merged[index++] = compare(left[leftIndex], right[rightIndex]) <= 0
+      ? left[leftIndex++]
+      : right[rightIndex++];
+  }
+  while (leftIndex < left.length) merged[index++] = left[leftIndex++];
+  while (rightIndex < right.length) merged[index++] = right[rightIndex++];
+  return merged;
 }
 
 if (typeof window !== 'undefined') {
@@ -933,5 +1214,5 @@ if (typeof window !== 'undefined') {
 
 declare const module: { exports: unknown } | undefined;
 if (typeof module !== 'undefined' && (module as { exports?: unknown }).exports) {
-  (module as { exports: unknown }).exports = { GraphView, graphAnchorIsLoaded };
+  (module as { exports: unknown }).exports = { GraphView };
 }
