@@ -445,13 +445,13 @@ export class RepositoryOperations {
       rebaseApplyPath,
       cherryPickPath,
       sequencerPath
-    ] = await Promise.all([
+    ] = await this.resolveGitPaths([
       'MERGE_HEAD',
       'rebase-merge',
       'rebase-apply',
       'CHERRY_PICK_HEAD',
       'sequencer'
-    ].map(name => this.resolveGitPath(name)));
+    ]);
     let type: OperationState['type'] = null;
     if (nodeFs.existsSync(mergePath)) type = 'merge';
     else if (nodeFs.existsSync(rebaseMergePath) || nodeFs.existsSync(rebaseApplyPath)) type = 'rebase';
@@ -552,6 +552,8 @@ export class RepositoryOperations {
         {
           cwd: this.repoPath,
           encoding: 'utf8',
+          // Continuing a long rebase or cherry-pick prints one line per commit.
+          maxBuffer: 50 * 1024 * 1024,
           env: {
             ...process.env,
             GIT_EDITOR: 'true',
@@ -591,8 +593,20 @@ export class RepositoryOperations {
   }
 
   async resolveGitPath(name: string): Promise<string> {
-    const value = (await this.git.raw(['rev-parse', '--git-path', name])).trim();
-    return nodePath.isAbsolute(value) ? value : nodePath.resolve(this.repoPath, value);
+    const [resolved] = await this.resolveGitPaths([name]);
+    return resolved;
+  }
+
+  /** Resolves several `--git-path` names with a single Git process. */
+  async resolveGitPaths(names: string[]): Promise<string[]> {
+    const raw = await this.git.raw(['rev-parse', ...names.flatMap(name => ['--git-path', name])]);
+    const values = raw.split(/\r?\n/).map(value => value.trim()).filter(Boolean);
+    if (values.length !== names.length) {
+      throw new Error('Could not resolve the Git operation state paths');
+    }
+    return values.map(value => (
+      nodePath.isAbsolute(value) ? value : nodePath.resolve(this.repoPath, value)
+    ));
   }
 
   async readStageBlob(stage: number, relativePath: string): Promise<Buffer> {
