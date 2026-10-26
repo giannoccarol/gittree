@@ -61,7 +61,7 @@ type SpawnProcess = (
   options: { stdio: 'ignore' | Array<'ignore' | 'pipe'> }
 ) => {
   on(event: 'error' | 'close', listener: (...args: unknown[]) => void): unknown;
-  stderr?: { on(event: 'data', listener: (chunk: Buffer | string) => void): unknown };
+  stderr?: { on(event: 'data', listener: (chunk: Buffer | string) => void): unknown } | null;
 };
 
 export function readPackageType(
