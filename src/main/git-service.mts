@@ -10,6 +10,7 @@ import { RepositoryWorkingTree } from './git/repository-working-tree.mts';
 import { RepositoryOperations } from './git/repository-operations.mts';
 import { RepositoryWorktrees } from './git/repository-worktrees.mts';
 import { bindMethodsToQueue } from './git/queue-bound-methods.mts';
+import { describeNetworkError } from './git/network-error.mts';
 import { parseRemoteUrl } from './provider-links.mts';
 import type { RepositoryQueue } from './git/repository-queue.mts';
 import type { CommitActionMetadata } from './git/repository-operations.mts';
@@ -303,7 +304,7 @@ export class GitService {
       const result = await this.git.fetch(remote, branch);
       return { success: true, remote, branch, result };
     } catch (err) {
-      throw new Error(`Failed to fetch branch: ${err.message}`, { cause: err });
+      throw new Error(describeNetworkError('Failed to fetch branch', err), { cause: err });
     }
   }
 
@@ -315,7 +316,7 @@ export class GitService {
       const result = await this.git.push(['--delete', remote, branch]);
       return { success: true, remote, branch, result };
     } catch (err) {
-      throw new Error(`Failed to delete remote branch: ${err.message}`, { cause: err });
+      throw new Error(describeNetworkError('Failed to delete remote branch', err), { cause: err });
     }
   }
 
@@ -633,7 +634,7 @@ export class GitService {
       const result = await this.git.push(args);
       return { success: true, remote, branch, result };
     } catch (err) {
-      throw new Error(`Failed to push: ${err.message}`, { cause: err });
+      throw new Error(describeNetworkError('Failed to push', err), { cause: err });
     }
   }
 
@@ -652,7 +653,7 @@ export class GitService {
       );
       return { success: true, remote, branch, result };
     } catch (err) {
-      throw new Error(`Failed to pull: ${err.message}`, { cause: err });
+      throw new Error(describeNetworkError('Failed to pull', err), { cause: err });
     }
   }
 
@@ -697,7 +698,7 @@ export class GitService {
       });
       return { success: true, remote, result };
     } catch (err) {
-      throw new Error(`Failed to fetch: ${err.message}`, { cause: err });
+      throw new Error(describeNetworkError('Failed to fetch', err), { cause: err });
     }
   }
 
@@ -1231,7 +1232,7 @@ export class GitService {
       await this.git.push([remote, '--tags']);
       return { success: true, remote };
     } catch (error) {
-      throw new Error(`Failed to push tags: ${error.message}`, { cause: error });
+      throw new Error(describeNetworkError('Failed to push tags', error), { cause: error });
     }
   }
 
@@ -1242,7 +1243,7 @@ export class GitService {
       await this.git.push([remote, `:refs/tags/${safeName}`]);
       return { success: true, remote, name: safeName };
     } catch (error) {
-      throw new Error(`Failed to delete remote tag: ${error.message}`, { cause: error });
+      throw new Error(describeNetworkError('Failed to delete remote tag', error), { cause: error });
     }
   }
 
