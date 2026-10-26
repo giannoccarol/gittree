@@ -54,10 +54,10 @@ test('every preload invoke has exactly one registered main-process handler', () 
     )
   ];
 
-  assert.equal(invoked.length, 148);
-  assert.equal(new Set(invoked).size, 148);
-  assert.equal(registered.length, 148);
-  assert.equal(new Set(registered).size, 148);
+  assert.equal(invoked.length, 149);
+  assert.equal(new Set(invoked).size, 149);
+  assert.equal(registered.length, 149);
+  assert.equal(new Set(registered).size, 149);
   assert.deepEqual([...registered].sort(), [...invoked].sort());
 });
 
@@ -77,8 +77,8 @@ test('shared IPC channel contract matches the preload invoke surface', () => {
   const preload = fs.readFileSync(preloadPath, 'utf8');
   const invoked = matches(preload, /ipcRenderer\.invoke\(\s*'([^']+)'/g);
 
-  assert.equal(declared.length, 148);
-  assert.equal(new Set(declared).size, 148);
+  assert.equal(declared.length, 149);
+  assert.equal(new Set(declared).size, 149);
   assert.deepEqual([...declared].sort(), [...invoked].sort());
 });
 
@@ -97,7 +97,7 @@ test('all managed Git channels use the validating registrar', () => {
     ...matches(gitHandlers, /register(?:ManagedRepoHandler|Logged|ConflictOperation)\(\s*'([^']+)'/g)
   ]);
 
-  assert.equal(managedGitChannels.length, 76);
+  assert.equal(managedGitChannels.length, 77);
   for (const channel of managedGitChannels) {
     assert.equal(registered.has(channel), true, `${channel} is not managed`);
   }

@@ -36,6 +36,7 @@ export interface GitTreeBridge {
   rebaseBranch(...args: unknown[]): Promise<unknown>;
   trackBranch(...args: unknown[]): Promise<unknown>;
   fetchBranch(...args: unknown[]): Promise<unknown>;
+  fastForwardBranch(...args: unknown[]): Promise<unknown>;
   deleteRemoteBranch(...args: unknown[]): Promise<unknown>;
   deleteBranch(...args: unknown[]): Promise<unknown>;
   batchDeleteBranches(...args: unknown[]): Promise<unknown>;

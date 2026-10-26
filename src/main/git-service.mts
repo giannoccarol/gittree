@@ -308,6 +308,57 @@ export class GitService {
     }
   }
 
+  /**
+   * Updates a local branch that is not checked out to the tip of a remote
+   * branch, by fast-forward only, so no local commit can be lost. The decision
+   * uses repository state (worktree checkout, ancestry, compare-and-swap ref
+   * update) rather than Git's localized output.
+   */
+  async fastForwardBranch(remote: string, remoteBranch: string, localBranch: string) {
+    await this.assertNoPendingOperation();
+    await this.assertRemote(remote);
+    await this.assertValidBranchName(remoteBranch);
+    await this.assertLocalBranch(localBranch);
+    const localRef = `refs/heads/${localBranch}`;
+    const checkedOutAt = (await this.git.raw(['for-each-ref', '--format=%(worktreepath)', localRef])).trim();
+    if (checkedOutAt) {
+      const current = await this.git.raw(['symbolic-ref', '--quiet', '--short', 'HEAD'])
+        .then(value => value.trim())
+        .catch(() => '');
+      throw new Error(current === localBranch
+        ? `${localBranch} is the current branch: pull it instead of fast-forwarding`
+        : `${localBranch} is checked out in another worktree (${checkedOutAt}): pull it there`);
+    }
+    const before = (await this.git.raw(['rev-parse', '--verify', localRef])).trim();
+    try {
+      await this.git.raw(['fetch', remote, `refs/heads/${remoteBranch}`]);
+    } catch (err) {
+      throw new Error(describeNetworkError('Failed to fast-forward branch', err), { cause: err });
+    }
+    const incoming = (await this.git.raw(['rev-parse', '--verify', 'FETCH_HEAD^{commit}'])).trim();
+    const result = {
+      success: true,
+      remote,
+      remoteBranch,
+      branch: localBranch,
+      before,
+      after: before,
+      updated: false
+    };
+    if (incoming === before) return result;
+    if (!await this.isAncestor(before, incoming)) {
+      throw new Error(
+        `Cannot fast-forward ${localBranch}: it has commits that are not on ${remote}/${remoteBranch}. `
+        + 'Check it out and pull to merge them.'
+      );
+    }
+    // Compare-and-swap: refuses if the branch moved since it was read.
+    await this.git.raw([
+      'update-ref', '-m', `fast-forward: ${remote}/${remoteBranch}`, localRef, incoming, before
+    ]);
+    return { ...result, after: incoming, updated: true };
+  }
+
   async deleteRemoteBranch(remote: string, branch: string) {
     await this.assertNoPendingOperation();
     await this.assertRemote(remote);

@@ -84,6 +84,7 @@ export const GIT_CHANNELS = {
   Blame: "git:blame",
   BranchCompare: "git:branch-compare",
   BranchDeleteRemote: "git:branch-delete-remote",
+  BranchFastForward: "git:branch-fast-forward",
   BranchFetch: "git:branch-fetch",
   BranchMetadata: "git:branch-metadata",
   BranchRebase: "git:branch-rebase",
@@ -260,6 +261,7 @@ export type IpcChannel =
   | "git:blame"
   | "git:branch-compare"
   | "git:branch-delete-remote"
+  | "git:branch-fast-forward"
   | "git:branch-fetch"
   | "git:branch-metadata"
   | "git:branch-rebase"

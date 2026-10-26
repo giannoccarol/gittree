@@ -20,6 +20,45 @@ interface BranchMetadataEntry {
   behind?: number;
 }
 
+export interface BatchPullStep {
+  branch: string;
+  remote: string;
+  remoteBranch: string;
+  /** `pull` integrates into the checked-out branch; `fast-forward` moves a branch that is not checked out. */
+  mode: 'pull' | 'fast-forward';
+}
+
+/**
+ * Plans a batch pull. `git pull <remote> <branch>` always integrates into the
+ * checked-out branch, so only the current branch is pulled; every other
+ * selected branch is fast-forwarded to its upstream, which never merges and
+ * never drops local commits. Upstreams are split on the longest known remote
+ * name so branch names with slashes (`origin/feature/x`) keep their full path.
+ */
+export function planBatchPull(
+  branches: Array<Pick<BranchMetadataEntry, 'kind' | 'name' | 'current' | 'upstream'>>,
+  remoteNames: string[],
+  currentBranch = ''
+): { steps: BatchPullStep[]; skipped: string[] } {
+  const remotes = [...new Set(remoteNames.filter(Boolean))].sort((a, b) => b.length - a.length);
+  const steps: BatchPullStep[] = [];
+  const skipped: string[] = [];
+  for (const branch of branches) {
+    if (branch.kind !== 'local') continue;
+    const upstream = branch.upstream || '';
+    const remote = remotes.find(name => upstream.startsWith(`${name}/`))
+      ?? (upstream.indexOf('/') > 0 ? upstream.slice(0, upstream.indexOf('/')) : '');
+    const remoteBranch = remote ? upstream.slice(remote.length + 1) : '';
+    if (!remote || !remoteBranch) {
+      skipped.push(branch.name);
+      continue;
+    }
+    const isCurrent = Boolean(branch.current) || (Boolean(currentBranch) && branch.name === currentBranch);
+    steps.push({ branch: branch.name, remote, remoteBranch, mode: isCurrent ? 'pull' : 'fast-forward' });
+  }
+  return { steps, skipped };
+}
+
 export interface BranchListMetadata {
   branches?: BranchMetadataEntry[];
   remotes?: Array<{ name: string; provider?: { provider?: string } }>;
@@ -712,37 +751,40 @@ export class BranchListView {
     try {
       let successCount = 0;
       let failCount = 0;
+      const markChip = (branchName: string, ok: boolean) => {
+        const chip = namesContainer?.querySelector<HTMLElement>(
+          `.batch-selected-names__item[data-branch-name="${CSS.escape(String(branchName))}"]`
+        );
+        if (!chip) return;
+        chip.classList.add(ok ? 'is-success' : 'is-error');
+        const icon = document.createElement('i');
+        icon.className = ok ? 'ph ph-check' : 'ph ph-x-circle';
+        icon.setAttribute('aria-hidden', 'true');
+        chip.appendChild(icon);
+      };
+      const plan = planBatchPull(
+        branches,
+        (this.metadata?.remotes || []).map(remote => remote.name),
+        String(this.metadata?.current || '')
+      );
 
-      for (const branch of branches) {
-        const parts = branch.upstream?.split('/');
-        if (parts && parts.length === 2) {
-          const [remote, remoteBranch] = parts;
-          const result = await window.gitTree.pull(repo.path, remote, remoteBranch) as { error?: string };
-
-          const chip = namesContainer?.querySelector<HTMLElement>(
-            `.batch-selected-names__item[data-branch-name="${CSS.escape(String(branch.name))}"]`
-          );
-          if (result.error) {
-            failCount++;
-            this.app.showToast(`Failed to pull ${branch.name}: ${result.error}`, 'error');
-            if (chip) {
-              chip.classList.add('is-error');
-              const icon = document.createElement('i');
-              icon.className = 'ph ph-x-circle';
-              icon.setAttribute('aria-hidden', 'true');
-              chip.appendChild(icon);
-            }
-          } else {
-            successCount++;
-            if (chip) {
-              chip.classList.add('is-success');
-              const icon = document.createElement('i');
-              icon.className = 'ph ph-check';
-              icon.setAttribute('aria-hidden', 'true');
-              chip.appendChild(icon);
-            }
-          }
+      for (const step of plan.steps) {
+        const result = (step.mode === 'pull'
+          ? await window.gitTree.pull(repo.path, step.remote, step.remoteBranch)
+          : await window.gitTree.fastForwardBranch(repo.path, step.remote, step.remoteBranch, step.branch)) as { error?: string };
+        if (result?.error) {
+          failCount++;
+          this.app.showToast(`Failed to pull ${step.branch}: ${result.error}`, 'error');
+          markChip(step.branch, false);
+        } else {
+          successCount++;
+          markChip(step.branch, true);
         }
+      }
+      for (const branchName of plan.skipped) {
+        failCount++;
+        this.app.showToast(`${branchName}: ${t('branchMenu.noUpstream')}`, 'error');
+        markChip(branchName, false);
       }
 
       if (failCount === 0) {

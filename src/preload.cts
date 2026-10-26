@@ -105,6 +105,14 @@ const bridge = {
   fetchBranch: (repoPath: unknown, remote: unknown, branch: unknown): Promise<unknown> =>
     ipcRenderer.invoke('git:branch-fetch', repoPath, remote, branch),
 
+  fastForwardBranch: (
+    repoPath: unknown,
+    remote: unknown,
+    remoteBranch: unknown,
+    localBranch: unknown
+  ): Promise<unknown> =>
+    ipcRenderer.invoke('git:branch-fast-forward', repoPath, remote, remoteBranch, localBranch),
+
   deleteRemoteBranch: (repoPath: unknown, remote: unknown, branch: unknown): Promise<unknown> =>
     ipcRenderer.invoke('git:branch-delete-remote', repoPath, remote, branch),
 

@@ -148,6 +148,9 @@ export function registerGitHandlers({
   ));
   registerLogged('git:push', 'push', (_result, remote) => `Pushed to ${remote}`);
   registerLogged('git:pull', 'pull', (_result, remote) => `Pulled from ${remote}`);
+  registerLogged('git:branch-fast-forward', 'fastForwardBranch', (_result, remote, remoteBranch, localBranch) => (
+    `Fast-forwarded ${localBranch} to ${remote}/${remoteBranch}`
+  ));
   registerLogged('git:fetch', 'fetch', (_result, remote) => `Fetched from ${remote}`);
   registerLogged('git:commit', 'commitChanges', result => (
     `Created commit ${String((result as { hash?: string }).hash).slice(0, 8)}`
