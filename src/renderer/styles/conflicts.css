@@ -310,6 +310,14 @@
   white-space: nowrap;
 }
 
+.conflict-keyhint-inline {
+  margin-left: var(--space-2);
+}
+
+.conflict-ready-continue {
+  margin-top: var(--space-3);
+}
+
 .conflict-resolve-all {
   position: relative;
 }

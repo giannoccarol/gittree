@@ -75,6 +75,7 @@ export class ConflictResolver {
   pushAfter: PushAfter | null;
   minimized: boolean;
   isRefreshingDisk: boolean;
+  isContinuing: boolean;
 
   constructor(app: GitTreeApp) {
     this.app = app;
@@ -103,6 +104,7 @@ export class ConflictResolver {
     this.pushAfter = null;
     this.minimized = false;
     this.isRefreshingDisk = false;
+    this.isContinuing = false;
     this.layout = localStorage.getItem('gittree.mergeEditor.layout') === 'vertical'
       ? 'vertical'
       : 'horizontal';
@@ -142,7 +144,8 @@ export class ConflictResolver {
   }
 
   remainingFiles(): string[] {
-    return (this.state?.conflicts || []).filter(file => this.allFiles.includes(file));
+    const known = new Set(this.allFiles);
+    return (this.state?.conflicts || []).filter(file => known.has(file));
   }
 
   unresolvedCount(): number | null {
@@ -295,11 +298,11 @@ export class ConflictResolver {
 
   renderFileList(): string {
     const needle = this.fileFilter.trim().toLowerCase();
-    const remaining = this.remainingFiles();
+    const remaining = new Set(this.remainingFiles());
     const rows = this.allFiles
       .filter(file => !needle || file.toLowerCase().includes(needle))
       .map(file => {
-        const isResolved = !remaining.includes(file);
+        const isResolved = !remaining.has(file);
         const isActive = file === this.currentPath;
         const blockCount = this.blockCounts.get(file);
         const binary = this.binaryMap.get(file);
@@ -359,14 +362,9 @@ export class ConflictResolver {
       const newSet = new Set([...this.allFiles, ...remaining]);
       this.allFiles = [...newSet];
       for (const f of remaining) if (!this.blockCounts.has(f)) this.blockCounts.set(f, null);
-      // If current file still conflicted, reload it
-      if (this.currentPath && remaining.includes(this.currentPath)) {
-        await this.loadFile(this.currentPath);
-      } else if (remaining.length) {
-        this.currentPath = remaining[0];
-        await this.loadFile(this.currentPath);
-      } else {
-        this.currentPath = null;
+      // Keep the current file when it is still conflicted; it is reloaded after render().
+      if (!this.currentPath || !remaining.includes(this.currentPath)) {
+        this.currentPath = remaining[0] || null;
         this.current = null;
       }
       // Re-count blocks for remaining files where needed by reading them if not yet known
@@ -666,7 +664,7 @@ export class ConflictResolver {
             current: this.blocks.length ? this.activeBlockIndex + 1 : 0,
             total: this.blocks.length
           }))}</strong>
-          <span class="conflict-keyhint" style="margin-left:8px">${this.esc(t('conflicts.navigateHint'))}</span>
+          <span class="conflict-keyhint conflict-keyhint-inline">${this.esc(t('conflicts.navigateHint'))}</span>
         </div>
         ${active && !this.manualEdited ? `
           <div class="conflict-block-actions">
@@ -1119,17 +1117,23 @@ export class ConflictResolver {
       this.render();
       this.updateBanner();
       const editor = document.getElementById('conflict-editor');
-      if (editor) editor.innerHTML = `<div class="empty-state">${this.esc(t('conflicts.readyContinue'))}<br><button class="btn btn-primary" id="conflict-ready-continue" style="margin-top:12px"><i class="ph ph-check"></i>${this.esc(this.pushAfter ? t('conflicts.continueAndPush') : t('common.continue'))}</button></div>`;
+      if (editor) editor.innerHTML = `<div class="empty-state">${this.esc(t('conflicts.readyContinue'))}<br><button class="btn btn-primary conflict-ready-continue" id="conflict-ready-continue"><i class="ph ph-check"></i>${this.esc(this.pushAfter ? t('conflicts.continueAndPush') : t('common.continue'))}</button></div>`;
       document.getElementById('conflict-ready-continue')?.addEventListener('click', () => this.continue());
     }
   }
 
   async continue(): Promise<void> {
-    if (this.state?.conflicts?.length) return;
+    if (this.state?.conflicts?.length || this.isContinuing) return;
     const repo = this.app.state.repo;
     if (!repo) return;
     const pushContext = this.pushAfter;
-    const result = await window.gitTree.continueOperation(repo!.path) as { error?: string };
+    this.isContinuing = true;
+    let result: { error?: string };
+    try {
+      result = await window.gitTree.continueOperation(repo!.path) as { error?: string };
+    } finally {
+      this.isContinuing = false;
+    }
     if (result?.error) {
       this.app.showToast(result.error, 'error');
       const state = await window.gitTree.getOperationState(repo!.path) as OperationStateInfo;
