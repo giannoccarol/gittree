@@ -132,6 +132,7 @@ export class GraphView {
   filterQueryTimer: ReturnType<typeof setTimeout> | null;
   timestampCache: WeakMap<GraphCommitData, number>;
   collators: Map<string, Intl.Collator>;
+  renderedRowContent: WeakMap<HTMLElement, { hash: string; key: string }>;
 
   constructor(container: HTMLElement, body: HTMLElement, app: GitTreeApp) {
     this.container = container;
@@ -189,6 +190,7 @@ export class GraphView {
     this.filterQueryTimer = null;
     this.timestampCache = new WeakMap();
     this.collators = new Map();
+    this.renderedRowContent = new WeakMap();
 
     this.layer = document.createElement('div');
     this.layer.className = 'graph-virtual-layer';
@@ -698,16 +700,15 @@ export class GraphView {
     const commit = layoutRow.commit;
     const selected = this.selectedHashes.has(commit.hash);
     const contentKey = this.rowContentKey();
-    const contentIsCurrent = row.dataset.hash === commit.hash &&
-      row.dataset.graphRevision === contentKey;
+    const rendered = this.renderedRowContent.get(row);
     row.className = `graph-row${selected ? ' selected' : ''}`;
     row.dataset.hash = commit.hash;
-    row.dataset.graphRevision = contentKey;
     row.style.transform = `translateY(${index * this.rowHeight}px)`;
     row.setAttribute('aria-selected', String(selected));
     // A reused row already showing this commit only moves; its lanes, badges
     // and text are rebuilt only when the content revision changed.
-    if (contentIsCurrent) return;
+    if (rendered?.hash === commit.hash && rendered.key === contentKey) return;
+    this.renderedRowContent.set(row, { hash: commit.hash, key: contentKey });
 
     const [graph, message, author, date, hash] = row.children as unknown as [
       HTMLElement, HTMLElement, HTMLElement, HTMLElement, HTMLElement
