@@ -43,28 +43,39 @@ function stopStalledSsh(record) {
   }
 }
 
-// On Windows the Git process stopped by the timeout can leave children that
-// keep the repository as their working directory until the fake remote is
-// gone, and Windows refuses to delete a directory in use. Wait for them with
-// a budget that covers the fake remote's lifetime, and list what is still
-// running if the directory stays busy.
-function removeWhenReleased(t, directory) {
-  try {
-    // Linear backoff: 100 ms, 200 ms, … 2 s, about 21 s in total.
-    fs.rmSync(directory, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 });
-  } catch (error) {
-    if (process.platform === 'win32') {
-      try {
-        const listing = require('node:child_process').execFileSync('powershell.exe', [
-          '-NoProfile',
-          '-Command',
-          "Get-CimInstance Win32_Process | Where-Object { $_.Name -match '^(git|sh|bash|ssh|node)' } "
-            + '| Select-Object ProcessId,ParentProcessId,Name,CommandLine | Format-Table -AutoSize | Out-String -Width 400'
-        ], { encoding: 'utf8' });
-        t.diagnostic(`Processes still running:\n${listing}`);
-      } catch { /* diagnostics are best effort */ }
+// On Windows the Git process stopped by the timeout can keep the repository
+// as its working directory for a moment after the fake remote is gone, and
+// Windows refuses to delete a directory in use. fs.rmSync's own retries do
+// not cover this case: on Node 22 an EBUSY from a nested directory is thrown
+// at once. Retry asynchronously, so the event loop keeps running while those
+// processes exit, and list what is still running if the directory stays busy.
+const RELEASE_TIMEOUT_MS = 20000;
+
+async function removeWhenReleased(t, directory) {
+  const deadline = Date.now() + RELEASE_TIMEOUT_MS;
+  for (;;) {
+    try {
+      fs.rmSync(directory, { recursive: true, force: true });
+      return;
+    } catch (error) {
+      const retryable = ['EBUSY', 'EPERM', 'ENOTEMPTY'].includes(error.code);
+      if (retryable && Date.now() < deadline) {
+        await new Promise(resolve => setTimeout(resolve, 200));
+        continue;
+      }
+      if (process.platform === 'win32') {
+        try {
+          const listing = require('node:child_process').execFileSync('powershell.exe', [
+            '-NoProfile',
+            '-Command',
+            "Get-CimInstance Win32_Process | Where-Object { $_.Name -match '^(git|sh|bash|ssh|node)' } "
+              + '| Select-Object ProcessId,ParentProcessId,Name,CommandLine | Format-Table -AutoSize | Out-String -Width 400'
+          ], { encoding: 'utf8' });
+          t.diagnostic(`Processes still running:\n${listing}`);
+        } catch { /* diagnostics are best effort */ }
+      }
+      throw error;
     }
-    throw error;
   }
 }
 
@@ -88,9 +99,9 @@ function createStalledRemoteRepository(t, timeoutSeconds) {
   const repo = createRepository();
   const script = path.join(repo.root, 'stalled-ssh.js');
   const record = path.join(repo.root, 'ssh-environment.json');
-  t.after(() => {
+  t.after(async () => {
     stopStalledSsh(record);
-    removeWhenReleased(t, repo.root);
+    await removeWhenReleased(t, repo.root);
   });
   repo.write('readme.txt', 'base\n');
   repo.git('add', '.');
