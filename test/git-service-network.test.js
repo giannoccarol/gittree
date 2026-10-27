@@ -12,6 +12,10 @@ const {
 } = require('../src/main/git/remote-transport.mts');
 const { createRepository, git } = require('./helpers/git-repository');
 
+// The fake remote outlives the 1 s timeout under test by a wide margin, then
+// exits on its own so every Git process still attached to it ends too.
+const STALLED_SSH_LIFETIME_MS = 5000;
+
 // A stand-in for `ssh` that accepts the connection and never answers, like a
 // remote behind a dead VPN. It records the environment Git gave it and its
 // pid, and exits once Git closes the pipe.
@@ -23,7 +27,7 @@ fs.writeFileSync(process.argv[2], JSON.stringify({
 fs.appendFileSync(process.argv[2] + '.pids', process.pid + '\\n');
 process.stdin.resume();
 process.stdin.on('end', () => process.exit(0));
-setTimeout(() => process.exit(0), 20000);
+setTimeout(() => process.exit(0), ${STALLED_SSH_LIFETIME_MS});
 `;
 
 // `git pull` runs an inner `git fetch` that survives when the timeout stops
@@ -36,6 +40,31 @@ function stopStalledSsh(record) {
   } catch { /* no fake ssh was started */ }
   for (const pid of pids) {
     try { process.kill(pid); } catch { /* already exited */ }
+  }
+}
+
+// On Windows the Git process stopped by the timeout can leave children that
+// keep the repository as their working directory until the fake remote is
+// gone, and Windows refuses to delete a directory in use. Wait for them with
+// a budget that covers the fake remote's lifetime, and list what is still
+// running if the directory stays busy.
+function removeWhenReleased(t, directory) {
+  try {
+    // Linear backoff: 100 ms, 200 ms, … 2 s, about 21 s in total.
+    fs.rmSync(directory, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 });
+  } catch (error) {
+    if (process.platform === 'win32') {
+      try {
+        const listing = require('node:child_process').execFileSync('powershell.exe', [
+          '-NoProfile',
+          '-Command',
+          "Get-CimInstance Win32_Process | Where-Object { $_.Name -match '^(git|sh|bash|ssh|node)' } "
+            + '| Select-Object ProcessId,ParentProcessId,Name,CommandLine | Format-Table -AutoSize | Out-String -Width 400'
+        ], { encoding: 'utf8' });
+        t.diagnostic(`Processes still running:\n${listing}`);
+      } catch { /* diagnostics are best effort */ }
+    }
+    throw error;
   }
 }
 
@@ -61,7 +90,7 @@ function createStalledRemoteRepository(t, timeoutSeconds) {
   const record = path.join(repo.root, 'ssh-environment.json');
   t.after(() => {
     stopStalledSsh(record);
-    repo.cleanup();
+    removeWhenReleased(t, repo.root);
   });
   repo.write('readme.txt', 'base\n');
   repo.git('add', '.');
