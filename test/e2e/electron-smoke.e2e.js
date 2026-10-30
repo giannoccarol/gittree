@@ -173,7 +173,7 @@ test('Electron opens a deep-linked repository and renders its deterministic hist
     assert.equal(maximizedInspector.filesDisplay, 'flex');
     assert.ok(maximizedInspector.graphRows >= 1);
     assert.ok(maximizedInspector.fileItems >= 1);
-    assert.equal(maximizedInspector.graphText, '');
+    assert.match(maximizedInspector.graphText, /Initial fixture commit/);
 
     await page.locator('.inspector-graph-row').first().hover();
     await page.locator('.inspector-commit-tooltip.is-visible').waitFor();
@@ -204,33 +204,36 @@ test('Electron opens a deep-linked repository and renders its deterministic hist
     await page.locator('#btn-popout-inspector').click();
     const detachedInspector = await detachedWindowPromise;
     await detachedInspector.locator('.inspector-window-header').waitFor();
-    await detachedInspector.locator('.inspector-graph-row').first().waitFor();
+    await detachedInspector.locator('.diff-file-block').first().waitFor();
     await detachedInspector.locator('.inspector-file-item').first().waitFor();
     const detachedLayout = await detachedInspector.evaluate(() => ({
       width: window.innerWidth,
       title: document.getElementById('inspector-title').textContent,
       meta: document.getElementById('inspector-meta').textContent,
       contentPadding: getComputedStyle(document.getElementById('inspector-body')).paddingTop,
-      graphRows: document.querySelectorAll('.inspector-graph-row').length,
+      diffBlocks: document.querySelectorAll('.diff-file-block').length,
       fileItems: document.querySelectorAll('.inspector-file-item').length,
-      graphDisplay: getComputedStyle(document.getElementById('inspector-graph-panel')).display,
+      hasGraph: Boolean(document.getElementById('inspector-graph-panel')),
       filesDisplay: getComputedStyle(document.getElementById('inspector-files-panel')).display
     }));
     assert.ok(detachedLayout.width >= 900);
     assert.match(detachedLayout.title, /Initial fixture commit/);
     assert.match(detachedLayout.meta, /file/);
     assert.equal(detachedLayout.contentPadding, '20px');
-    assert.ok(detachedLayout.graphRows >= 1);
+    assert.ok(detachedLayout.diffBlocks >= 1);
     assert.ok(detachedLayout.fileItems >= 1);
-    assert.equal(detachedLayout.graphDisplay, 'flex');
+    assert.equal(detachedLayout.hasGraph, false);
     assert.equal(detachedLayout.filesDisplay, 'flex');
+    // The detached window renders the diff itself, so its layout controls work.
+    await detachedInspector.locator('#inspector-mode-split').click();
+    await detachedInspector.locator('#inspector-body .diff-split').waitFor();
     await detachedInspector.close();
 
     const branchSearch = page.locator('#branch-search');
     const branchSearchVisible = await branchSearch.isVisible();
     if (branchSearchVisible) {
       await branchSearch.fill('feature');
-      await page.getByText('feature/known-branch', { exact: true }).waitFor();
+      await page.locator('#graph-view').getByText('feature/known-branch', { exact: true }).waitFor();
     }
 
     await page.evaluate(() => {
