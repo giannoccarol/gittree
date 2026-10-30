@@ -26,6 +26,9 @@ export interface NameStatusFile {
 export interface CommitDetail {
   hash: string;
   message: string;
+  /** The message after the subject line, trimmed. */
+  body: string;
+  parents: string[];
   author_name: string;
   author_email: string;
   date: string;
@@ -35,13 +38,13 @@ export interface CommitDetail {
 
 const COMMIT_DETAIL_FIELD = '\x00';
 const COMMIT_DETAIL_END = '\x01';
-const COMMIT_DETAIL_FORMAT = ['%H', '%aN', '%aE', '%aI', '%s'].join('%x00') + '%x01';
+const COMMIT_DETAIL_FORMAT = ['%H', '%aN', '%aE', '%aI', '%s', '%P', '%b'].join('%x00') + '%x01';
 
 /** Splits `git show --stat --patch` output written with COMMIT_DETAIL_FORMAT. */
 export function parseCommitDetailOutput(output: string): CommitDetail | null {
   const end = output.indexOf(COMMIT_DETAIL_END);
   if (end === -1) return null;
-  const [hash = '', authorName = '', authorEmail = '', date = '', subject = ''] = output
+  const [hash = '', authorName = '', authorEmail = '', date = '', subject = '', parents = '', body = ''] = output
     .slice(0, end)
     .split(COMMIT_DETAIL_FIELD);
   if (!hash) return null;
@@ -64,6 +67,8 @@ export function parseCommitDetailOutput(output: string): CommitDetail | null {
   return {
     hash,
     message: subject,
+    body: body.trim(),
+    parents: parents.split(' ').filter(Boolean),
     author_name: authorName,
     author_email: authorEmail,
     date,

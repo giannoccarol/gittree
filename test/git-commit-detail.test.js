@@ -20,14 +20,16 @@ function rawGit(repository, ...args) {
 // The detail the inspector showed before it was read with one process: log
 // metadata, the first-parent `git diff` and the `git show --stat` lines.
 function referenceDetail(repository, hash) {
-  const [full, authorName, authorEmail, date, subject] = rawGit(
-    repository, 'log', '-1', '--format=%H%x00%aN%x00%aE%x00%aI%x00%s', hash
+  const [full, authorName, authorEmail, date, subject, parentList, body] = rawGit(
+    repository, 'log', '-1', '--format=%H%x00%aN%x00%aE%x00%aI%x00%s%x00%P%x00%b', hash
   ).replace(/\n$/, '').split('\0');
   const parents = rawGit(repository, 'rev-list', '--parents', '-n', '1', hash).trim().split(/\s+/);
   const range = parents.length > 1 ? `${hash}^..${hash}` : `${EMPTY_TREE}..${hash}`;
   return {
     hash: full,
     message: subject,
+    body: body.trim(),
+    parents: parentList.split(' ').filter(Boolean),
     author_name: authorName,
     author_email: authorEmail,
     date,
@@ -79,6 +81,11 @@ test('commit detail matches the log, diff and stat it replaced for every commit 
     }
     const short = await service.getCommitDetail(commits.modify.slice(0, 7));
     assert.equal(short.hash, commits.modify);
+    assert.equal(short.body, 'Body line one.\n\nBody line two.');
+    assert.deepEqual(short.parents, [commits.root]);
+    const merge = await service.getCommitDetail(commits.merge);
+    assert.equal(merge.parents.length, 2);
+    assert.equal((await service.getCommitDetail(commits.root)).parents.length, 0);
   } finally {
     fixture.cleanup();
   }
@@ -105,9 +112,11 @@ test('commit detail is read with a single git process', async () => {
 test('commit detail parsing handles a header without a diff and rejects other output', () => {
   assert.equal(parseCommitDetailOutput(''), null);
   assert.equal(parseCommitDetailOutput('fatal: bad revision'), null);
-  assert.deepEqual(parseCommitDetailOutput('abc\0Ada\0ada@example.test\x002026-01-01T00:00:00+00:00\0empty\x01\n'), {
+  assert.deepEqual(parseCommitDetailOutput('abc\0Ada\0ada@example.test\x002026-01-01T00:00:00+00:00\0empty\0p1 p2\0\x01\n'), {
     hash: 'abc',
     message: 'empty',
+    body: '',
+    parents: ['p1', 'p2'],
     author_name: 'Ada',
     author_email: 'ada@example.test',
     date: '2026-01-01T00:00:00+00:00',
