@@ -11,6 +11,7 @@ import { DiffViewer } from './components/diff-viewer.mts';
 import { InspectorWorkspace } from './components/inspector-workspace.mts';
 import { InspectorPanel } from './components/inspector-panel.mts';
 import { CommitSummary } from './components/commit-summary.mts';
+import { copyText } from './clipboard.mts';
 import { GlobalSearch } from './components/search.mts';
 import { BranchCompare } from './components/branch-compare.mts';
 import { CommitCompare } from './components/commit-compare.mts';
@@ -749,12 +750,8 @@ export class GitTreeApp {
   }
 
   async copyCommitHash(hash: string): Promise<void> {
-    try {
-      await navigator.clipboard.writeText(hash);
-      this.showToast(t('details.hashCopied'), 'success');
-    } catch {
-      this.showToast(t('details.copyFailed'), 'error');
-    }
+    if (await copyText(hash)) this.showToast(t('details.hashCopied'), 'success');
+    else this.showToast(t('details.copyFailed'), 'error');
   }
 
   async createBranchAtCommit(hash: string): Promise<void> {

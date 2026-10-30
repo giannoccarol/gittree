@@ -862,3 +862,12 @@ input[type="checkbox"]:hover:not(:checked) {
   background: var(--surface-hover);
   border-color: var(--border-strong);
 }
+
+/* Off-screen field used to copy text when the Clipboard API is denied. */
+.clipboard-buffer {
+  position: fixed;
+  top: 0;
+  left: -10000px;
+  width: 1px;
+  height: 1px;
+}
