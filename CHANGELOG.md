@@ -1,3 +1,44 @@
+# [1.1.0](https://github.com/giannoccarol/gittree/compare/v1.0.0...v1.1.0) (2026-10-30)
+
+
+### Bug Fixes
+
+* **diff:** highlight changed words without the +/- markers ([b5b1f3f](https://github.com/giannoccarol/gittree/commit/b5b1f3f3e1e4c0c606ca3b90f08a02ff5065733d))
+* **inspector:** copy the commit hash although clipboard permissions are denied ([455d9ca](https://github.com/giannoccarol/gittree/commit/455d9ca971d9d7ceeef790ced1e3ac1b110f2bbe))
+* **inspector:** ignore stale commit detail responses ([11587e3](https://github.com/giannoccarol/gittree/commit/11587e33cc3f3f31497742facedbe21a66a6addc))
+* **inspector:** keep commit controls and metadata out of file and pull request views ([34ceb7f](https://github.com/giannoccarol/gittree/commit/34ceb7fa897dde3d760c7b2d76cb8f3e9d0345ef))
+* **inspector:** render the detached window from diff data ([7ca8e50](https://github.com/giannoccarol/gittree/commit/7ca8e509010f22ecc30da8891bbced63c39622ca))
+* **pull-requests:** stop reloading the previous repository's pull requests on tab switch ([abe38c8](https://github.com/giannoccarol/gittree/commit/abe38c8727d207944eea59396a161231e71ca713))
+* **reflog:** copy entry hashes although clipboard permissions are denied ([adcaff4](https://github.com/giannoccarol/gittree/commit/adcaff4479d94bab68eb51033ff124b705a602b8))
+* **search:** load the global search data once per opening ([cd2aa6a](https://github.com/giannoccarol/gittree/commit/cd2aa6aeaa09a669261f62d9c90db3de9711c376))
+
+
+### Features
+
+* **diff:** collapse and expand files in a commit diff ([12f3b78](https://github.com/giannoccarol/gittree/commit/12f3b78c5bd8c349e685d6b3e1e7b42d2f1ed6cf))
+* **diff:** make commit diffs readable in the inspector ([48a38ce](https://github.com/giannoccarol/gittree/commit/48a38ceece4481820d7ad3821393ed3eff37f3e3))
+* **git:** include the message body and parents in commit detail ([1e41e1a](https://github.com/giannoccarol/gittree/commit/1e41e1a785b30b114c84f025f3682c51fbf56c6d))
+* **history:** move between commits with the arrow keys ([af525b0](https://github.com/giannoccarol/gittree/commit/af525b081bfbfc50a242d90302178d088ff49800))
+* **inspector:** list changed files in the narrow inspector and commit subjects when maximized ([9fb00da](https://github.com/giannoccarol/gittree/commit/9fb00da5b1774a0df074aefc23243d1a4b71aad7))
+* **inspector:** show the full commit message, refs, parents and commit actions ([f49b3c9](https://github.com/giannoccarol/gittree/commit/f49b3c9604a75325d8d455f70f448fa029723f3b))
+
+
+### Performance Improvements
+
+* **agents:** load the terminal emulator when the agent terminal first opens ([55244aa](https://github.com/giannoccarol/gittree/commit/55244aa7ea1b987a8f98bb5390924a18f3d643ad))
+* **branches:** rebuild the filtered branch list once per typing burst ([4758fef](https://github.com/giannoccarol/gittree/commit/4758fefe8ce492771173c1795ab7bdf13bd61197))
+* **diff:** rebuild a virtualized diff only near the rendered edge ([458f436](https://github.com/giannoccarol/gittree/commit/458f436b9a96e5528af3f2d39a7b58aab841f513))
+* **git:** batch commit metadata and file reads for commit action previews ([e10227f](https://github.com/giannoccarol/gittree/commit/e10227f19c1d510dafc7aacf90506a0502e3d545))
+* **git:** cache operation-state git paths per repository session ([0ea5f10](https://github.com/giannoccarol/gittree/commit/0ea5f107c6222596905c3127a8959a2ee9bfc4ce))
+* **git:** read a commit's detail with one git process ([6144b66](https://github.com/giannoccarol/gittree/commit/6144b6662ecda1775e2ffc1f2ca6b5465ea47e30))
+* **git:** read branch metadata with a single for-each-ref walk ([6aabfc3](https://github.com/giannoccarol/gittree/commit/6aabfc3afdd1d4d4116083c322b025803b51ce1d))
+* **git:** read the Git identity from one config listing ([0d71e02](https://github.com/giannoccarol/gittree/commit/0d71e02d70afed56c92a93ed69e55f97d16383fc))
+* **graph:** keep history rows attached while scrolling ([7db9d7e](https://github.com/giannoccarol/gittree/commit/7db9d7e48221106c40eca81b99bdd5d87a2a0ba2))
+* **startup:** read other tabs' sync state after the active repository opens ([5eed46d](https://github.com/giannoccarol/gittree/commit/5eed46dff4afc79c40d3c88b7da79c6938f74396))
+* **tabs:** pause tab sync polling while the window is hidden or unfocused ([1f88732](https://github.com/giannoccarol/gittree/commit/1f88732e37b609707c9708550eff5fd58a3e1308))
+* **workspace:** refresh the open repository in place after local changes ([ca253cb](https://github.com/giannoccarol/gittree/commit/ca253cb0e496b88ccf144b82bf0226edb56d3dc5))
+* **workspace:** resolve only the requested and matched repository paths ([6618591](https://github.com/giannoccarol/gittree/commit/66185915294374f1f03174a5eb00ed3302e151e2))
+
 # [1.0.0](https://github.com/giannoccarol/gittree/compare/v0.30.0...v1.0.0) (2026-10-26)
 
 
