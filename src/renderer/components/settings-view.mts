@@ -1379,6 +1379,8 @@ export class SettingsView {
       }
     }
     if (changed) localStorage.setItem(this.autoFetchStorageKey, JSON.stringify(schedules));
+    // Fetched repositories may now be behind their remotes: update every tab badge.
+    if (refreshedRepositories.size) void this.app.components.repoTabs?.refreshAllSync();
     if (this.app.state.repo && refreshedRepositories.has(this.app.state.repo.path)) {
       await this.app.refresh({ silent: true });
     }

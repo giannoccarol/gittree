@@ -237,8 +237,8 @@ export class GitTreeApp {
       callbacks: {
         syncRemoteBusyUI: () => this.syncRemoteBusyUI(),
         restoreWorkspaceMode: repoPath => this.workspaceState.restoreMode(repoPath),
-        loadStashes: repoPath => this.loadStashes(repoPath),
-        loadTags: repoPath => this.loadTags(repoPath),
+        loadStashes: (repoPath, options) => this.loadStashes(repoPath, options),
+        loadTags: (repoPath, options) => this.loadTags(repoPath, options),
         loadWorktreeAgents: repo => this.components.worktreeAgents.load(repo),
         updateStatus: (repoPath, loadSession) => this.updateStatus(repoPath, loadSession),
         syncCurrentRepositoryState: repoPath => this.syncCurrentRepositoryState(repoPath)
@@ -544,10 +544,12 @@ export class GitTreeApp {
     this.repositoryWorkspace.setInteractive();
   }
 
-  async loadStashes(repoPath: string): Promise<void> {
+  async loadStashes(repoPath: string, options: { background?: boolean } = {}): Promise<void> {
     const container = byId('stash-list');
-    container.classList.add('is-project-loading');
-    container.innerHTML = this.projectLoadingMarkup();
+    if (!options.background) {
+      container.classList.add('is-project-loading');
+      container.innerHTML = this.projectLoadingMarkup();
+    }
     try {
       const list = await window.gitTree.getStashList(repoPath) as { all?: Array<{ message?: string }> } | undefined;
       if (!this.isCurrentRepo(repoPath)) return;
@@ -617,7 +619,6 @@ export class GitTreeApp {
     const result = await api(repo.path, index) as { error?: string };
     if (result?.error) { this.showToast(result.error, 'error'); return; }
     if (action === 'pop' || action === 'drop') {
-      await this.loadStashes(repo.path);
       await this.refresh();
     } else {
       this.showToast(t('feedback.stashApplied'), 'success');
@@ -635,10 +636,12 @@ export class GitTreeApp {
     });
   }
 
-  async loadTags(repoPath: string): Promise<void> {
+  async loadTags(repoPath: string, options: { background?: boolean } = {}): Promise<void> {
     const container = byId('tag-list');
-    container.classList.add('is-project-loading');
-    container.innerHTML = this.projectLoadingMarkup();
+    if (!options.background) {
+      container.classList.add('is-project-loading');
+      container.innerHTML = this.projectLoadingMarkup();
+    }
     try {
       const tags = await window.gitTree.getTags(repoPath) as { all?: string[] } | undefined;
       if (!this.isCurrentRepo(repoPath)) return;
@@ -832,11 +835,11 @@ export class GitTreeApp {
     this.pushInspectorPayload();
   }
 
-  async refresh(options: { silent?: boolean } & Record<string, unknown> = {}): Promise<void> {
+  /** Reloads the open repository in place after a local change. */
+  async refresh(options: { silent?: boolean; selectHash?: string; pullRequests?: boolean } = {}): Promise<void> {
     if (!this.state.repo) return;
     if (!options.silent) this.showToast(t('common.loading'));
-    await this.openRepo(this.state.repo, options);
-    this.components.repoTabs.refreshAllSync();
+    await this.repositoryWorkspace.refreshInPlace(this.state.repo, options);
     await this.syncOperationBanner();
     if (!options.silent) this.showToast(t('feedback.refreshed'), 'success');
   }

@@ -223,3 +223,49 @@ test('repository identity follows platform path casing and destroy cancels pendi
 
   assert.equal(calls.includes('sync:C:\\repo-a'), false);
 });
+
+test('a refresh after a local change updates the open repository in place', async () => {
+  const { controller, state, calls, document } = createHarness();
+  const options = [];
+  controller.components.graphView.load = (repoPath, loadOptions) => {
+    options.push(['graph', loadOptions]);
+    calls.push(`graph:${repoPath}`);
+    return Promise.resolve();
+  };
+  controller.components.branchList.load = (repoPath, _session, loadOptions) => {
+    options.push(['branches', loadOptions]);
+    calls.push(`branches:${repoPath}`);
+    return Promise.resolve();
+  };
+  controller.callbacks.loadStashes = (repoPath, loadOptions) => { options.push(['stashes', loadOptions]); };
+  controller.callbacks.loadTags = (repoPath, loadOptions) => { options.push(['tags', loadOptions]); };
+  state.repo = { path: 'C:\\repo-b', name: 'Repo B' };
+  document.workspace.dataset.loadState = 'settled';
+
+  await controller.refreshInPlace({ path: 'c:\\REPO-B', name: 'Repo B' }, { selectHash: 'def456' });
+
+  assert.deepEqual(options, [
+    ['graph', { preserveViewport: true }],
+    ['branches', { background: true }],
+    ['stashes', { background: true }],
+    ['tags', { background: true }]
+  ]);
+  assert.equal(document.workspace.dataset.loadState, 'settled', 'no workspace-wide loading state');
+  assert.equal(calls.includes('diff:clear'), false, 'the inspector keeps its content');
+  assert.equal(calls.some(call => call.startsWith('pull-requests:')), false, 'pull requests are not reloaded');
+  assert.equal(calls.includes('welcome:hide'), false);
+  assert.ok(calls.includes('select:def456'));
+  assert.ok(calls.includes('sync:C:\\repo-b'));
+  assert.ok(calls.includes('status:branch:On feature'));
+});
+
+test('a refresh for a repository that is not open opens it instead', async () => {
+  const { controller, state, calls, graph, supporting } = createHarness();
+  state.repo = { path: 'C:\\repo-b' };
+  const refreshing = controller.refreshInPlace({ path: 'C:\\repo-a', name: 'Repo A' });
+  graph.resolve();
+  supporting.resolve();
+  await refreshing;
+  assert.equal(state.repo.path, 'C:\\repo-a');
+  assert.ok(calls.includes('diff:clear'));
+});

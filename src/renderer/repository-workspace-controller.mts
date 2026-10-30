@@ -6,8 +6,8 @@ export interface RepositoryEntry {
 export interface RepositoryWorkspaceCallbacks {
   syncRemoteBusyUI: () => void;
   restoreWorkspaceMode: (repoPath: string) => void;
-  loadStashes: (repoPath: string) => Promise<unknown>;
-  loadTags: (repoPath: string) => Promise<unknown>;
+  loadStashes: (repoPath: string, options?: { background?: boolean }) => Promise<unknown>;
+  loadTags: (repoPath: string, options?: { background?: boolean }) => Promise<unknown>;
   loadWorktreeAgents?: (repo: RepositoryEntry) => Promise<unknown>;
   updateStatus: (repoPath: string, loadSession?: { status(): Promise<unknown> } | null) => Promise<unknown>;
   syncCurrentRepositoryState: (repoPath: string) => string | null | undefined;
@@ -15,7 +15,10 @@ export interface RepositoryWorkspaceCallbacks {
 
 export interface RepositoryWorkspaceComponents {
   welcome: { hide: () => void; markStep?: (step: string) => void };
-  graphView: { load: (repoPath: string) => Promise<void>; select: (hash: string) => void };
+  graphView: {
+    load: (repoPath: string, options?: { preserveViewport?: boolean }) => Promise<void>;
+    select: (hash: string) => void;
+  };
   branchList: { load: (repoPath: string, loadSession?: WorkspaceLoadSession | null, options?: { background?: boolean }) => Promise<void> };
   changes: { load: (repoPath: string) => Promise<void> };
   pullRequests: { load: (repoPath: string, loadSession?: { branchMetadata(): Promise<unknown> } | null) => Promise<void> };
@@ -135,6 +138,49 @@ export class RepositoryWorkspaceController {
       }
     } finally {
       if (loadToken === this.loadToken) this.setLoading(false);
+    }
+  }
+
+  /**
+   * Reloads the open repository after a local change (commit, stash, branch,
+   * tag, cherry-pick…) without the workspace-wide loading state: the history
+   * keeps its viewport and unchanged rows, the side lists update in place and
+   * the inspector keeps its commit unless another one is selected.
+   */
+  async refreshInPlace(target: RepositoryEntry, options: { selectHash?: string; pullRequests?: boolean } = {}): Promise<void> {
+    if (!this.isCurrentRepository(target.path) || !this.state.repo) {
+      await this.open(target, options);
+      return;
+    }
+    // Keep the registered spelling of the path that the open views use.
+    const repo = this.state.repo;
+    const loadToken = ++this.loadToken;
+    const loadSession = this.createLoadSession(this.bridge, repo.path);
+    const graphLoad = this.components.graphView.load(repo.path, { preserveViewport: true });
+    const supportingLoad = Promise.all([
+      this.components.branchList.load(repo.path, loadSession, { background: true }),
+      this.components.changes.load(repo.path),
+      options.pullRequests ? this.components.pullRequests.load(repo.path, loadSession) : null,
+      this.callbacks.loadStashes(repo.path, { background: true }),
+      this.callbacks.loadTags(repo.path, { background: true }),
+      this.callbacks.loadWorktreeAgents?.(repo),
+      this.callbacks.updateStatus(repo.path, loadSession)
+    ]);
+    supportingLoad.catch(() => {});
+
+    await graphLoad;
+    if (loadToken !== this.loadToken) return;
+    if (options.selectHash) this.components.graphView.select(options.selectHash);
+
+    await supportingLoad;
+    if (loadToken !== this.loadToken) return;
+    const branchName = this.callbacks.syncCurrentRepositoryState(repo.path);
+    this.components.statusBar.setBranch(
+      branchName ? this.translate('statusBar.onBranch', { branch: branchName }) : ''
+    );
+    const operationState = await loadSession.operationState() as OperationStateInfo | null;
+    if (loadToken === this.loadToken && operationState?.type) {
+      await this.components.conflict.open(operationState);
     }
   }
 
