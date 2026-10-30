@@ -2,6 +2,8 @@ import type { GitTreeApp } from '../app.mts';
 import { BranchNaming, type BranchMetadata } from './branch-naming.mts';
 import type { OperationStateInfo } from './conflict-resolver.mts';
 
+const FILTER_DELAY_MS = 90;
+
 interface BranchListInfo {
   [key: string]: unknown;
 }
@@ -94,6 +96,7 @@ export class BranchListView {
   loading: boolean;
   shouldReveal: boolean;
   rowStaggerIndex: number;
+  filterTimer: ReturnType<typeof setTimeout> | null;
   activeGhost: {
     ghost: HTMLElement;
     animation: Animation;
@@ -121,11 +124,17 @@ export class BranchListView {
     this.shouldReveal = false;
     this.rowStaggerIndex = 0;
     this.activeGhost = null;
+    this.filterTimer = null;
     this.searchInput = document.getElementById('branch-search')! as HTMLInputElement | null;
     if (this.searchInput) {
+      // Typing bursts rebuild the list once, after the keys pause.
       this.searchInput.addEventListener('input', () => {
         this.filter = this.searchInput!.value.toLowerCase();
-        this.render();
+        if (this.filterTimer) clearTimeout(this.filterTimer);
+        this.filterTimer = setTimeout(() => {
+          this.filterTimer = null;
+          this.render();
+        }, FILTER_DELAY_MS);
       });
     }
     this.container.addEventListener('click', event => {
@@ -215,6 +224,8 @@ export class BranchListView {
       if (!background) {
         if (this.searchInput) this.searchInput!.value = '';
         this.filter = '';
+        if (this.filterTimer) clearTimeout(this.filterTimer);
+        this.filterTimer = null;
         this.selectedBranchKey = null;
         this.selectedBranchElement = null;
         this.selectedBranchKeys.clear();
