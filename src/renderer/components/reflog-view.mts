@@ -1,4 +1,5 @@
 import type { GitTreeApp } from '../app.mts';
+import { copyText } from '../clipboard.mts';
 
 interface ReflogEntry {
   hash: string;
@@ -90,12 +91,8 @@ export class ReflogView {
     const entry = this.entries[index];
     if (!repo || !entry) return;
     if (action === 'copy') {
-      try {
-        await navigator.clipboard.writeText(entry.hash);
-        this.app.showToast(t('reflog.hashCopied'), 'success');
-      } catch {
-        this.app.showToast(t('reflog.copyFailed'), 'error');
-      }
+      if (await copyText(entry.hash)) this.app.showToast(t('reflog.hashCopied'), 'success');
+      else this.app.showToast(t('reflog.copyFailed'), 'error');
       return;
     }
     if (action === 'branch') {
