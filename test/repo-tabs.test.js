@@ -156,3 +156,73 @@ test('overflow split is empty when four or fewer repositories are open', () => {
   assert.equal(visible.length, 3);
   assert.equal(overflow.length, 0);
 });
+
+test('tab sync polling pauses while the window is hidden or unfocused and catches up on focus', async () => {
+  const savedSetInterval = global.setInterval;
+  const savedClearInterval = global.clearInterval;
+  const savedDocument = global.document;
+  let tick = null;
+  global.setInterval = callback => { tick = callback; return 1; };
+  global.clearInterval = () => { tick = null; };
+  const windowListeners = new Map();
+  let reads = 0;
+  global.window = {
+    gitTree: { getBranchMetadata: async () => { reads += 1; return { branches: [] }; } },
+    addEventListener: (type, listener) => windowListeners.set(type, listener),
+    removeEventListener: type => windowListeners.delete(type)
+  };
+  const focus = { hidden: false, focused: true };
+  global.document = { get hidden() { return focus.hidden; }, hasFocus: () => focus.focused };
+  try {
+    const tabs = createTabs();
+    tabs.repos = [repo('first'), repo('second')];
+    tabs.render = () => {};
+    tabs.startPeriodicSyncRefresh();
+
+    focus.focused = false;
+    tick();
+    focus.focused = true;
+    focus.hidden = true;
+    tick();
+    assert.equal(reads, 0, 'no reads while unfocused or hidden');
+
+    focus.hidden = false;
+    tick();
+    await Promise.resolve();
+    assert.equal(reads, 2, 'one read per tab while visible and focused');
+
+    windowListeners.get('focus')();
+    assert.equal(reads, 2, 'a recent read is not repeated on focus');
+    tabs.lastSyncAt -= 61000;
+    windowListeners.get('focus')();
+    await Promise.resolve();
+    assert.equal(reads, 4);
+
+    tabs.stopPeriodicSyncRefresh();
+    assert.equal(windowListeners.has('focus'), false);
+    assert.equal(tick, null);
+  } finally {
+    global.setInterval = savedSetInterval;
+    global.clearInterval = savedClearInterval;
+    if (savedDocument === undefined) delete global.document;
+    else global.document = savedDocument;
+  }
+});
+
+test('reading unchanged tab sync state does not rebuild the tab strip', async () => {
+  global.window = {
+    gitTree: {
+      getBranchMetadata: async () => ({
+        branches: [{ kind: 'local', current: true, name: 'main', upstream: 'origin/main', ahead: 1, behind: 0 }]
+      })
+    }
+  };
+  const tabs = createTabs();
+  tabs.repos = [repo('first')];
+  tabs.syncByRepoPath = new Map();
+  tabs._syncRefreshToken = 0;
+  await tabs.refreshAllSync();
+  assert.equal(tabs.renderCount, 1);
+  await tabs.refreshAllSync();
+  assert.equal(tabs.renderCount, 1);
+});

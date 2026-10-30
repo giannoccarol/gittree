@@ -27,6 +27,8 @@ interface SyncState {
 }
 
 import type { GitTreeApp } from '../app.mts';
+
+const SYNC_INTERVAL_MS = 60000;
 type RepoTabsApp = GitTreeApp;
 
 export interface RepoTabsOptions {
@@ -50,6 +52,9 @@ export class RepoTabs {
   dragOverAfter: boolean;
   _syncRefreshToken: number;
   _syncTimer: ReturnType<typeof setInterval> | null;
+  /** When every tab's sync state was last read. */
+  lastSyncAt: number;
+  handleWindowFocus: () => void;
   overflowRoot: HTMLElement | null;
   overflowMenu: HTMLElement | null;
   overflowList: HTMLElement | null;
@@ -82,6 +87,8 @@ export class RepoTabs {
     this.dragOverAfter = false;
     this._syncRefreshToken = 0;
     this._syncTimer = null;
+    this.lastSyncAt = 0;
+    this.handleWindowFocus = () => this.catchUpSync();
     this.overflowRoot = null;
     this.overflowMenu = null;
     this.overflowList = null;
@@ -116,9 +123,23 @@ export class RepoTabs {
     this.closeOverflowMenu();
   }
 
+  /**
+   * Re-reads every tab's ahead/behind state once a minute while the window is
+   * visible and focused; a window returning to focus catches up at once.
+   */
   startPeriodicSyncRefresh(): void {
     this.stopPeriodicSyncRefresh();
-    this._syncTimer = setInterval(() => this.refreshAllSync(), 60000);
+    this._syncTimer = setInterval(() => {
+      if (document.hidden || !document.hasFocus()) return;
+      void this.refreshAllSync();
+    }, SYNC_INTERVAL_MS);
+    this.handleWindowFocus ??= () => this.catchUpSync();
+    window.addEventListener('focus', this.handleWindowFocus);
+  }
+
+  /** Reads the tabs' sync state again when the last read is older than the interval. */
+  catchUpSync(): void {
+    if (Date.now() - (this.lastSyncAt || 0) >= SYNC_INTERVAL_MS) void this.refreshAllSync();
   }
 
   stopPeriodicSyncRefresh(): void {
@@ -126,11 +147,13 @@ export class RepoTabs {
       clearInterval(this._syncTimer);
       this._syncTimer = null;
     }
+    window.removeEventListener('focus', this.handleWindowFocus);
   }
 
   async refreshAllSync(): Promise<void> {
     if (!this.repos.length) return;
     const token = ++this._syncRefreshToken;
+    this.lastSyncAt = Date.now();
     const results = await Promise.all(this.repos.map(async repo => {
       try {
         const metadata = await window.gitTree.getBranchMetadata(repo.path) as {
@@ -154,11 +177,15 @@ export class RepoTabs {
       }
     }));
     if (token !== this._syncRefreshToken) return;
+    let changed = false;
     for (const [repoPath, state] of results) {
+      const previous = this.syncByRepoPath.get(repoPath);
+      if (JSON.stringify(previous ?? null) !== JSON.stringify(state)) changed = true;
       if (state) this.syncByRepoPath.set(repoPath, state);
       else this.syncByRepoPath.delete(repoPath);
     }
-    this.render();
+    // The tab strip is rebuilt only when a badge actually changed.
+    if (changed) this.render();
   }
 
   render(): void {
