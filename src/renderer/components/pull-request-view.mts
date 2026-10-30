@@ -456,10 +456,10 @@ export class PullRequestView {
   async select(item: PRSummary): Promise<void> {
     this.selected = item;
     this.renderViewport(true);
-    const title = document.getElementById('detail-title')!;
-    title.textContent = `#${item.number} ${item.title || ''}`;
-    title.title = item.title || '';
-    const body = document.getElementById('detail-body')!;
+    const body = this.app.inspectorPanel.present('pull-request', {
+      title: `#${item.number} ${item.title || ''}`,
+      tooltip: item.title || ''
+    });
     body.innerHTML = `<div class="diff-placeholder">${this.esc(t('common.loading'))}</div>`;
     try {
       const detail = await window.gitTree.getPullRequestDetail(
@@ -496,7 +496,7 @@ export class PullRequestView {
   }
 
   renderDetail(): void {
-    const body = document.getElementById('detail-body')!;
+    const body = this.app.inspectorPanel.body;
     body.innerHTML = '';
     const wrapper = document.createElement('div');
     wrapper.className = 'pr-detail';

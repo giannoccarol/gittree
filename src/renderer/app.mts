@@ -9,6 +9,7 @@ import { ChangesView } from './components/changes-view.mts';
 import { PullRequestView } from './components/pull-request-view.mts';
 import { DiffViewer } from './components/diff-viewer.mts';
 import { InspectorWorkspace } from './components/inspector-workspace.mts';
+import { InspectorPanel } from './components/inspector-panel.mts';
 import { GlobalSearch } from './components/search.mts';
 import { BranchCompare } from './components/branch-compare.mts';
 import { CommitCompare } from './components/commit-compare.mts';
@@ -103,6 +104,7 @@ const byId = (id: string): HTMLElement => document.getElementById(id) as HTMLEle
 export class GitTreeApp {
   state: AppState = { repo: null, activeRepoIndex: -1, currentBranch: null, stashes: [] };
   components: AppComponents = {} as AppComponents;
+  inspectorPanel!: InspectorPanel;
   inspectorState = 'open';
   workspaceMode = 'history';
   updateState: UpdateStatePayload | null = null;
@@ -164,7 +166,12 @@ export class GitTreeApp {
       byId('pull-requests-view'),
       this
     );
-    this.components.diffViewer = new DiffViewer(byId('detail-body'), this);
+    this.inspectorPanel = new InspectorPanel({
+      panel: byId('detail-panel'),
+      title: byId('detail-title'),
+      body: byId('detail-body')
+    });
+    this.components.diffViewer = new DiffViewer(byId('detail-body'), this, this.inspectorPanel);
     this.components.inspectorWorkspace = new InspectorWorkspace({
       container: document.getElementById('inspector-workspace')!,
       graphContainer: document.getElementById('inspector-graph-view')!,

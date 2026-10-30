@@ -2,6 +2,7 @@ import type { GitTreeApp } from '../app.mts';
 import { isAgentsFeatureEnabled } from '../ai-feature-gate.mts';
 import { DiffRenderer, type DiffMode } from './diff-renderer.mts';
 import { DiffParser, type SplitRow } from './diff-parser.mts';
+import { InspectorPanel } from './inspector-panel.mts';
 
 interface CommitDetail {
   error?: string;
@@ -25,12 +26,18 @@ export class DiffViewer {
   activeHash: string | null;
   wordLevel: boolean;
   renderer: DiffRenderer;
+  panel: InspectorPanel;
   /** Increments per request so an older commit cannot overwrite a newer one. */
   detailRequest: number;
 
-  constructor(bodyEl: HTMLElement, app: GitTreeApp) {
+  constructor(bodyEl: HTMLElement, app: GitTreeApp, panel: InspectorPanel | null = null) {
     this.body = bodyEl;
     this.app = app;
+    this.panel = panel ?? new InspectorPanel({
+      panel: null,
+      title: document.getElementById('detail-title')!,
+      body: bodyEl
+    });
     const savedMode = localStorage.getItem('gittree.diff.mode');
     this.mode = savedMode === 'unified' || savedMode === 'split' ? savedMode : 'unified';
     this.modeBeforeExpanded = null;
@@ -107,10 +114,8 @@ export class DiffViewer {
     const request = ++this.detailRequest;
     this.activeRepoPath = repoPath;
     this.activeHash = hash;
-    const title = document.getElementById('detail-title')!;
     const compactTitle = t('details.changesIn', { hash: hash.substring(0, 7) });
-    title.textContent = compactTitle;
-    title.title = compactTitle;
+    this.panel.present('commit', { title: compactTitle });
     this.currentDiff = null;
     this.fileSummaries = [];
     this.selectedFilePath = null;
@@ -127,8 +132,7 @@ export class DiffViewer {
       this.currentDiff = detail.diff ?? null;
       this.fileSummaries = this.extractFileSummaries(String(detail.diff ?? ''));
       const subject = String(detail.message || '').split(/\r?\n/)[0].trim();
-      title.textContent = subject || compactTitle;
-      title.title = detail.message || compactTitle;
+      this.panel.setTitle(subject || compactTitle, detail.message || compactTitle);
       this.syncCommitMeta(detail);
       this.render(String(detail.diff));
       return true;
@@ -342,9 +346,7 @@ export class DiffViewer {
     this.activeRepoPath = null;
     this.activeHash = null;
     this.renderer.renderPlaceholder('ph-cursor-click', t('details.placeholder'));
-    const title = document.getElementById('detail-title')!;
-    title.textContent = t('details.title');
-    title.title = '';
+    this.panel.present('empty', { title: t('details.title'), tooltip: '' });
     this.syncCommitMeta();
     this.app.syncInspectorWorkspace?.();
   }

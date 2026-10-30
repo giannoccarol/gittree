@@ -525,10 +525,10 @@ export class ChangesView {
     this.selected = { path: file.path, staged };
     this.render();
     const request = ++this.diffRequest;
-    const title = document.getElementById('detail-title')!;
-    title.textContent = file.path.split('/').pop() || '';
-    title.title = file.path;
-    const body = document.getElementById('detail-body')!;
+    const body = this.app.inspectorPanel.present('working-file', {
+      title: file.path.split('/').pop() || '',
+      tooltip: file.path
+    });
     body.innerHTML = '';
     const loading = document.createElement('div');
     loading.className = 'diff-placeholder';
@@ -555,7 +555,7 @@ export class ChangesView {
     diff: { noDiff?: boolean; binary?: boolean; hunks?: Array<NumberableHunk & { header: string; id?: string }>; path?: string },
     staged: boolean
   ): void {
-    const body = document.getElementById('detail-body')!;
+    const body = this.app.inspectorPanel.body;
     body.innerHTML = '';
     if (diff.noDiff) {
       const empty = document.createElement('div');
