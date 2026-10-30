@@ -113,7 +113,7 @@ export class RepoTabs {
     } catch { /* repo list may be unavailable */ }
     this.ensureOverflowChrome();
     this.render();
-    this.refreshAllSync();
+    // The first sync read is started by the app once the active repository is shown.
     this.startPeriodicSyncRefresh();
   }
 

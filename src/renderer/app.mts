@@ -342,8 +342,10 @@ export class GitTreeApp {
         this.components.repoTabs.syncActiveIndex(active.path);
         this.components.repoTabs.render();
         await this.openRepo(active);
-        return;
       }
+      // Other tabs' badges are read after the active repository, so their Git
+      // reads do not queue ahead of its first history page.
+      void this.components.repoTabs.refreshAllSync();
     }
   }
 
