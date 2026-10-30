@@ -20,6 +20,8 @@ export class GlobalSearch {
   allData: SearchItem[];
   selectedIdx: number;
   visible: boolean;
+  /** Increments per opening so a slower earlier load cannot add its results. */
+  loadGeneration: number;
   aiSearching: boolean;
 
   constructor(app: GitTreeApp) {
@@ -32,6 +34,7 @@ export class GlobalSearch {
     this.allData = [];
     this.selectedIdx = -1;
     this.visible = false;
+    this.loadGeneration = 0;
     this.aiSearching = false;
   }
 
@@ -65,6 +68,12 @@ export class GlobalSearch {
   }
 
   async show(): Promise<void> {
+    // Clicking the search field focuses it too: open and load once.
+    if (this.visible) {
+      this.input.focus();
+      return;
+    }
+    const generation = ++this.loadGeneration;
     this.visible = true;
     this.overlay.classList.remove('is-hidden');
     this.input.value = '';
@@ -87,6 +96,7 @@ export class GlobalSearch {
           { all?: Array<{ message: string; hash: string; author_name: string; date: string }> } | undefined,
           { files?: Array<{ path: string; working_dir?: string; index?: string }> } | undefined
         ];
+        if (generation !== this.loadGeneration) return;
         if (branches?.branches) {
           for (const name of Object.keys(branches.branches)) {
             this.allData.push({
@@ -114,6 +124,7 @@ export class GlobalSearch {
         }
       } catch { /* search data is best effort */ }
     }
+    if (generation !== this.loadGeneration) return;
 
     if (this.app.components.repoTabs?.repos) {
       this.app.components.repoTabs.repos.forEach(r => {
@@ -133,6 +144,7 @@ export class GlobalSearch {
 
   hide(): void {
     this.visible = false;
+    this.loadGeneration += 1;
     this.overlay.classList.add('is-hidden');
   }
 
