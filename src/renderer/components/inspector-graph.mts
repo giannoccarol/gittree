@@ -32,13 +32,19 @@ export interface InspectorGraphDependencies {
   translate: (key: string) => string;
   onSelect?: ((hash: string) => void) | null;
   onRequestMore?: (() => void) | null;
+  /** Moves the history selection with the arrow keys. */
+  onNavigate?: ((direction: 'newer' | 'older') => void) | null;
 }
+
+/** Widest lane drawing shown next to a subject in the compact list. */
+const MAX_LANES_WIDTH = 72;
 
 export class InspectorGraph {
   container: HTMLElement | null;
   translate: (key: string) => string;
   onSelect: ((hash: string) => void) | null;
   onRequestMore: (() => void) | null;
+  onNavigate: ((direction: 'newer' | 'older') => void) | null;
   rows: GraphRowData[];
   rowsByHash: Map<string, GraphRowData>;
   laneCount: number;
@@ -65,18 +71,19 @@ export class InspectorGraph {
   handleFocusIn: (event: FocusEvent) => void;
   handleFocusOut: (event: FocusEvent) => void;
 
-  constructor({ container, translate, onSelect = null, onRequestMore = null }: InspectorGraphDependencies) {
+  constructor({ container, translate, onSelect = null, onRequestMore = null, onNavigate = null }: InspectorGraphDependencies) {
     this.container = container;
     this.translate = translate;
     this.onSelect = onSelect;
     this.onRequestMore = onRequestMore;
+    this.onNavigate = onNavigate;
     this.rows = [];
     this.rowsByHash = new Map();
     this.laneCount = 1;
     this.selectedHash = null;
     this.revision = -1;
     this.rowHeight = 38;
-    this.overscan = 12;
+    this.overscan = 8;
     this.renderedRange = [-1, -1];
     this.raf = 0;
     this.mounted = false;
@@ -95,6 +102,12 @@ export class InspectorGraph {
       if (row?.dataset.hash && this.onSelect) this.select(row.dataset.hash);
     };
     this.handleKeydown = event => {
+      if ((event.key === 'ArrowDown' || event.key === 'ArrowUp') && this.onNavigate) {
+        event.preventDefault();
+        this.hideTooltip();
+        this.onNavigate(event.key === 'ArrowDown' ? 'older' : 'newer');
+        return;
+      }
       const row = (event.target as HTMLElement).closest?.('.inspector-graph-row') as HTMLElement | null;
       if (!row?.dataset.hash) return;
       if ((event.key === 'Enter' || event.key === ' ') && this.onSelect) {
@@ -150,6 +163,7 @@ export class InspectorGraph {
     const dataChanged = revision !== this.revision || rows.length !== this.rows.length ||
       firstHash !== this.rows[0]?.hash || lastHash !== this.rows.at(-1)?.hash;
 
+    const previousSelection = this.selectedHash;
     this.selectedHash = typeof snapshot.selectedHash === 'string'
       ? snapshot.selectedHash
       : null;
@@ -157,6 +171,7 @@ export class InspectorGraph {
 
     if (!dataChanged) {
       this.updateVisibleSelection();
+      if (this.selectedHash !== previousSelection) this.revealSelection();
       return;
     }
 
@@ -166,6 +181,20 @@ export class InspectorGraph {
     this.renderedRange = [-1, -1];
     this.layer.style.height = rows.length ? `${rows.length * this.rowHeight}px` : '100%';
     this.renderViewport(true);
+    if (this.selectedHash !== previousSelection) this.revealSelection();
+  }
+
+  /** Scrolls the selected commit into view when it is outside the list viewport. */
+  revealSelection(): void {
+    if (!this.mounted || !this.container || !this.selectedHash) return;
+    const index = this.rows.findIndex(row => row.hash === this.selectedHash);
+    if (index < 0) return;
+    const top = index * this.rowHeight;
+    const bottom = top + this.rowHeight;
+    if (top < this.container.scrollTop) this.container.scrollTop = top;
+    else if (bottom > this.container.scrollTop + this.container.clientHeight) {
+      this.container.scrollTop = bottom - this.container.clientHeight;
+    }
   }
 
   select(hash: string): void {
@@ -212,38 +241,42 @@ export class InspectorGraph {
     if (!force && start === this.renderedRange[0] && end === this.renderedRange[1]) return;
     this.renderedRange = [start, end];
 
+    // Rows stay attached; only rows that leave are reused or removed.
     const reusable = new Map<string, HTMLElement>();
-    const spare: HTMLElement[] = [];
-    if (!force) {
-      for (const element of this.layer.children) {
-        if (element.classList.contains('inspector-graph-row') && (element as HTMLElement).dataset.hash) {
-          reusable.set((element as HTMLElement).dataset.hash ?? '', element as HTMLElement);
-        }
-      }
-      const visibleHashes = new Set(this.rows.slice(start, end).map(row => row.hash));
-      for (const [hash, element] of reusable) {
-        if (!visibleHashes.has(hash)) spare.push(element);
-      }
+    const stray: Element[] = [];
+    for (const element of this.layer.children) {
+      const hash = (element as HTMLElement).dataset?.hash;
+      if (element.classList.contains('inspector-graph-row') && hash) reusable.set(hash, element as HTMLElement);
+      else stray.push(element);
     }
+    for (const node of stray) this.layer.removeChild(node);
+    const visibleHashes = new Set(this.rows.slice(start, end).map(row => row.hash));
+    const spare: HTMLElement[] = [];
+    for (const [hash, element] of reusable) {
+      if (force || !visibleHashes.has(hash)) spare.push(element);
+    }
+    if (force) reusable.clear();
 
-    const fragment = document.createDocumentFragment();
+    const created: HTMLElement[] = [];
+    let nextSpare = 0;
     for (let index = start; index < end; index += 1) {
       const data = this.rows[index];
       const existing = reusable.get(data.hash);
-      const row = existing || spare.pop() || this.createRow();
-      if (
-        !existing ||
-        row.dataset.hash !== data.hash ||
-        row.dataset.graphRevision !== String(this.revision)
-      ) {
-        this.updateRow(row, data, index);
-      } else {
-        this.updateRowPosition(row, data, index);
+      if (existing && existing.dataset.graphRevision === String(this.revision)) {
+        this.updateRowPosition(existing, data, index);
+        continue;
       }
+      const row = existing || spare[nextSpare++] || this.createRow();
+      this.updateRow(row, data, index);
       row.dataset.graphRevision = String(this.revision);
-      fragment.appendChild(row);
+      if (!row.parentNode) created.push(row);
     }
-    this.layer.replaceChildren(fragment);
+    for (let index = nextSpare; index < spare.length; index += 1) this.layer.removeChild(spare[index]);
+    if (created.length) {
+      const fragment = document.createDocumentFragment();
+      fragment.append(...created);
+      this.layer.appendChild(fragment);
+    }
   }
 
   createRow(): HTMLElement {
@@ -257,7 +290,22 @@ export class InspectorGraph {
   updateRow(row: HTMLElement, data: GraphRowData, index: number): void {
     row.dataset.hash = data.hash;
     row.dataset.graphRevision = String(this.revision);
-    row.replaceChildren(this.createGraphSvg(data));
+    const lanes = document.createElement('span');
+    lanes.className = 'inspector-graph-lanes';
+    lanes.style.width = `${Math.min(MAX_LANES_WIDTH, this.lanesWidth())}px`;
+    lanes.appendChild(this.createGraphSvg(data));
+    const subject = document.createElement('span');
+    subject.className = 'inspector-graph-subject';
+    subject.textContent = data.subject || data.hash.slice(0, 7);
+    const label = (data.refs || []).find(ref => ref.type !== 'head' && ref.shortName);
+    if (label) {
+      const badge = document.createElement('span');
+      badge.className = `badge badge-${label.type} inspector-graph-ref`;
+      badge.textContent = label.shortName || '';
+      row.replaceChildren(lanes, badge, subject);
+    } else {
+      row.replaceChildren(lanes, subject);
+    }
     const branches = this.branchNames(data);
     row.setAttribute(
       'aria-label',
@@ -281,9 +329,13 @@ export class InspectorGraph {
     }
   }
 
+  lanesWidth(): number {
+    return Math.min(190, Math.max(28, this.laneCount * 18 + 6));
+  }
+
   createGraphSvg(row: GraphRowData): SVGElement {
     const namespace = 'http://www.w3.org/2000/svg';
-    const width = Math.min(190, Math.max(48, this.laneCount * 18 + 20));
+    const width = this.lanesWidth();
     const x = (lane: number): number => 12 + lane * 18;
     const midpoint = this.rowHeight / 2;
     const svg = document.createElementNS(namespace, 'svg');

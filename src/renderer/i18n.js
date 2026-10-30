@@ -516,8 +516,8 @@ const I18n = {
               noChanges: 'No changes',
               popout: 'Open in new window',
               popoutUnavailable: 'This content is shown in the main window only.',
-              graphTitle: 'Commit graph',
-              graphHint: 'Hover a node for details',
+              graphTitle: 'History',
+              graphHint: 'Click a commit or use the arrow keys',
               graphEmpty: 'No commits loaded',
               graphBranch: 'Branch',
               graphMessage: 'Commit message',
@@ -546,8 +546,8 @@ const I18n = {
               branchName: 'Branch name',
               branchCreated: 'Branch {{branch}} created',
               moreActions: 'More commit actions',
-              newerCommit: 'Newer commit (↑)',
-              olderCommit: 'Older commit (↓)'
+              newerCommit: 'Newer commit',
+              olderCommit: 'Older commit'
             },
             actions: {
               fetch: 'Fetch',
@@ -1396,8 +1396,8 @@ const I18n = {
               noChanges: 'Nessuna modifica',
               popout: 'Apri in una nuova finestra',
               popoutUnavailable: 'Questo contenuto è visibile solo nella finestra principale.',
-              graphTitle: 'Graph dei commit',
-              graphHint: 'Passa su un nodo per i dettagli',
+              graphTitle: 'Cronologia',
+              graphHint: 'Clicca un commit o usa le frecce',
               graphEmpty: 'Nessun commit caricato',
               graphBranch: 'Branch',
               graphMessage: 'Messaggio commit',
@@ -1426,8 +1426,8 @@ const I18n = {
               branchName: 'Nome del branch',
               branchCreated: 'Branch {{branch}} creato',
               moreActions: 'Altre azioni sul commit',
-              newerCommit: 'Commit più recente (↑)',
-              olderCommit: 'Commit precedente (↓)'
+              newerCommit: 'Commit più recente',
+              olderCommit: 'Commit precedente'
             },
             actions: {
               fetch: 'Fetch',

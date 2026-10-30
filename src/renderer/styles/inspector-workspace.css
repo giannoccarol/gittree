@@ -31,11 +31,67 @@
 
 .workspace-body.inspector-maximized .inspector-workspace {
   display: grid;
-  grid-template-columns: minmax(154px, 208px) minmax(0, 1fr) minmax(210px, 272px);
+  grid-template-columns: minmax(200px, 260px) minmax(0, 1fr) minmax(210px, 272px);
 }
 
 .workspace-body.inspector-maximized .inspector-workspace.files-collapsed {
-  grid-template-columns: minmax(154px, 208px) minmax(0, 1fr) 44px;
+  grid-template-columns: minmax(200px, 260px) minmax(0, 1fr) 44px;
+}
+
+/* The narrow inspector stacks a collapsible changed-file list above the diff. */
+.workspace-body:not(.inspector-maximized) .inspector-workspace {
+  flex-direction: column;
+}
+
+.workspace-body:not(.inspector-maximized) .inspector-files-panel {
+  order: -1;
+  max-height: 28%;
+  flex: none;
+  display: flex;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.workspace-body:not(.inspector-maximized) .inspector-files-panel .inspector-side-header {
+  min-height: 40px;
+  padding-block: var(--space-1);
+  border-bottom: 0;
+}
+
+.workspace-body:not(.inspector-maximized) .inspector-files-panel .inspector-file-list {
+  border-top: 1px solid var(--border-subtle);
+}
+
+.workspace-body:not(.inspector-maximized) .inspector-files-panel.is-collapsed .inspector-file-list {
+  display: none;
+}
+
+.workspace-body:not(.inspector-maximized) .inspector-files-panel.is-collapsed .inspector-side-header {
+  justify-content: space-between;
+  padding-inline: var(--space-3);
+}
+
+.workspace-body:not(.inspector-maximized) .inspector-files-panel.is-collapsed .inspector-side-heading {
+  opacity: 1;
+  pointer-events: auto;
+  transform: none;
+}
+
+/* In the stacked list the toggle points down when open and right when closed. */
+.workspace-body:not(.inspector-maximized) #btn-toggle-inspector-files i {
+  transform: rotate(90deg);
+}
+
+.workspace-body:not(.inspector-maximized) .inspector-files-panel.is-collapsed #btn-toggle-inspector-files i {
+  transform: rotate(180deg);
+}
+
+/* Changed files and the commit list belong to commits only. */
+.inspector:not([data-inspector-kind="commit"]) .inspector-files-panel {
+  display: none;
+}
+
+.workspace-body.inspector-maximized .inspector:not([data-inspector-kind="commit"]) .inspector-workspace {
+  grid-template-columns: minmax(200px, 260px) minmax(0, 1fr);
 }
 
 /* The detached window shows the diff and its files, without a graph. */
@@ -120,10 +176,12 @@
   top: 0;
   left: 0;
   right: 0;
-  height: 40px;
+  height: 38px;
   display: flex;
   align-items: center;
+  gap: var(--space-1);
   overflow: hidden;
+  padding-right: var(--space-2);
   border-bottom: 1px solid var(--border-subtle);
   background: var(--surface-primary);
   cursor: default;
@@ -146,10 +204,38 @@
   outline-offset: -2px;
 }
 
-.inspector-graph-svg {
-  height: 40px;
+.inspector-graph-lanes {
+  height: 38px;
   flex: none;
+  overflow: hidden;
+}
+
+.inspector-graph-svg {
+  height: 38px;
   overflow: visible;
+}
+
+.inspector-graph-subject {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.inspector-graph-row.selected .inspector-graph-subject {
+  color: var(--text-primary);
+  font-weight: var(--weight-semibold);
+}
+
+.inspector-graph-ref {
+  max-width: 72px;
+  flex: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .inspector-side-empty {

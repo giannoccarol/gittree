@@ -19,6 +19,7 @@ export interface InspectorWorkspaceDependencies {
   storage?: Storage | null;
   onGraphSelect?: ((hash: string) => void) | null;
   onGraphRequestMore?: (() => void) | null;
+  onGraphNavigate?: ((direction: 'newer' | 'older') => void) | null;
   onFileSelect?: ((path: string) => void) | null;
   onFilesOpenChange?: ((open: boolean) => void) | null;
 }
@@ -34,6 +35,7 @@ export class InspectorWorkspace {
   storage: Storage | null;
   onGraphSelect: ((hash: string) => void) | null;
   onGraphRequestMore: (() => void) | null;
+  onGraphNavigate: ((direction: 'newer' | 'older') => void) | null;
   onFileSelect: ((path: string) => void) | null;
   onFilesOpenChange: ((open: boolean) => void) | null;
   storageKey: string;
@@ -58,6 +60,7 @@ export class InspectorWorkspace {
     storage = null,
     onGraphSelect = null,
     onGraphRequestMore = null,
+    onGraphNavigate = null,
     onFileSelect = null,
     onFilesOpenChange = null
   }: InspectorWorkspaceDependencies) {
@@ -71,6 +74,7 @@ export class InspectorWorkspace {
     this.storage = storage ?? null;
     this.onGraphSelect = onGraphSelect ?? null;
     this.onGraphRequestMore = onGraphRequestMore ?? null;
+    this.onGraphNavigate = onGraphNavigate ?? null;
     this.onFileSelect = onFileSelect ?? null;
     this.onFilesOpenChange = onFilesOpenChange ?? null;
     this.storageKey = 'gittree.inspector.files.open';
@@ -97,7 +101,8 @@ export class InspectorWorkspace {
         container: this.graphContainer,
         translate: this.translate,
         onSelect: this.onGraphSelect,
-        onRequestMore: this.onGraphRequestMore
+        onRequestMore: this.onGraphRequestMore,
+        onNavigate: this.onGraphNavigate
       });
       this.graph.mount();
     }

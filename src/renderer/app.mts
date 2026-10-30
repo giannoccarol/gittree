@@ -209,6 +209,7 @@ export class GitTreeApp {
       storage: localStorage,
       onGraphSelect: hash => this.components.graphView.select(hash),
       onGraphRequestMore: () => this.components.graphView.loadNextPage(),
+      onGraphNavigate: direction => { this.components.graphView.selectAdjacent(direction, { deferDetail: true }); },
       onFileSelect: path => {
         if (this.components.diffViewer.scrollToFile(path)) this.pushInspectorPayload();
       },
