@@ -282,6 +282,11 @@
   background: var(--surface-secondary);
 }
 
+/* Diff layout controls apply only to commit diffs. */
+.inspector:not([data-inspector-kind="commit"]) .detail-view-toolbar {
+  display: none;
+}
+
 .panel-heading-actions {
   display: flex;
   align-items: center;

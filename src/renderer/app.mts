@@ -169,7 +169,11 @@ export class GitTreeApp {
     this.inspectorPanel = new InspectorPanel({
       panel: byId('detail-panel'),
       title: byId('detail-title'),
-      body: byId('detail-body')
+      body: byId('detail-body'),
+      onKindChange: next => {
+        if (next !== 'commit') this.components.diffViewer?.releaseCommit();
+        this.syncInspectorWorkspace({ push: false });
+      }
     });
     this.components.diffViewer = new DiffViewer(byId('detail-body'), this, this.inspectorPanel);
     this.components.inspectorWorkspace = new InspectorWorkspace({

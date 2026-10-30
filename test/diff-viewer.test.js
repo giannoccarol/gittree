@@ -187,3 +187,55 @@ test('a slower response for an earlier commit never replaces the newer selection
     restore();
   }
 });
+
+test('another view taking over the inspector releases the commit', async () => {
+  const pending = new Map();
+  const bridge = {
+    getCommitDetail(_repoPath, hash) {
+      const entry = deferred();
+      pending.set(hash, entry);
+      return entry.promise;
+    }
+  };
+  const { DiffViewer, restore } = loadDiffViewerWithDom(bridge);
+  try {
+    const { InspectorPanel } = require('../src/renderer/components/inspector-panel.mts');
+    const body = global.document.getElementById('detail-body');
+    let viewer = null;
+    const panel = new InspectorPanel({
+      panel: global.document.getElementById('detail-panel'),
+      title: global.document.getElementById('detail-title'),
+      body,
+      onKindChange: next => { if (next !== 'commit') viewer.releaseCommit(); }
+    });
+    viewer = new DiffViewer(body, {}, panel);
+
+    const shown = viewer.showDiffForCommit('/repo', 'aaaaaaa1');
+    pending.get('aaaaaaa1').resolve({
+      hash: 'aaaaaaa1', message: 'commit', author_name: 'Ada', date: '2026-01-01T00:00:00Z',
+      diff: 'diff --git a/a.txt b/a.txt\n@@ -0,0 +1 @@\n+a'
+    });
+    await shown;
+    assert.equal(panel.kind, 'commit');
+    assert.equal(global.document.getElementById('detail-meta').classList.contains('is-hidden'), false);
+
+    const workingBody = panel.present('working-file', { title: 'b.txt' });
+    const marker = { textContent: 'working file diff', className: 'working-diff' };
+    workingBody.replaceChildren(marker);
+
+    viewer.setMode('split');
+    assert.deepEqual(body.children, [marker], 'a layout change does not bring the commit back');
+    assert.equal(viewer.currentDiff, null);
+    assert.deepEqual(viewer.fileSummaries, []);
+    assert.equal(global.document.getElementById('detail-meta').classList.contains('is-hidden'), true);
+
+    const late = viewer.showDiffForCommit('/repo', 'bbbbbbb2');
+    panel.present('working-file', { title: 'b.txt' });
+    workingBody.replaceChildren(marker);
+    pending.get('bbbbbbb2').resolve({ hash: 'bbbbbbb2', message: 'late', diff: 'diff --git a/z b/z' });
+    assert.equal(await late, false);
+    assert.deepEqual(body.children, [marker], 'a commit still loading cannot replace the file diff');
+  } finally {
+    restore();
+  }
+});

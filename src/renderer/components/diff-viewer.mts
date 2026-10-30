@@ -109,6 +109,21 @@ export class DiffViewer {
     }
   }
 
+  /**
+   * Forgets the commit when another view takes over the inspector, so layout
+   * toggles and late responses can no longer render it over that content.
+   */
+  releaseCommit(): void {
+    this.detailRequest += 1;
+    this.renderer.destroy();
+    this.currentDiff = null;
+    this.fileSummaries = [];
+    this.selectedFilePath = null;
+    this.activeRepoPath = null;
+    this.activeHash = null;
+    this.syncCommitMeta();
+  }
+
   /** Loads and renders one commit; resolves false when a newer request won. */
   async showDiffForCommit(repoPath: string, hash: string): Promise<boolean> {
     const request = ++this.detailRequest;
