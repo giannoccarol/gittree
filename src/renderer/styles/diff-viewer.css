@@ -72,6 +72,25 @@
   background: var(--surface-hover);
 }
 
+.diff-file-header:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: -2px;
+}
+
+.diff-file-chevron {
+  flex: none;
+  color: var(--text-tertiary);
+  transition: transform var(--duration-fast) var(--ease-smooth);
+}
+
+.diff-file-block.is-collapsed .diff-file-chevron {
+  transform: rotate(-90deg);
+}
+
+.diff-file-block.is-collapsed .diff-file-header {
+  border-bottom: 0;
+}
+
 .diff-file-path {
   min-width: 0;
   display: flex;
@@ -379,4 +398,10 @@
   margin-left: auto;
   color: var(--text-tertiary);
   font-size: 10px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .diff-file-chevron {
+    transition: none;
+  }
 }

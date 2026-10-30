@@ -230,3 +230,41 @@ test('large split diffs keep removed and added lines on the same row', () => {
     restore();
   }
 });
+
+test('a file header collapses and expands its lines; lock files start collapsed', () => {
+  const { body, renderer, restore } = setup();
+  try {
+    const patch = [
+      SMALL_PATCH,
+      'diff --git a/package-lock.json b/package-lock.json',
+      '@@ -1 +1 @@',
+      '-{"lockfileVersion": 2}',
+      '+{"lockfileVersion": 3}'
+    ].join('\n');
+    renderer.render(patch, { mode: 'unified', wordLevel: true });
+    let blocks = findAll(body, 'diff-file-block');
+    assert.equal(blocks[2].dataset.filePath, 'package-lock.json');
+    assert.ok(blocks[2].classList.contains('is-collapsed'));
+    assert.equal(findAll(blocks[2], 'diff-line').length, 0);
+    assert.equal(findAll(blocks[2], 'diff-file-header')[0].getAttribute('aria-expanded'), 'false');
+
+    renderer.toggleFile('src/app.js');
+    blocks = findAll(body, 'diff-file-block');
+    assert.ok(blocks[0].classList.contains('is-collapsed'));
+    assert.equal(findAll(blocks[0], 'diff-line').length, 0);
+
+    renderer.render(patch, { mode: 'split', wordLevel: true });
+    blocks = findAll(body, 'diff-file-block');
+    assert.ok(blocks[0].classList.contains('is-collapsed'), 'a layout change keeps collapsed files');
+
+    renderer.toggleFile('src/app.js');
+    blocks = findAll(body, 'diff-file-block');
+    assert.equal(blocks[0].classList.contains('is-collapsed'), false);
+    assert.ok(findAll(blocks[0], 'diff-line').length > 0);
+
+    renderer.render(SMALL_PATCH, { mode: 'unified', wordLevel: true });
+    assert.equal(renderer.collapsed.size, 0, 'a new patch starts expanded');
+  } finally {
+    restore();
+  }
+});

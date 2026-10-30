@@ -47,9 +47,13 @@ function loadDiffViewer() {
   return mod.DiffViewer || mod.default || mod;
 }
 
+function fakeBody() {
+  return { innerHTML: '', addEventListener() {}, removeEventListener() {} };
+}
+
 test('maximizing the inspector temporarily selects the side-by-side diff', () => {
   const DiffViewer = loadDiffViewer();
-  const viewer = new DiffViewer({ innerHTML: '' }, {});
+  const viewer = new DiffViewer(fakeBody(), {});
 
   assert.equal(viewer.mode, 'unified');
   viewer.setInspectorExpanded(true);
@@ -62,7 +66,7 @@ test('diff display changes keep the detached inspector synchronized', () => {
   const DiffViewer = loadDiffViewer();
   let payloadUpdates = 0;
   const viewer = new DiffViewer(
-    { innerHTML: '' },
+    fakeBody(),
     { pushInspectorPayload: () => { payloadUpdates += 1; } }
   );
 
@@ -73,7 +77,7 @@ test('diff display changes keep the detached inspector synchronized', () => {
 
 test('split diff pairs deletions and additions on the same visual rows', () => {
   const DiffViewer = loadDiffViewer();
-  const viewer = new DiffViewer({ innerHTML: '' }, {});
+  const viewer = new DiffViewer(fakeBody(), {});
   const rows = JSON.parse(JSON.stringify(viewer.parseSplitRows([
     'diff --git a/file.js b/file.js',
     'index 111..222 100644',
@@ -105,7 +109,7 @@ test('split diff pairs deletions and additions on the same visual rows', () => {
 
 test('commit diff summaries expose file status and line counts for inspector navigation', () => {
   const DiffViewer = loadDiffViewer();
-  const viewer = new DiffViewer({ innerHTML: '' }, {});
+  const viewer = new DiffViewer(fakeBody(), {});
   const summaries = viewer.extractFileSummaries([
     'diff --git a/src/old.js b/src/new.js',
     'similarity index 80%',

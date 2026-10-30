@@ -115,7 +115,7 @@ export class DiffViewer {
    */
   releaseCommit(): void {
     this.detailRequest += 1;
-    this.renderer.destroy();
+    this.renderer.reset();
     this.currentDiff = null;
     this.fileSummaries = [];
     this.selectedFilePath = null;

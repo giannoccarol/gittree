@@ -23,6 +23,9 @@ const STATUS_LABELS: Record<DiffFileSummary['status'], string> = {
   M: 'details.fileModified'
 };
 
+/** Lock and minified files start collapsed: they are long and rarely reviewed. */
+const GENERATED_FILE = /(?:^|\/)(?:package-lock\.json|npm-shrinkwrap\.json|yarn\.lock|pnpm-lock\.yaml|bun\.lockb?|Cargo\.lock|composer\.lock|Gemfile\.lock|poetry\.lock|Pipfile\.lock|go\.sum|flake\.lock|packages\.lock\.json|[^/]+\.min\.(?:js|css))$/;
+
 /** A path label whose directory shrinks before the file name does. */
 export function createPathLabel(path: string, className: string): HTMLElement {
   const label = document.createElement('span');
@@ -70,6 +73,12 @@ export class DiffRenderer {
   options: DiffRenderOptions;
   /** Files of the last rendered patch, in patch order. */
   files: DiffFileSummary[];
+  /** Paths of files shown as a header only. Reset for every new patch. */
+  collapsed: Set<string>;
+  sourceText: string | null;
+  parsedRows: UnifiedRow[];
+  handleHeaderClick: (event: MouseEvent) => void;
+  handleHeaderKeydown: (event: KeyboardEvent) => void;
   virtualLayer: HTMLElement | null;
   virtualFiles: VirtualDiffFile[];
   /** Summary of each virtual file group (rows before any file have none). */
@@ -89,6 +98,9 @@ export class DiffRenderer {
       ?? (() => Boolean(window.matchMedia?.('(prefers-reduced-motion: reduce)').matches));
     this.options = { mode: 'unified', wordLevel: true, expanded: false };
     this.files = [];
+    this.collapsed = new Set();
+    this.sourceText = null;
+    this.parsedRows = [];
     this.virtualLayer = null;
     this.virtualFiles = [];
     this.virtualSummaries = new Map();
@@ -103,21 +115,88 @@ export class DiffRenderer {
         this.renderVirtualViewport();
       });
     };
+    this.handleHeaderClick = event => {
+      const target = event.target as HTMLElement | null;
+      if (!target || target.closest?.('button')) return;
+      const path = this.headerPath(target);
+      if (path !== null) this.toggleFile(path);
+    };
+    this.handleHeaderKeydown = event => {
+      if (event.key !== 'Enter' && event.key !== ' ') return;
+      const target = event.target as HTMLElement | null;
+      if (!target?.classList?.contains('diff-file-header')) return;
+      const path = this.headerPath(target);
+      if (path === null) return;
+      event.preventDefault();
+      this.toggleFile(path);
+    };
+    this.body.addEventListener('click', this.handleHeaderClick);
+    this.body.addEventListener('keydown', this.handleHeaderKeydown);
+  }
+
+  headerPath(target: HTMLElement): string | null {
+    const header = target.closest?.('.diff-file-header') as HTMLElement | null;
+    const block = header?.closest?.('.diff-file-block') as HTMLElement | null;
+    const path = block?.dataset.filePath;
+    return path && this.files.some(file => file.path === path) ? path : null;
+  }
+
+  /** Shows or hides a file's lines, keeping the scroll position and focus. */
+  toggleFile(path: string): void {
+    if (this.collapsed.has(path)) this.collapsed.delete(path);
+    else this.collapsed.add(path);
+    const scrollTop = this.body.scrollTop;
+    this.renderRows();
+    this.body.scrollTop = scrollTop;
+    if (this.virtualMode) this.renderVirtualViewport(true);
+    const header = [...this.body.querySelectorAll<HTMLElement>('.diff-file-block')]
+      .find(block => block.dataset.filePath === path)
+      ?.querySelector<HTMLElement>('.diff-file-header');
+    header?.focus({ preventScroll: true });
+  }
+
+  /** Rows to render: a collapsed file keeps only its header row. */
+  visibleRows(): UnifiedRow[] {
+    if (!this.collapsed.size) return this.parsedRows;
+    const rows: UnifiedRow[] = [];
+    let fileIndex = 0;
+    let hidden = false;
+    for (const row of this.parsedRows) {
+      if (row.kind === 'file') {
+        const file = this.files[fileIndex++];
+        hidden = Boolean(file && this.collapsed.has(file.path));
+        rows.push(row);
+      } else if (!hidden) {
+        rows.push(row);
+      }
+    }
+    return rows;
+  }
+
+  renderRows(): void {
+    if (this.options.mode === 'unified') this.renderUnified(this.visibleRows());
+    else this.renderSplit(this.visibleRows());
   }
 
   render(diffText: string, options: DiffRenderOptions): void {
     this.options = { ...options };
     this.clearFileTargetTimer();
-    // The patch is parsed once; file summaries and both layouts share the rows.
-    const parsed = DiffParser.summarizeFiles(DiffParser.parseUnified(diffText || ''));
-    this.files = diffText ? parsed.files : [];
+    // A patch is parsed once; layout changes reuse its rows and collapsed files.
+    if (diffText !== this.sourceText) {
+      const parsed = DiffParser.summarizeFiles(DiffParser.parseUnified(diffText || ''));
+      this.sourceText = diffText;
+      this.files = diffText ? parsed.files : [];
+      this.parsedRows = diffText ? parsed.rows : [];
+      this.collapsed = new Set(
+        this.files.filter(file => GENERATED_FILE.test(file.path)).map(file => file.path)
+      );
+    }
     if (!diffText) {
       this.disableVirtualization();
       this.renderPlaceholder('ph-check-circle', this.translate('details.noChanges'));
       return;
     }
-    if (this.options.mode === 'unified') this.renderUnified(parsed.rows);
-    else this.renderSplit(parsed.rows);
+    this.renderRows();
   }
 
   /** Text shown for a row; Git's binary notice becomes a translated sentence. */
@@ -501,6 +580,18 @@ export class DiffRenderer {
     header.title = summary?.oldPath ? `${summary.oldPath} → ${path}` : path;
 
     if (summary) {
+      const collapsed = this.collapsed.has(path);
+      if (collapsed) block.classList.add('is-collapsed');
+      header.tabIndex = 0;
+      header.setAttribute('role', 'button');
+      header.setAttribute('aria-expanded', String(!collapsed));
+      const chevron = document.createElement('i');
+      chevron.className = 'ph ph-caret-down diff-file-chevron';
+      chevron.setAttribute('aria-hidden', 'true');
+      header.appendChild(chevron);
+    }
+
+    if (summary) {
       const status = document.createElement('span');
       status.className = `diff-file-status is-${summary.status.toLowerCase()}`;
       status.title = this.translate(STATUS_LABELS[summary.status]);
@@ -550,6 +641,7 @@ export class DiffRenderer {
 
   /** Scrolls a file into view and briefly marks it; returns false when absent. */
   scrollToFile(path: string): boolean {
+    if (this.collapsed.delete(path)) this.renderRows();
     if (this.virtualMode) {
       const file = this.virtualFiles.find(item => item.path === path);
       if (!file) return false;
@@ -578,8 +670,19 @@ export class DiffRenderer {
     this.fileTargetTimer = 0;
   }
 
-  destroy(): void {
+  /** Drops the rendered patch so the body can show other content. */
+  reset(): void {
     this.clearFileTargetTimer();
     this.disableVirtualization();
+    this.sourceText = null;
+    this.parsedRows = [];
+    this.files = [];
+    this.collapsed = new Set();
+  }
+
+  destroy(): void {
+    this.reset();
+    this.body.removeEventListener('click', this.handleHeaderClick);
+    this.body.removeEventListener('keydown', this.handleHeaderKeydown);
   }
 }
