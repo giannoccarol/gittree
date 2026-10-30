@@ -63,6 +63,8 @@ export interface ConflictResolution {
 export interface RepositoryOperationsOptions {
   git: SimpleGit;
   repoPath: string;
+  /** Runs one git command that reads its revisions from stdin. */
+  rawWithInput: (args: string[], input: string) => Promise<string>;
   assertCommitish: (ref: string) => Promise<void> | void;
   validateRepositoryPath: (
     filePath: string,
@@ -78,18 +80,42 @@ const MERGE_STRATEGIES = {
 
 export type MergeStrategy = keyof typeof MERGE_STRATEGIES;
 
+const COMMIT_ACTION_FORMAT = '--format=%H%x1f%P%x1f%ct%x1f%s';
+
+/** A complete object id as `%H` prints it. */
+const FULL_COMMIT_ID = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
+
+function parseCommitActionRecord(record: string): CommitActionMetadata {
+  const [fullHash, parentText = '', timestamp = '0', ...subject] = record.trim().split('\x1f');
+  return {
+    hash: fullHash,
+    parents: parentText ? parentText.split(/\s+/) : [],
+    timestamp: Number(timestamp) || 0,
+    subject: subject.join('\x1f')
+  };
+}
+
 export class RepositoryOperations {
   private git: SimpleGit;
 
   private repoPath: string;
 
+  private rawWithInput: RepositoryOperationsOptions['rawWithInput'];
+
   private assertCommitish: (ref: string) => Promise<void> | void;
 
   private validateRepositoryPath: RepositoryOperationsOptions['validateRepositoryPath'];
 
-  constructor({ git, repoPath, assertCommitish, validateRepositoryPath }: RepositoryOperationsOptions) {
+  constructor({
+    git,
+    repoPath,
+    rawWithInput,
+    assertCommitish,
+    validateRepositoryPath
+  }: RepositoryOperationsOptions) {
     this.git = git;
     this.repoPath = repoPath;
+    this.rawWithInput = rawWithInput;
     this.assertCommitish = assertCommitish;
     this.validateRepositoryPath = validateRepositoryPath;
   }
@@ -121,25 +147,39 @@ export class RepositoryOperations {
   }
 
   async getCommitActionMetadata(hashes: unknown): Promise<CommitActionMetadata[]> {
+    const unique = this.validateCommitHashes(hashes);
+    const batch = await this.readCommitActionMetadata(unique);
+    if (batch) return batch;
     const metadata: CommitActionMetadata[] = [];
-    for (const hash of this.validateCommitHashes(hashes)) {
+    for (const hash of unique) {
       await this.assertCommitish(hash);
-      const raw = await this.git.raw([
-        'show',
-        '-s',
-        '--format=%H%x1f%P%x1f%ct%x1f%s',
-        hash
-      ]);
-      const [fullHash, parentText = '', timestamp = '0', ...subject] =
-        raw.trim().split('\x1f');
-      metadata.push({
-        hash: fullHash,
-        parents: parentText ? parentText.split(/\s+/) : [],
-        timestamp: Number(timestamp) || 0,
-        subject: subject.join('\x1f')
-      });
+      metadata.push(parseCommitActionRecord(await this.git.raw(['show', '-s', COMMIT_ACTION_FORMAT, hash])));
     }
     return metadata;
+  }
+
+  /**
+   * Reads every commit with one `git log --no-walk` call. Returns null when
+   * the answer could differ from one `git show` per hash (a missing commit,
+   * two spellings of one commit, or a tag id, which `git show` prints as a
+   * tag), so the caller takes the per-hash path and its exact errors.
+   */
+  private async readCommitActionMetadata(hashes: string[]): Promise<CommitActionMetadata[] | null> {
+    let raw: string;
+    try {
+      raw = await this.rawWithInput(
+        ['log', '--no-walk=unsorted', '--stdin', COMMIT_ACTION_FORMAT],
+        `${hashes.join('\n')}\n`
+      );
+    } catch {
+      return null;
+    }
+    const records = raw.split('\n').filter(record => record.trim());
+    if (records.length !== hashes.length) return null;
+    const metadata = records.map(parseCommitActionRecord);
+    return metadata.every((commit, index) => commit.hash.startsWith(hashes[index].toLowerCase()))
+      ? metadata
+      : null;
   }
 
   sortCommitsParentFirst(commits: CommitActionMetadata[]): CommitActionMetadata[] {
@@ -196,6 +236,17 @@ export class RepositoryOperations {
   }
 
   async getCommitFiles(commits: CommitActionMetadata[]): Promise<string[]> {
+    const hashes = commits.map(commit => commit.hash);
+    if (hashes.length && hashes.every(hash => FULL_COMMIT_ID.test(hash))) {
+      try {
+        // `--cc` gives merges the combined file list `git show` prints for them.
+        const raw = await this.rawWithInput(
+          ['log', '--no-walk=unsorted', '--stdin', '--cc', '--pretty=format:', '--name-only', '-z'],
+          `${hashes.join('\n')}\n`
+        );
+        return [...new Set(raw.split('\0').filter(Boolean))];
+      } catch { /* One `git show` per commit below reports the failure. */ }
+    }
     const files = new Set<string>();
     for (const commit of commits) {
       const raw = await this.git.raw([

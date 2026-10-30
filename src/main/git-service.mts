@@ -77,6 +77,7 @@ export class GitService {
     this.operations = new RepositoryOperations({
       git: this.git,
       repoPath: this.repoPath,
+      rawWithInput: (args, input) => this.session.rawWithInput(args, input),
       assertCommitish: ref => this.assertCommitish(ref),
       validateRepositoryPath: (filePath, options) => (
         this.validateRepositoryPath(filePath, options)
