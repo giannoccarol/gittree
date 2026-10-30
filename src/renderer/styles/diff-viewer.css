@@ -102,6 +102,7 @@
 /* Long paths shorten the directory first and keep the file name readable. */
 .path-directory {
   min-width: 0;
+  flex: 0 1000 auto;
   overflow: hidden;
   color: var(--text-tertiary);
   text-overflow: ellipsis;
@@ -109,9 +110,12 @@
 }
 
 .path-name {
-  flex: none;
+  min-width: 0;
+  flex: 0 1 auto;
+  overflow: hidden;
   color: var(--text-primary);
   font-weight: var(--weight-semibold);
+  text-overflow: ellipsis;
 }
 
 .diff-file-status {
