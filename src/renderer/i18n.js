@@ -306,6 +306,7 @@ const I18n = {
             history: {
               eyebrow: 'Repository activity',
               title: 'Commit history',
+              listLabel: 'Commit history. Use the up and down arrows to move between commits.',
               graph: 'Graph',
               message: 'Message',
               author: 'Author',
@@ -1170,6 +1171,7 @@ const I18n = {
             history: {
               eyebrow: 'Attività repository',
               title: 'Cronologia commit',
+              listLabel: 'Cronologia dei commit. Usa le frecce su e giù per passare da un commit all’altro.',
               graph: 'Graph',
               message: 'Messaggio',
               author: 'Autore',

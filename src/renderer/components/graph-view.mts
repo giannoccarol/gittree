@@ -130,6 +130,7 @@ export class GraphView {
   authors: Map<string, string>;
   authorOptionsDirty: boolean;
   filterQueryTimer: ReturnType<typeof setTimeout> | null;
+  detailTimer: ReturnType<typeof setTimeout> | null;
   timestampCache: WeakMap<GraphCommitData, number>;
   collators: Map<string, Intl.Collator>;
   renderedRowContent: WeakMap<HTMLElement, { hash: string; key: string }>;
@@ -160,6 +161,7 @@ export class GraphView {
     this.rowHeight = 38;
     this.overscan = 20;
     this.raf = 0;
+    this.detailTimer = null;
     this.renderedRange = [-1, -1];
     this.renderedDataRevision = -1;
     this.resizeObserver = null;
@@ -210,6 +212,7 @@ export class GraphView {
       const row = (event.target as HTMLElement).closest('.graph-row') as HTMLElement | null;
       if (row?.dataset.hash) this.selectFromEvent(row.dataset.hash, event);
     });
+    this.container.addEventListener('keydown', event => this.handleKeydown(event));
     this.container.addEventListener('contextmenu', event => {
       const row = (event.target as HTMLElement).closest('.graph-row') as HTMLElement | null;
       if (!row?.dataset.hash) return;
@@ -1099,6 +1102,68 @@ export class GraphView {
     this.updateVisibleSelection();
     this.app.syncInspectorWorkspace?.();
     if (emit) this.app.emit('commit:selected', hash);
+  }
+
+  /** Arrow keys move the selection; the inspector loads once keys pause. */
+  handleKeydown(event: KeyboardEvent): void {
+    if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+    const target = event.target as HTMLElement | null;
+    if (target && target !== this.container && target.closest?.('input, select, textarea, button, [role="separator"]')) return;
+    const direction = event.key === 'ArrowDown' ? 'older' : event.key === 'ArrowUp' ? 'newer' : null;
+    if (!direction) return;
+    event.preventDefault();
+    this.selectAdjacent(direction, { deferDetail: true });
+  }
+
+  /** Position of a commit in the visible (filtered and sorted) history. */
+  visibleIndexOf(hash: string | null): number {
+    if (!hash) return -1;
+    return this.visibleRows.findIndex(row => row.commit.hash === hash);
+  }
+
+  /** Whether a newer and an older commit sit next to `hash` in the history. */
+  navigationFor(hash: string | null): { newer: boolean; older: boolean } {
+    const index = this.visibleIndexOf(hash);
+    if (index < 0) return { newer: false, older: false };
+    return {
+      newer: index > 0,
+      older: index < this.visibleRows.length - 1 || this.hasMore
+    };
+  }
+
+  /**
+   * Selects the commit above (newer) or below (older) the selection and
+   * scrolls it into view. With deferDetail the inspector request waits until
+   * the keys pause, so holding an arrow key does not queue a Git read per row.
+   */
+  selectAdjacent(direction: 'newer' | 'older', { deferDetail = false } = {}): boolean {
+    const index = this.visibleIndexOf(this.selectedHash);
+    const nextIndex = index < 0 ? 0 : index + (direction === 'older' ? 1 : -1);
+    const next = this.visibleRows[nextIndex];
+    if (!next) return false;
+    const hash = next.commit.hash;
+    this.select(hash, !deferDetail);
+    this.revealRow(nextIndex);
+    if (deferDetail) {
+      if (this.detailTimer) clearTimeout(this.detailTimer);
+      this.detailTimer = setTimeout(() => {
+        this.detailTimer = null;
+        if (this.selectedHash === hash) this.app.emit('commit:selected', hash);
+      }, 140);
+    }
+    return true;
+  }
+
+  /** Scrolls the minimum needed to show a row below the sticky header. */
+  revealRow(index: number): void {
+    const container = this.container!;
+    const header = 36;
+    const top = header + index * this.rowHeight;
+    const bottom = top + this.rowHeight;
+    if (top - header < container.scrollTop) container.scrollTop = top - header;
+    else if (bottom > container.scrollTop + container.clientHeight) {
+      container.scrollTop = bottom - container.clientHeight;
+    }
   }
 
   selectFromEvent(hash: string, event: MouseEvent): void {

@@ -306,3 +306,8 @@ html.is-resizing-history-columns * {
   gap: var(--space-1);
   flex-shrink: 0;
 }
+
+.graph-view:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: -2px;
+}

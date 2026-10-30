@@ -294,3 +294,52 @@ test('a forced render reuses row elements and replaces a placeholder', async () 
     harness.restore();
   }
 });
+
+test('arrow keys move the selection and load the inspector once the keys pause', async () => {
+  const commits = createHistory(1300);
+  const refs = createRefs(commits);
+  const harness = createGraphViewHarness(GraphView, { bridge: createLegacyBridge(commits, refs) });
+  const originalSetTimeout = global.setTimeout;
+  const originalClearTimeout = global.clearTimeout;
+  const timers = [];
+  global.setTimeout = (callback, delay) => { timers.push({ callback, delay, cleared: false }); return timers.length; };
+  global.clearTimeout = id => { if (timers[id - 1]) timers[id - 1].cleared = true; };
+  try {
+    const { view, container, emitted } = harness;
+    await view.load('/repo');
+    view.select(commits[0].hash, false);
+    const press = key => {
+      let prevented = false;
+      view.handleKeydown({ key, target: container, preventDefault: () => { prevented = true; } });
+      return prevented;
+    };
+
+    assert.equal(press('ArrowDown'), true);
+    press('ArrowDown');
+    press('ArrowDown');
+    assert.equal(view.selectedHash, commits[3].hash);
+    assert.equal(emitted.filter(([name]) => name === 'commit:selected').length, 0, 'no detail request while keys repeat');
+    const live = timers.filter(timer => !timer.cleared);
+    assert.equal(live.length, 1);
+    live[0].callback();
+    assert.deepEqual(emitted.filter(([name]) => name === 'commit:selected').map(([, hash]) => hash), [commits[3].hash]);
+
+    press('ArrowUp');
+    assert.equal(view.selectedHash, commits[2].hash);
+    assert.equal(press('Enter'), false, 'other keys are left alone');
+
+    view.select(commits[0].hash, false);
+    assert.equal(view.selectAdjacent('newer'), false, 'the newest commit has nothing above it');
+    assert.deepEqual(view.navigationFor(commits[0].hash), { newer: false, older: true });
+
+    const far = 200;
+    view.select(commits[far - 1].hash, false);
+    view.selectAdjacent('older');
+    assert.equal(view.selectedHash, commits[far].hash);
+    assert.ok(container.scrollTop + container.clientHeight >= 36 + (far + 1) * view.rowHeight, 'the new row is scrolled into view');
+  } finally {
+    global.setTimeout = originalSetTimeout;
+    global.clearTimeout = originalClearTimeout;
+    harness.restore();
+  }
+});
