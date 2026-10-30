@@ -33,6 +33,45 @@ export interface CommitDetail {
   files: string[];
 }
 
+const COMMIT_DETAIL_FIELD = '\x00';
+const COMMIT_DETAIL_END = '\x01';
+const COMMIT_DETAIL_FORMAT = ['%H', '%aN', '%aE', '%aI', '%s'].join('%x00') + '%x01';
+
+/** Splits `git show --stat --patch` output written with COMMIT_DETAIL_FORMAT. */
+export function parseCommitDetailOutput(output: string): CommitDetail | null {
+  const end = output.indexOf(COMMIT_DETAIL_END);
+  if (end === -1) return null;
+  const [hash = '', authorName = '', authorEmail = '', date = '', subject = ''] = output
+    .slice(0, end)
+    .split(COMMIT_DETAIL_FIELD);
+  if (!hash) return null;
+  let rest = output.slice(end + 1);
+  if (rest.startsWith('\n')) rest = rest.slice(1);
+  // git separates the header from a diffstat followed by a patch with "---".
+  if (rest.startsWith('---\n')) rest = rest.slice(4);
+  let stat = rest;
+  let diff = '';
+  if (rest.startsWith('diff --git ')) {
+    stat = '';
+    diff = rest;
+  } else {
+    const newlineBeforePatch = rest.indexOf('\ndiff --git ');
+    if (newlineBeforePatch !== -1) {
+      stat = rest.slice(0, newlineBeforePatch + 1);
+      diff = rest.slice(newlineBeforePatch + 1);
+    }
+  }
+  return {
+    hash,
+    message: subject,
+    author_name: authorName,
+    author_email: authorEmail,
+    date,
+    diff,
+    files: stat.trim().split('\n').filter(Boolean)
+  };
+}
+
 export interface BlameResult {
   path: string;
   hash: string;
@@ -244,19 +283,20 @@ export class RepositoryHistory {
   async getCommitDetail(hash: string): Promise<CommitDetail | null> {
     this.assertSafeRef(hash);
     try {
-      const log = await this.git.log({ maxCount: 1, '--date': 'iso', [hash]: null });
-      if (!log.latest) return null;
-      const diff = await this.getCommitDiff(hash);
-      const show = await this.git.show([hash, '--stat', '--format=']);
-      return {
-        hash: log.latest.hash,
-        message: log.latest.message,
-        author_name: log.latest.author_name,
-        author_email: log.latest.author_email,
-        date: log.latest.date,
-        diff,
-        files: show.trim().split('\n').filter(Boolean)
-      };
+      // One process returns the metadata, the --stat lines and the first-parent
+      // patch (the empty tree for a root commit), the same text `git diff` gives.
+      const output = await this.git.raw([
+        'show',
+        '--no-color',
+        '--no-ext-diff',
+        '--diff-merges=first-parent',
+        '--stat',
+        '--patch',
+        `--format=${COMMIT_DETAIL_FORMAT}`,
+        `${hash}^{commit}`,
+        '--'
+      ]);
+      return parseCommitDetailOutput(output);
     } catch (error) {
       throw new Error(`Failed to get commit detail: ${(error as Error).message}`, { cause: error });
     }
