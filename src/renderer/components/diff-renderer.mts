@@ -98,7 +98,9 @@ export class DiffRenderer {
       contentEl.textContent = text;
       return;
     }
-    let prefix = 0;
+    // The leading +/- markers always differ; compare the code after them.
+    const markers = '+-';
+    let prefix = markers.includes(text[0]) && markers.includes(counterpart[0]) ? 1 : 0;
     const max = Math.min(text.length, counterpart.length);
     while (prefix < max && text[prefix] === counterpart[prefix]) prefix += 1;
     let suffix = 0;

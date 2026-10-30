@@ -83,8 +83,7 @@ test('unified rendering groups lines by file with numbers and word highlights', 
     assert.deepEqual(kinds, ['header', 'header', 'header', 'hunk', 'context', 'del', 'add', 'context']);
     const added = lines[6];
     assert.deepEqual(findAll(added, 'diff-line-num').map(number => number.textContent), ['', '2']);
-    // Characterized as-is: the +/- marker is part of the compared text.
-    assert.equal(findAll(added, 'diff-word')[0].textContent, '+const value = 2');
+    assert.equal(findAll(added, 'diff-word')[0].textContent, '2');
     assert.equal(body.style['--diff-gutter-digits'], '1');
   } finally {
     restore();
@@ -112,6 +111,7 @@ test('split rendering pairs removed and added lines in two columns', () => {
     assert.equal(firstFileLines.length % 2, 0);
     const pair = firstFileLines.slice(2, 4).map(line => line.className);
     assert.deepEqual(pair, ['diff-line del', 'diff-line add']);
+    assert.deepEqual(firstFileLines.slice(2, 4).map(line => findAll(line, 'diff-word')[0]?.textContent), ['1', '2']);
   } finally {
     restore();
   }
