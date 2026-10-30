@@ -76,17 +76,15 @@ interface UpdateStatePayload {
 }
 
 interface InspectorPayload extends Record<string, unknown> {
+  kind?: string;
   title?: string;
   meta?: string;
   theme?: string;
   tone?: string;
   mode?: string;
-  modeLabel?: string;
   eyebrow?: string;
   wordLevel?: boolean;
-  html?: string;
   diffText?: string;
-  graph?: Record<string, unknown>;
   files?: DiffViewer['fileSummaries'];
   selectedFile?: string | null;
   filesOpen?: boolean;
@@ -172,7 +170,7 @@ export class GitTreeApp {
       body: byId('detail-body'),
       onKindChange: next => {
         if (next !== 'commit') this.components.diffViewer?.releaseCommit();
-        this.syncInspectorWorkspace({ push: false });
+        this.syncInspectorWorkspace();
       }
     });
     this.components.diffViewer = new DiffViewer(byId('detail-body'), this, this.inspectorPanel);
@@ -952,36 +950,35 @@ export class GitTreeApp {
   setupInspectorPopout(): void {
     this.popoutOpen = false;
     this.buildInspectorPayload = (): InspectorPayload => {
-      const body = byId('detail-body');
+      const kind = this.inspectorPanel.kind;
       const title = byId('detail-title').textContent;
       const theme = document.documentElement.dataset.theme || 'light';
       const tone = document.documentElement.dataset.tone || '';
-      const mode = this.components.diffViewer?.mode || 'unified';
-      const html = body.innerHTML;
-      const meta = [...document.querySelectorAll('#detail-meta > span')]
-        .map(element => element.textContent.trim())
-        .filter(Boolean)
-        .join(' · ');
-      const payload: InspectorPayload = {
+      const meta = kind === 'commit'
+        ? [...document.querySelectorAll('#detail-meta > span')]
+          .map(element => element.textContent.trim())
+          .filter(Boolean)
+          .join(' · ')
+        : '';
+      const diffText = kind === 'commit'
+        ? this.components.diffViewer?.currentDiff || ''
+        : kind === 'working-file'
+          ? this.components.changes?.inspectorPatch || ''
+          : '';
+      return {
+        kind,
         title,
         meta,
         theme,
         tone,
-        mode,
+        mode: this.components.diffViewer?.mode || 'unified',
         eyebrow: t('details.eyebrow'),
-        modeLabel: t(mode === 'split' ? 'details.split' : 'details.unified'),
         wordLevel: Boolean(this.components.diffViewer?.wordLevel),
-        graph: this.components.graphView?.getInspectorSnapshot?.(),
+        diffText,
         files: this.components.diffViewer?.fileSummaries || [],
         selectedFile: this.components.diffViewer?.selectedFilePath || null,
         filesOpen: this.components.inspectorWorkspace?.filesOpen !== false
       };
-      if (html.length > 2_000_000 && this.components.diffViewer?.currentDiff) {
-        payload.diffText = this.components.diffViewer.currentDiff;
-      } else {
-        payload.html = html;
-      }
-      return payload;
     };
     this.pushInspectorPayload = (): void => {
       if (!this.popoutOpen) return;

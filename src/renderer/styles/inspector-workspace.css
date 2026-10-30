@@ -29,20 +29,27 @@
   background: var(--surface-primary);
 }
 
-.workspace-body.inspector-maximized .inspector-workspace,
-.inspector-workspace-popout {
+.workspace-body.inspector-maximized .inspector-workspace {
   display: grid;
   grid-template-columns: minmax(154px, 208px) minmax(0, 1fr) minmax(210px, 272px);
 }
 
-.workspace-body.inspector-maximized .inspector-workspace.files-collapsed,
-.inspector-workspace-popout.files-collapsed {
+.workspace-body.inspector-maximized .inspector-workspace.files-collapsed {
   grid-template-columns: minmax(154px, 208px) minmax(0, 1fr) 44px;
+}
+
+/* The detached window shows the diff and its files, without a graph. */
+.inspector-workspace-popout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(210px, 272px);
+}
+
+.inspector-workspace-popout.files-collapsed {
+  grid-template-columns: minmax(0, 1fr) 44px;
 }
 
 .workspace-body.inspector-maximized .inspector-graph-panel,
 .workspace-body.inspector-maximized .inspector-files-panel,
-.inspector-workspace-popout .inspector-graph-panel,
 .inspector-workspace-popout .inspector-files-panel {
   display: flex;
 }
@@ -326,14 +333,16 @@
 }
 
 @media (max-width: 840px) {
-  .workspace-body.inspector-maximized .inspector-workspace,
-  .inspector-workspace-popout {
+  .workspace-body.inspector-maximized .inspector-workspace {
     grid-template-columns: 128px minmax(0, 1fr) 214px;
   }
 
-  .workspace-body.inspector-maximized .inspector-workspace.files-collapsed,
-  .inspector-workspace-popout.files-collapsed {
+  .workspace-body.inspector-maximized .inspector-workspace.files-collapsed {
     grid-template-columns: 128px minmax(0, 1fr) 44px;
+  }
+
+  .inspector-workspace-popout {
+    grid-template-columns: minmax(0, 1fr) 214px;
   }
 }
 

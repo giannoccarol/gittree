@@ -376,16 +376,6 @@
   flex: none;
 }
 
-.eyebrow {
-  display: block;
-  color: var(--text-tertiary);
-  font-size: 10px;
-  font-weight: var(--weight-semibold);
-  letter-spacing: 0.08em;
-  line-height: 1.2;
-  text-transform: uppercase;
-}
-
 .toolbar-title .project-loading-indicator,
 .detail-title-wrap .project-loading-indicator {
   margin-top: var(--space-1);

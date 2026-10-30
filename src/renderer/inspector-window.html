@@ -9,7 +9,6 @@
   <link rel="stylesheet" href="styles/fonts.css">
   <link rel="stylesheet" href="styles/variables.css">
   <link rel="stylesheet" href="styles/components.css">
-  <link rel="stylesheet" href="styles/graph.css">
   <link rel="stylesheet" href="styles/diff-viewer.css">
   <link rel="stylesheet" href="styles/inspector-workspace.css">
   <link rel="stylesheet" href="styles/inspector-window.css">
@@ -22,21 +21,18 @@
         <h1 id="inspector-title">Commit details</h1>
         <p id="inspector-meta" class="inspector-window-meta is-hidden"></p>
       </div>
-      <div class="inspector-window-badges">
-        <span id="inspector-mode" class="badge badge-remote">Unified</span>
-        <span id="inspector-word" class="badge badge-head is-hidden">Words</span>
+      <div id="inspector-diff-controls" class="inspector-window-controls">
+        <div class="segmented-control" role="group" aria-label="Diff layout" data-i18n-aria-label="details.diffLayout">
+          <button id="inspector-mode-unified" class="btn btn-small active" type="button" aria-pressed="true" data-i18n="details.unified">Unified</button>
+          <button id="inspector-mode-split" class="btn btn-small" type="button" aria-pressed="false" data-i18n="details.split">Split</button>
+        </div>
+        <button id="inspector-word" class="btn btn-small" type="button" aria-pressed="true" title="Word-level changes" data-i18n-title="details.wordDiff">
+          <i class="ph ph-text-t" aria-hidden="true"></i>
+          <span data-i18n="details.wordDiffShort">Words</span>
+        </button>
       </div>
     </header>
     <main id="inspector-workspace" class="inspector-workspace inspector-workspace-popout">
-      <aside id="inspector-graph-panel" class="inspector-graph-panel" aria-label="Commit graph" data-i18n-aria-label="details.graphTitle">
-        <header class="inspector-side-header">
-          <div class="inspector-side-heading">
-            <strong data-i18n="details.graphTitle">Commit graph</strong>
-            <small data-i18n="details.graphHint">Hover a node for details</small>
-          </div>
-        </header>
-        <div id="inspector-graph-view" class="inspector-graph-view" role="list"></div>
-      </aside>
       <div class="inspector-diff-pane">
         <div id="inspector-body" class="detail-panel-body">
           <div class="diff-placeholder">
@@ -61,9 +57,6 @@
   </div>
   <script src="../../node_modules/i18next/dist/umd/i18next.min.js"></script>
   <script src="i18n.js"></script>
-  <script type="module" src="components/graph-layout.mjs"></script>
-  <script type="module" src="components/inspector-graph.mjs"></script>
-  <script type="module" src="components/inspector-workspace.mjs"></script>
   <script type="module" src="inspector-window.mjs"></script>
 </body>
 </html>

@@ -38,7 +38,7 @@ test('inspector controller creates one locked-down window and reuses it', () => 
 
   assert.deepEqual(controller.update({}), { success: false });
   assert.deepEqual(controller.open({
-    title: 'Commit', meta: 'abc1234 · Ada · 1 file', theme: 'dark', tone: 'blue',
+    kind: 'commit', title: 'Commit', meta: 'abc1234 · Ada · 1 file', theme: 'dark', tone: 'blue',
     mode: 'split', html: '<b>x</b>', diffText: '+x'
   }), { success: true });
   assert.equal(created.length, 1);
@@ -52,11 +52,10 @@ test('inspector controller creates one locked-down window and reuses it', () => 
 
   created[0].listeners.get('did-finish-load')();
   assert.deepEqual(created[0].sent.at(-1), ['inspector:render', {
-    title: 'Commit', meta: 'abc1234 · Ada · 1 file', theme: 'dark', tone: 'blue', mode: 'split',
-    eyebrow: 'Inspector', modeLabel: 'Split', wordLevel: false,
-    graph: { revision: 0, laneCount: 1, hasMore: false, selectedHash: null, rows: [] },
+    kind: 'commit', title: 'Commit', meta: 'abc1234 · Ada · 1 file', theme: 'dark', tone: 'blue', mode: 'split',
+    eyebrow: 'Inspector', wordLevel: false,
     files: [], selectedFile: null, filesOpen: true,
-    html: '<b>x</b>', diffText: '+x'
+    diffText: '+x'
   }]);
   controller.open({ title: 'Next' });
   assert.equal(created.length, 1);
@@ -94,6 +93,7 @@ test('inspector controller sanitizes oversized and invalid payload fields', () =
   controller.open({ title: 'x'.repeat(201) });
   assert.equal(window.options.title, 'Inspector');
   assert.deepEqual(controller.update({
+    kind: 'script',
     title: 42,
     theme: 'black',
     tone: 'Bad Tone!',
@@ -102,15 +102,14 @@ test('inspector controller sanitizes oversized and invalid payload fields', () =
     diffText: 'x'.repeat(10_000_001)
   }), { success: true });
   assert.deepEqual(window.lastSend, ['inspector:render', {
-    title: 'Inspector', meta: '', theme: 'light', tone: '', mode: 'unified',
-    eyebrow: 'Inspector', modeLabel: 'Unified', wordLevel: false,
-    graph: { revision: 0, laneCount: 1, hasMore: false, selectedHash: null, rows: [] },
+    kind: 'empty', title: 'Inspector', meta: '', theme: 'light', tone: '', mode: 'unified',
+    eyebrow: 'Inspector', wordLevel: false,
     files: [], selectedFile: null, filesOpen: true,
-    html: '', diffText: ''
+    diffText: ''
   }]);
 });
 
-test('inspector controller bounds structured graph and file navigation data', () => {
+test('inspector controller bounds file navigation data and drops markup and graph fields', () => {
   let inspectorWindow;
   class FakeWindow {
     constructor() {
@@ -132,29 +131,26 @@ test('inspector controller bounds structured graph and file navigation data', ()
   });
   controller.open({});
   controller.update({
-    graph: {
-      revision: 4,
-      laneCount: 2,
-      hasMore: true,
-      selectedHash: 'abc1234',
-      rows: [{
-        hash: 'abc1234', subject: 'Ship inspector', lane: 1, incoming: true,
-        before: ['abc1234', null],
-        parents: [{ hash: 'parent123', lane: 0, kind: 'first-parent' }],
-        refs: [{ fullName: 'refs/heads/main', shortName: 'main', type: 'branch' }]
-      }]
-    },
-    files: [{ path: 'src/app.js', status: 'M', additions: 3, deletions: 1 }],
+    kind: 'working-file',
+    html: '<img src=x onerror=alert(1)>',
+    graph: { rows: [{ hash: 'abc1234' }] },
+    files: [
+      { path: 'src/app.js', status: 'M', additions: 3, deletions: 1 },
+      { path: 'src/other.js', status: 'X', additions: -1, deletions: 2.5 },
+      { path: '' }
+    ],
     selectedFile: 'src/app.js',
     filesOpen: false
   });
 
   const payload = inspectorWindow.lastSend[1];
-  assert.equal(payload.graph.rows[0].subject, 'Ship inspector');
-  assert.deepEqual(payload.graph.rows[0].refs, [{ shortName: 'main', type: 'branch' }]);
-  assert.deepEqual(payload.files, [{
-    path: 'src/app.js', oldPath: null, status: 'M', additions: 3, deletions: 1
-  }]);
+  assert.equal(payload.kind, 'working-file');
+  assert.equal('html' in payload, false);
+  assert.equal('graph' in payload, false);
+  assert.deepEqual(payload.files, [
+    { path: 'src/app.js', oldPath: null, status: 'M', additions: 3, deletions: 1 },
+    { path: 'src/other.js', oldPath: null, status: 'M', additions: 0, deletions: 0 }
+  ]);
   assert.equal(payload.selectedFile, 'src/app.js');
   assert.equal(payload.filesOpen, false);
 });

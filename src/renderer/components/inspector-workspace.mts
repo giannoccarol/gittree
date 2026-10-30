@@ -1,4 +1,4 @@
-import type { InspectorGraph } from './inspector-graph.mts';
+import { InspectorGraph } from './inspector-graph.mts';
 
 interface InspectorFile {
   path: string;
@@ -91,14 +91,15 @@ export class InspectorWorkspace {
   mount(): void {
     if (this.mounted || !this.container) return;
     this.mounted = true;
-    const InspectorGraphCtor = (window as unknown as { InspectorGraph: typeof InspectorGraph }).InspectorGraph;
-    this.graph = new InspectorGraphCtor({
-      container: this.graphContainer,
-      translate: this.translate,
-      onSelect: this.onGraphSelect,
-      onRequestMore: this.onGraphRequestMore
-    });
-    this.graph.mount();
+    if (this.graphContainer) {
+      this.graph = new InspectorGraph({
+        container: this.graphContainer,
+        translate: this.translate,
+        onSelect: this.onGraphSelect,
+        onRequestMore: this.onGraphRequestMore
+      });
+      this.graph.mount();
+    }
     this.filesToggle?.addEventListener('click', this.handleFilesToggle);
     this.fileList?.addEventListener('click', this.handleFileClick);
     this.setFilesOpen(this.filesOpen, false, false);

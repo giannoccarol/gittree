@@ -42,6 +42,8 @@ export class ChangesView {
   lastPollError: string | null;
   selected: { path: string; staged: boolean } | null;
   diffRequest: number;
+  /** Unified patch of the file shown in the inspector, for the detached window. */
+  inspectorPatch: string;
   generatingCommit: boolean;
   generatingExplain: boolean;
   rowHeight: number;
@@ -61,6 +63,7 @@ export class ChangesView {
     this.lastPollError = null;
     this.selected = null;
     this.diffRequest = 0;
+    this.inspectorPatch = '';
     this.generatingCommit = false;
     this.generatingExplain = false;
     this.rowHeight = 38;
@@ -551,11 +554,24 @@ export class ChangesView {
     this.app.pushInspectorPayload?.();
   }
 
+  patchText(diff: { binary?: boolean; hunks?: Array<{ header: string; lines?: Array<{ content?: unknown } | string> }>; path?: string }): string {
+    if (diff.binary || !diff.hunks?.length || !diff.path) return '';
+    const lines = [`diff --git a/${diff.path} b/${diff.path}`];
+    for (const hunk of diff.hunks) {
+      lines.push(hunk.header);
+      for (const line of hunk.lines || []) {
+        lines.push(typeof line === 'string' ? line : String(line?.content ?? ''));
+      }
+    }
+    return lines.join('\n');
+  }
+
   renderWorkingDiff(
     diff: { noDiff?: boolean; binary?: boolean; hunks?: Array<NumberableHunk & { header: string; id?: string }>; path?: string },
     staged: boolean
   ): void {
     const body = this.app.inspectorPanel.body;
+    this.inspectorPatch = this.patchText(diff);
     body.innerHTML = '';
     if (diff.noDiff) {
       const empty = document.createElement('div');

@@ -300,6 +300,16 @@ kbd {
   line-height: 1;
 }
 
+.eyebrow {
+  display: block;
+  color: var(--text-tertiary);
+  font-size: 10px;
+  font-weight: var(--weight-semibold);
+  letter-spacing: 0.08em;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
 .segmented-control {
   display: inline-flex;
   gap: 2px;

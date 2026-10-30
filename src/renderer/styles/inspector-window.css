@@ -60,7 +60,7 @@ body {
   white-space: nowrap;
 }
 
-.inspector-window-badges {
+.inspector-window-controls {
   flex: none;
   display: flex;
   align-items: center;

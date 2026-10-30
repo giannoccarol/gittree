@@ -6,87 +6,6 @@ function boundedInteger(value: unknown, maximum: number, fallback = 0): number {
   return Number.isInteger(value) && (value as number) >= 0 && (value as number) <= maximum ? value as number : fallback;
 }
 
-interface SanitizedParent {
-  hash: string;
-  lane: number;
-  kind: string;
-}
-
-interface SanitizedRef {
-  shortName: string;
-  type: string;
-}
-
-interface SanitizedRow {
-  hash: string;
-  subject: string;
-  lane: number;
-  incoming: boolean;
-  before: Array<string | null>;
-  parents: SanitizedParent[];
-  refs: SanitizedRef[];
-}
-
-interface GraphPayloadSource {
-  revision?: unknown;
-  laneCount?: unknown;
-  hasMore?: unknown;
-  selectedHash?: unknown;
-  rows?: unknown;
-}
-
-function sanitizeGraphPayload(graph: GraphPayloadSource | null | undefined) {
-  const rows: SanitizedRow[] = [];
-  const rawRows = Array.isArray(graph?.rows) ? (graph.rows as unknown[]) : [];
-  for (const source of rawRows.slice(0, 2000)) {
-    const row = source as Record<string, unknown>;
-    const hash = boundedString(row.hash, 80);
-    if (!hash) continue;
-    const before = Array.isArray(row.before) ? row.before as unknown[] : [];
-    const parents = Array.isArray(row.parents) ? row.parents as unknown[] : [];
-    const refs = Array.isArray(row.refs) ? row.refs as unknown[] : [];
-    rows.push({
-      hash,
-      subject: boundedString(row.subject, 1000),
-      lane: boundedInteger(row.lane, 127),
-      incoming: row.incoming === true,
-      before: before.slice(0, 128)
-        .map(value => value == null ? null : boundedString(value, 80))
-        .filter(value => value === null || Boolean(value)),
-      parents: parents.slice(0, 128)
-        .map((parent): SanitizedParent => {
-          const entry = parent as { hash?: unknown; lane?: unknown; kind?: unknown };
-          return {
-            hash: boundedString(entry.hash, 80),
-            lane: boundedInteger(entry.lane, 127),
-            kind: ['first-parent', 'merge-parent'].includes(String(entry.kind))
-              ? String(entry.kind)
-              : 'first-parent'
-          };
-        })
-        .filter(parent => parent.hash),
-      refs: refs.slice(0, 64)
-        .map((ref): SanitizedRef => {
-          const entry = ref as { shortName?: unknown; type?: unknown };
-          return {
-            shortName: boundedString(entry.shortName, 500),
-            type: ['branch', 'remote', 'tag', 'head'].includes(String(entry.type))
-              ? String(entry.type)
-              : 'branch'
-          };
-        })
-        .filter(ref => ref.shortName)
-    });
-  }
-  return {
-    revision: boundedInteger(graph?.revision, Number.MAX_SAFE_INTEGER),
-    laneCount: Math.max(1, boundedInteger(graph?.laneCount, 128, 1)),
-    hasMore: graph?.hasMore === true,
-    selectedHash: boundedString(graph?.selectedHash, 80) || null,
-    rows
-  };
-}
-
 function sanitizeFilesPayload(files: unknown) {
   return (Array.isArray(files) ? files : []).slice(0, 5000)
     .map((raw): Record<string, unknown> => {
@@ -103,29 +22,31 @@ function sanitizeFilesPayload(files: unknown) {
 }
 
 interface InspectorPayloadSource {
+  kind?: unknown;
   title?: unknown;
   meta?: unknown;
   theme?: unknown;
   tone?: unknown;
   mode?: unknown;
   eyebrow?: unknown;
-  modeLabel?: unknown;
   wordLevel?: unknown;
-  graph?: GraphPayloadSource | null;
   files?: unknown;
   selectedFile?: unknown;
   filesOpen?: unknown;
-  html?: unknown;
   diffText?: unknown;
 }
 
+const INSPECTOR_KINDS = ['empty', 'commit', 'working-file', 'pull-request'];
+
 function sanitizeInspectorPayload(payload: unknown) {
   // Payloads cross the IPC seam untyped; every field is re-validated below.
+  // The detached window renders the diff text itself: no markup is accepted.
   const source = (typeof payload === 'object' && payload !== null
     ? payload
     : null) as InspectorPayloadSource | null;
   const theme = typeof source?.theme === 'string' ? source.theme : '';
   return {
+    kind: INSPECTOR_KINDS.includes(String(source?.kind)) ? String(source?.kind) : 'empty',
     title: typeof source?.title === 'string' && source.title.length <= 200
       ? source.title
       : 'Inspector',
@@ -140,17 +61,10 @@ function sanitizeInspectorPayload(payload: unknown) {
     eyebrow: typeof source?.eyebrow === 'string' && source.eyebrow.length <= 80
       ? source.eyebrow
       : 'Inspector',
-    modeLabel: typeof source?.modeLabel === 'string' && source.modeLabel.length <= 80
-      ? source.modeLabel
-      : (source?.mode === 'split' ? 'Split' : 'Unified'),
     wordLevel: source?.wordLevel === true,
-    graph: sanitizeGraphPayload(source?.graph),
     files: sanitizeFilesPayload(source?.files),
     selectedFile: boundedString(source?.selectedFile, 4000) || null,
     filesOpen: source?.filesOpen !== false,
-    html: typeof source?.html === 'string' && source.html.length <= 2_000_000
-      ? source.html
-      : '',
     diffText: typeof source?.diffText === 'string' && source.diffText.length <= 10_000_000
       ? source.diffText
       : ''
