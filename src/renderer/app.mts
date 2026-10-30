@@ -710,7 +710,8 @@ export class GitTreeApp {
 
   async onCommitSelected(hash: string): Promise<void> {
     if (!this.state.repo) return;
-    await this.components.diffViewer.showDiffForCommit(this.state.repo.path, hash);
+    const current = await this.components.diffViewer.showDiffForCommit(this.state.repo.path, hash);
+    if (!current) return;
     this.animateContentRefresh(document.getElementById('detail-body')!);
     this.syncInspectorWorkspace();
   }

@@ -130,3 +130,60 @@ test('commit diff summaries expose file status and line counts for inspector nav
     }
   ]);
 });
+
+function loadDiffViewerWithDom(bridge) {
+  const { createElement, installGraphViewDom } = require('./helpers/graph-view-harness');
+  const dom = installGraphViewDom({ bridge });
+  const elements = new Map();
+  global.document.getElementById = id => {
+    if (!elements.has(id)) elements.set(id, createElement('div'));
+    return elements.get(id);
+  };
+  global.window.setTimeout = setTimeout;
+  global.window.clearTimeout = clearTimeout;
+  const mod = require(path.join(__dirname, '..', 'src', 'renderer', 'components', 'diff-viewer.mts'));
+  const DiffViewer = mod.DiffViewer || mod.default || mod;
+  return { DiffViewer, elements, restore: dom.restore };
+}
+
+function deferred() {
+  let resolve;
+  const promise = new Promise(done => { resolve = done; });
+  return { promise, resolve };
+}
+
+test('a slower response for an earlier commit never replaces the newer selection', async () => {
+  const pending = new Map();
+  const bridge = {
+    getCommitDetail(_repoPath, hash) {
+      const entry = deferred();
+      pending.set(hash, entry);
+      return entry.promise;
+    }
+  };
+  const { DiffViewer, elements, restore } = loadDiffViewerWithDom(bridge);
+  try {
+    const body = elements.get('detail-body') || global.document.getElementById('detail-body');
+    const viewer = new DiffViewer(body, {});
+    const first = viewer.showDiffForCommit('/repo', 'aaaaaaa1');
+    const second = viewer.showDiffForCommit('/repo', 'bbbbbbb2');
+
+    pending.get('bbbbbbb2').resolve({
+      hash: 'bbbbbbb2', message: 'second', author_name: 'Ada', date: '2026-01-02T00:00:00Z',
+      diff: 'diff --git a/b.txt b/b.txt\n@@ -0,0 +1 @@\n+b'
+    });
+    assert.equal(await second, true);
+    pending.get('aaaaaaa1').resolve({
+      hash: 'aaaaaaa1', message: 'first', author_name: 'Ada', date: '2026-01-01T00:00:00Z',
+      diff: 'diff --git a/a.txt b/a.txt\n@@ -0,0 +1 @@\n+a'
+    });
+    assert.equal(await first, false);
+
+    assert.equal(viewer.activeHash, 'bbbbbbb2');
+    assert.match(viewer.currentDiff, /b\.txt/);
+    assert.deepEqual(viewer.fileSummaries.map(file => file.path), ['b.txt']);
+    assert.equal(global.document.getElementById('detail-title').textContent, 'second');
+  } finally {
+    restore();
+  }
+});

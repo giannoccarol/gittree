@@ -25,6 +25,8 @@ export class DiffViewer {
   activeHash: string | null;
   wordLevel: boolean;
   renderer: DiffRenderer;
+  /** Increments per request so an older commit cannot overwrite a newer one. */
+  detailRequest: number;
 
   constructor(bodyEl: HTMLElement, app: GitTreeApp) {
     this.body = bodyEl;
@@ -38,6 +40,7 @@ export class DiffViewer {
     this.selectedFilePath = null;
     this.activeRepoPath = null;
     this.activeHash = null;
+    this.detailRequest = 0;
     this.renderer = new DiffRenderer({
       body: bodyEl,
       translate: t,
@@ -99,7 +102,9 @@ export class DiffViewer {
     }
   }
 
-  async showDiffForCommit(repoPath: string, hash: string): Promise<void> {
+  /** Loads and renders one commit; resolves false when a newer request won. */
+  async showDiffForCommit(repoPath: string, hash: string): Promise<boolean> {
+    const request = ++this.detailRequest;
     this.activeRepoPath = repoPath;
     this.activeHash = hash;
     const title = document.getElementById('detail-title')!;
@@ -114,9 +119,10 @@ export class DiffViewer {
     this.app.syncInspectorWorkspace?.({ push: false });
     try {
       const detail = await window.gitTree.getCommitDetail(repoPath, hash) as CommitDetail;
+      if (request !== this.detailRequest) return false;
       if (detail?.error) {
         this.renderer.renderPlaceholder(null, detail.error);
-        return;
+        return true;
       }
       this.currentDiff = detail.diff ?? null;
       this.fileSummaries = this.extractFileSummaries(String(detail.diff ?? ''));
@@ -125,8 +131,11 @@ export class DiffViewer {
       title.title = detail.message || compactTitle;
       this.syncCommitMeta(detail);
       this.render(String(detail.diff));
+      return true;
     } catch (e) {
+      if (request !== this.detailRequest) return false;
       this.renderer.renderPlaceholder(null, (e as Error).message);
+      return true;
     }
   }
 
@@ -326,6 +335,7 @@ export class DiffViewer {
   esc(value: unknown): string { return HtmlEncoder.encode(value); }
 
   clear(): void {
+    this.detailRequest += 1;
     this.currentDiff = null;
     this.fileSummaries = [];
     this.selectedFilePath = null;
