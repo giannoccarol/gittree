@@ -450,6 +450,11 @@
   -webkit-line-clamp: 4;
 }
 
+/* The narrow inspector keeps most of its height for the diff. */
+.workspace-body:not(.inspector-maximized) .detail-commit-body.is-clamped {
+  -webkit-line-clamp: 2;
+}
+
 .detail-commit-body-toggle {
   align-self: flex-start;
   padding: 0;

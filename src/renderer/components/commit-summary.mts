@@ -44,8 +44,8 @@ export function reflowMessage(body: string): string {
 }
 
 /** Bodies longer than this start clamped with a "Show more" control. */
-const LONG_BODY_LINES = 4;
-const LONG_BODY_CHARACTERS = 280;
+const LONG_BODY_LINES = 2;
+const LONG_BODY_CHARACTERS = 140;
 
 export class CommitSummary {
   container: HTMLElement;
