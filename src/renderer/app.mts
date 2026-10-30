@@ -10,6 +10,7 @@ import { PullRequestView } from './components/pull-request-view.mts';
 import { DiffViewer } from './components/diff-viewer.mts';
 import { InspectorWorkspace } from './components/inspector-workspace.mts';
 import { InspectorPanel } from './components/inspector-panel.mts';
+import { CommitSummary } from './components/commit-summary.mts';
 import { GlobalSearch } from './components/search.mts';
 import { BranchCompare } from './components/branch-compare.mts';
 import { CommitCompare } from './components/commit-compare.mts';
@@ -173,7 +174,29 @@ export class GitTreeApp {
         this.syncInspectorWorkspace();
       }
     });
-    this.components.diffViewer = new DiffViewer(byId('detail-body'), this, this.inspectorPanel);
+    const commitSummary = new CommitSummary({
+      container: byId('detail-commit-summary'),
+      translate: t,
+      onCopyHash: hash => { void this.copyCommitHash(hash); },
+      onCreateBranch: hash => { void this.createBranchAtCommit(hash); },
+      onMoreActions: (hash, anchor) => {
+        const rect = anchor.getBoundingClientRect();
+        this.components.commitContextMenu?.open({
+          clientX: rect.left,
+          clientY: rect.bottom + 4,
+          preventDefault() {}
+        } as MouseEvent, [hash]);
+      },
+      onSelectCommit: hash => {
+        const graph = this.components.graphView;
+        graph.select(hash);
+        const index = graph.visibleIndexOf(hash);
+        if (index >= 0) graph.revealRow(index);
+      },
+      onNavigate: direction => { this.components.graphView.selectAdjacent(direction); }
+    });
+    commitSummary.mount();
+    this.components.diffViewer = new DiffViewer(byId('detail-body'), this, this.inspectorPanel, commitSummary);
     this.components.inspectorWorkspace = new InspectorWorkspace({
       container: document.getElementById('inspector-workspace')!,
       graphContainer: document.getElementById('inspector-graph-view')!,
@@ -725,6 +748,36 @@ export class GitTreeApp {
     this.syncInspectorWorkspace();
   }
 
+  async copyCommitHash(hash: string): Promise<void> {
+    try {
+      await navigator.clipboard.writeText(hash);
+      this.showToast(t('details.hashCopied'), 'success');
+    } catch {
+      this.showToast(t('details.copyFailed'), 'error');
+    }
+  }
+
+  async createBranchAtCommit(hash: string): Promise<void> {
+    const repo = this.state.repo;
+    if (!repo) return;
+    const name = await this.dialogs.prompt({
+      title: t('details.createBranchTitle', { hash: hash.slice(0, 7) }),
+      label: t('details.branchName'),
+      cancelLabel: t('common.cancel'),
+      actionLabel: t('details.createBranch'),
+      maxLength: 255
+    });
+    if (!name?.trim() || !this.isCurrentRepo(repo.path)) return;
+    const branch = name.trim();
+    const result = await window.gitTree.createBranch(repo.path, branch, hash) as { error?: string } | undefined;
+    if (result?.error) {
+      this.showToast(result.error, 'error');
+      return;
+    }
+    this.showToast(t('details.branchCreated', { branch }), 'success');
+    this.emit('refresh');
+  }
+
   syncInspectorWorkspace(options: { push?: boolean } = {}): void {
     const graph = this.components.graphView?.getInspectorSnapshot?.() || {
       revision: 0,
@@ -739,6 +792,7 @@ export class GitTreeApp {
       files: this.components.diffViewer?.fileSummaries || [],
       selectedFile: this.components.diffViewer?.selectedFilePath || null
     });
+    this.components.diffViewer?.syncNavigation();
     if (options.push !== false) this.pushInspectorPayload();
   }
 
@@ -1015,6 +1069,7 @@ export class GitTreeApp {
     this.updateWindowChrome(this.windowState);
     this.setInspectorState(this.inspectorState, false);
     this.components.inspectorWorkspace?.refreshTranslations();
+    this.components.diffViewer?.summary?.refreshTranslations();
     this.components.repoTabs?.render();
     if (this.state.repo) {
       this.components.branchList.render();

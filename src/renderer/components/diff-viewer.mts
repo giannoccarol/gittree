@@ -3,13 +3,17 @@ import { isAgentsFeatureEnabled } from '../ai-feature-gate.mts';
 import { DiffRenderer, type DiffMode } from './diff-renderer.mts';
 import { DiffParser, type DiffFileSummary, type SplitRow } from './diff-parser.mts';
 import { InspectorPanel } from './inspector-panel.mts';
+import type { CommitSummary, CommitSummaryState } from './commit-summary.mts';
 
 interface CommitDetail {
   error?: string;
   diff?: string;
   message?: string;
+  body?: string;
+  parents?: string[];
   hash?: string;
   author_name?: string;
+  author_email?: string;
   date?: string;
 }
 
@@ -27,12 +31,21 @@ export class DiffViewer {
   wordLevel: boolean;
   renderer: DiffRenderer;
   panel: InspectorPanel;
+  summary: CommitSummary | null;
+  currentDetail: CommitDetail | null;
   /** Increments per request so an older commit cannot overwrite a newer one. */
   detailRequest: number;
 
-  constructor(bodyEl: HTMLElement, app: GitTreeApp, panel: InspectorPanel | null = null) {
+  constructor(
+    bodyEl: HTMLElement,
+    app: GitTreeApp,
+    panel: InspectorPanel | null = null,
+    summary: CommitSummary | null = null
+  ) {
     this.body = bodyEl;
     this.app = app;
+    this.summary = summary;
+    this.currentDetail = null;
     this.panel = panel ?? new InspectorPanel({
       panel: null,
       title: document.getElementById('detail-title')!,
@@ -121,7 +134,35 @@ export class DiffViewer {
     this.selectedFilePath = null;
     this.activeRepoPath = null;
     this.activeHash = null;
+    this.currentDetail = null;
+    this.summary?.update(null);
     this.syncCommitMeta();
+  }
+
+  /** The header summary of a loaded commit, with its refs and neighbours. */
+  summaryState(detail: CommitDetail): CommitSummaryState | null {
+    if (!detail.hash) return null;
+    const graph = this.app.components?.graphView;
+    const navigation = graph?.navigationFor?.(detail.hash) ?? { newer: false, older: false };
+    return {
+      hash: detail.hash,
+      body: detail.body || '',
+      parents: Array.isArray(detail.parents) ? detail.parents : [],
+      refs: (graph?.refsByHash?.get(detail.hash) || []).map(ref => ({
+        shortName: ref.shortName,
+        type: ref.type
+      })),
+      canGoNewer: navigation.newer,
+      canGoOlder: navigation.older
+    };
+  }
+
+  /** Refreshes the newer/older controls after the history changed around the commit. */
+  syncNavigation(): void {
+    const hash = this.currentDetail?.hash;
+    if (!hash || !this.summary) return;
+    const navigation = this.app.components?.graphView?.navigationFor?.(hash);
+    if (navigation) this.summary.setNavigation(navigation.newer, navigation.older);
   }
 
   /** Loads and renders one commit; resolves false when a newer request won. */
@@ -132,8 +173,10 @@ export class DiffViewer {
     const compactTitle = t('details.changesIn', { hash: hash.substring(0, 7) });
     this.panel.present('commit', { title: compactTitle });
     this.currentDiff = null;
+    this.currentDetail = null;
     this.fileSummaries = [];
     this.selectedFilePath = null;
+    this.summary?.update(null);
     this.syncCommitMeta({ hash });
     this.renderer.renderPlaceholder('ph-circle-notch', t('details.loading'));
     this.app.syncInspectorWorkspace?.({ push: false });
@@ -150,6 +193,8 @@ export class DiffViewer {
       this.render(detail.diff ?? '');
       this.fileSummaries = this.summaries(this.renderer.files);
       this.syncCommitMeta(detail, this.fileSummaries.length);
+      this.currentDetail = detail;
+      this.summary?.update(this.summaryState(detail));
       return true;
     } catch (e) {
       if (request !== this.detailRequest) return false;
@@ -163,7 +208,9 @@ export class DiffViewer {
     if (!meta) return;
     const hash = detail?.hash || '';
     document.getElementById('detail-hash')!.textContent = hash ? hash.slice(0, 7) : '';
-    document.getElementById('detail-author')!.textContent = detail?.author_name || '';
+    const author = document.getElementById('detail-author')!;
+    author.textContent = detail?.author_name || '';
+    author.title = detail?.author_email || '';
     document.getElementById('detail-date')!.textContent = detail?.date
       ? new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' })
         .format(new Date(detail.date))
@@ -327,6 +374,8 @@ export class DiffViewer {
   clear(): void {
     this.detailRequest += 1;
     this.currentDiff = null;
+    this.currentDetail = null;
+    this.summary?.update(null);
     this.fileSummaries = [];
     this.selectedFilePath = null;
     this.activeRepoPath = null;
