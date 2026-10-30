@@ -73,8 +73,63 @@
 }
 
 .diff-file-path {
+  min-width: 0;
+  display: flex;
   overflow: hidden;
   font-family: var(--font-mono);
+  white-space: nowrap;
+}
+
+/* Long paths shorten the directory first and keep the file name readable. */
+.path-directory {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-tertiary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.path-name {
+  flex: none;
+  color: var(--text-primary);
+  font-weight: var(--weight-semibold);
+}
+
+.diff-file-status {
+  width: 20px;
+  height: 20px;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  background: var(--surface-tertiary);
+  color: var(--text-tertiary);
+  font-size: var(--text-xs);
+}
+
+.diff-file-status.is-a {
+  background: var(--success-soft);
+  color: var(--success-text);
+}
+
+.diff-file-status.is-d {
+  background: var(--error-soft);
+  color: var(--error-text);
+}
+
+.diff-file-status.is-r {
+  background: var(--warning-soft);
+  color: var(--warning-text);
+}
+
+.diff-file-note {
+  flex: none;
+  max-width: 40%;
+  overflow: hidden;
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -142,19 +197,37 @@
 }
 
 .diff-file-stats {
+  flex: none;
   display: flex;
   gap: var(--space-2);
   margin-left: auto;
   color: var(--text-tertiary);
-  font-size: 10px;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+}
+
+.diff-file-stats .is-addition {
+  color: var(--success-text);
+}
+
+.diff-file-stats .is-deletion {
+  color: var(--error-text);
+}
+
+.diff-file-stats + .diff-file-blame {
+  margin-left: 0;
 }
 
 .diff-line {
   min-height: 22px;
   display: flex;
   padding: 0 var(--space-2);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  /* Long lines wrap between words; only an unbroken token is split. */
   white-space: pre-wrap;
-  word-break: break-all;
+  word-break: normal;
+  overflow-wrap: anywhere;
   content-visibility: auto;
   contain: layout paint style;
   contain-intrinsic-size: 20px;
@@ -180,7 +253,16 @@
   margin-right: var(--space-2);
 }
 
+.diff-line-marker {
+  width: 1.5ch;
+  flex: none;
+  padding: 1px 0;
+  text-align: center;
+  user-select: none;
+}
+
 .diff-line-content {
+  min-width: 0;
   flex: 1;
   padding: 1px 0;
 }
@@ -211,7 +293,8 @@
   background: var(--diff-add-line);
 }
 
-.diff-line.add .diff-line-content {
+.diff-line.add .diff-line-content,
+.diff-line.add .diff-line-marker {
   color: var(--diff-add-text);
 }
 
@@ -219,7 +302,8 @@
   background: var(--diff-del-line);
 }
 
-.diff-line.del .diff-line-content {
+.diff-line.del .diff-line-content,
+.diff-line.del .diff-line-marker {
   color: var(--diff-del-text);
 }
 
@@ -256,8 +340,8 @@
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
-.workspace-body.inspector-maximized .detail-panel-body {
-  font-size: var(--text-sm);
+.workspace-body.inspector-maximized .diff-line {
+  font-size: var(--text-base);
 }
 
 .workspace-body.inspector-maximized .diff-line {

@@ -528,7 +528,10 @@ const I18n = {
               fileAdded: 'Added file',
               fileDeleted: 'Deleted file',
               fileModified: 'Modified file',
-              fileRenamed: 'Renamed file'
+              fileRenamed: 'Renamed file',
+              renamedFrom: 'from {{path}}',
+              modeChanged: 'File mode changed',
+              binaryFile: 'Binary file: contents not shown'
             },
             actions: {
               fetch: 'Fetch',
@@ -1389,7 +1392,10 @@ const I18n = {
               fileAdded: 'File aggiunto',
               fileDeleted: 'File eliminato',
               fileModified: 'File modificato',
-              fileRenamed: 'File rinominato'
+              fileRenamed: 'File rinominato',
+              renamedFrom: 'da {{path}}',
+              modeChanged: 'Permessi del file modificati',
+              binaryFile: 'File binario: contenuto non mostrato'
             },
             actions: {
               fetch: 'Fetch',

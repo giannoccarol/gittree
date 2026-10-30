@@ -249,10 +249,14 @@
 .inspector-file-path {
   min-width: 0;
   flex: 1;
+  display: flex;
   overflow: hidden;
   font-family: var(--font-mono);
-  text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.inspector-file-path .path-name {
+  font-weight: var(--weight-medium);
 }
 
 .inspector-file-stats {

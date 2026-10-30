@@ -1,4 +1,4 @@
-import { DiffParser, type SplitRow, type UnifiedRow } from './diff-parser.mts';
+import { DiffParser, type DiffFileSummary, type SplitRow, type UnifiedRow } from './diff-parser.mts';
 import { DiffLayout, type LayoutFile } from './diff-layout.mts';
 
 export const VIRTUAL_DIFF_THRESHOLD = 1200;
@@ -8,6 +8,38 @@ type VirtualDiffRow = UnifiedRow | SplitRow;
 type VirtualDiffFile = LayoutFile<VirtualDiffRow>;
 
 export type DiffMode = 'unified' | 'split';
+
+const STATUS_ICONS: Record<DiffFileSummary['status'], string> = {
+  A: 'ph-plus',
+  D: 'ph-minus',
+  R: 'ph-arrows-left-right',
+  M: 'ph-pencil-simple'
+};
+
+const STATUS_LABELS: Record<DiffFileSummary['status'], string> = {
+  A: 'details.fileAdded',
+  D: 'details.fileDeleted',
+  R: 'details.fileRenamed',
+  M: 'details.fileModified'
+};
+
+/** A path label whose directory shrinks before the file name does. */
+export function createPathLabel(path: string, className: string): HTMLElement {
+  const label = document.createElement('span');
+  label.className = className;
+  const slash = path.lastIndexOf('/');
+  if (slash > 0) {
+    const directory = document.createElement('span');
+    directory.className = 'path-directory';
+    directory.textContent = path.slice(0, slash + 1);
+    label.appendChild(directory);
+  }
+  const name = document.createElement('span');
+  name.className = 'path-name';
+  name.textContent = path.slice(slash + 1);
+  label.appendChild(name);
+  return label;
+}
 
 export interface DiffRenderOptions {
   mode: DiffMode;
@@ -36,8 +68,12 @@ export class DiffRenderer {
   createFileActions: ((path: string) => HTMLElement[]) | null;
   prefersReducedMotion: () => boolean;
   options: DiffRenderOptions;
+  /** Files of the last rendered patch, in patch order. */
+  files: DiffFileSummary[];
   virtualLayer: HTMLElement | null;
   virtualFiles: VirtualDiffFile[];
+  /** Summary of each virtual file group (rows before any file have none). */
+  virtualSummaries: Map<VirtualDiffFile, DiffFileSummary>;
   virtualMode: string | null;
   virtualScrollRaf: number;
   /** Scroll range covered by the rendered rows, including overscan. */
@@ -52,8 +88,10 @@ export class DiffRenderer {
     this.prefersReducedMotion = prefersReducedMotion
       ?? (() => Boolean(window.matchMedia?.('(prefers-reduced-motion: reduce)').matches));
     this.options = { mode: 'unified', wordLevel: true, expanded: false };
+    this.files = [];
     this.virtualLayer = null;
     this.virtualFiles = [];
+    this.virtualSummaries = new Map();
     this.virtualMode = null;
     this.virtualScrollRaf = 0;
     this.virtualWindow = null;
@@ -70,13 +108,24 @@ export class DiffRenderer {
   render(diffText: string, options: DiffRenderOptions): void {
     this.options = { ...options };
     this.clearFileTargetTimer();
+    // The patch is parsed once; file summaries and both layouts share the rows.
+    const parsed = DiffParser.summarizeFiles(DiffParser.parseUnified(diffText || ''));
+    this.files = diffText ? parsed.files : [];
     if (!diffText) {
       this.disableVirtualization();
       this.renderPlaceholder('ph-check-circle', this.translate('details.noChanges'));
       return;
     }
-    if (this.options.mode === 'unified') this.renderUnified(diffText);
-    else this.renderSplit(diffText);
+    if (this.options.mode === 'unified') this.renderUnified(parsed.rows);
+    else this.renderSplit(parsed.rows);
+  }
+
+  /** Text shown for a row; Git's binary notice becomes a translated sentence. */
+  displayContent(row: UnifiedRow): string {
+    if (row.kind === 'header' && /^(?:Binary files .* differ|GIT binary patch)$/.test(row.content)) {
+      return this.translate('details.binaryFile');
+    }
+    return row.content;
   }
 
   renderPlaceholder(icon: string | null, text: string): void {
@@ -98,9 +147,7 @@ export class DiffRenderer {
       contentEl.textContent = text;
       return;
     }
-    // The leading +/- markers always differ; compare the code after them.
-    const markers = '+-';
-    let prefix = markers.includes(text[0]) && markers.includes(counterpart[0]) ? 1 : 0;
+    let prefix = 0;
     const max = Math.min(text.length, counterpart.length);
     while (prefix < max && text[prefix] === counterpart[prefix]) prefix += 1;
     let suffix = 0;
@@ -124,8 +171,7 @@ export class DiffRenderer {
     contentEl.append(mark, document.createTextNode(text.slice(midEnd)));
   }
 
-  renderUnified(diffText: string): void {
-    const lines = DiffParser.parseUnified(diffText);
+  renderUnified(lines: UnifiedRow[]): void {
     if (lines.length > VIRTUAL_DIFF_THRESHOLD) {
       this.renderVirtualized(lines, 'unified');
       return;
@@ -141,40 +187,24 @@ export class DiffRenderer {
       if (line.kind === 'file') {
         const block = document.createElement('section');
         block.className = 'diff-file-block';
+        const hdr = this.createFileHeader(block, line.content, this.files[fileIndex] ?? null);
         block.style.setProperty('--file-index', String(fileIndex++));
-        const hdr = this.createFileHeader(block, line.content);
         block.appendChild(hdr);
         frag.appendChild(block);
         target = block;
         return;
       }
 
-      const el = document.createElement('div');
-      el.className = `diff-line ${line.kind === 'no-newline' ? 'header' : line.kind}`;
-      el.appendChild(this.lineNumber(line.oldLine, 'old'));
-      el.appendChild(this.lineNumber(line.newLine, 'new'));
-
-      const content = document.createElement('span');
-      content.className = 'diff-line-content';
-      if (line.kind === 'add') {
-        this.appendHighlightedLine(content, line.content, lastRemoval);
-        lastRemoval = null;
-      } else {
-        content.textContent = line.content;
-        lastRemoval = line.kind === 'del' ? line.content : null;
-      }
-      el.appendChild(content);
-
-      target.appendChild(el);
+      target.appendChild(this.createUnifiedLine(line, lastRemoval));
+      lastRemoval = line.kind === 'del' ? line.content : null;
     });
 
     this.body.replaceChildren(frag);
   }
 
-  renderSplit(diffText: string): void {
-    const lineCount = String(diffText || '').split('\n').length;
-    if (lineCount > VIRTUAL_DIFF_THRESHOLD) {
-      this.renderVirtualized(DiffParser.parseUnified(diffText), 'split-unified');
+  renderSplit(rows: UnifiedRow[]): void {
+    if (rows.length > VIRTUAL_DIFF_THRESHOLD) {
+      this.renderVirtualized(DiffParser.pairRows(rows), 'split');
       return;
     }
     const wrapper = document.createElement('div');
@@ -190,7 +220,7 @@ export class DiffRenderer {
       return columns;
     };
 
-    const parsedRows = DiffParser.parseSplit(diffText);
+    const parsedRows = DiffParser.pairRows(rows);
     this.disableVirtualization();
     this.body.style.setProperty('--diff-gutter-digits', String(DiffParser.maxDigits(parsedRows)));
     parsedRows.forEach(row => {
@@ -199,8 +229,8 @@ export class DiffRenderer {
         if (row.kind === 'file') {
           const block = document.createElement('section');
           block.className = 'diff-file-block';
+          const header = this.createFileHeader(block, row.content, this.files[fileIndex] ?? null);
           block.style.setProperty('--file-index', String(fileIndex++));
-          const header = this.createFileHeader(block, row.content);
           block.appendChild(header);
           wrapper.appendChild(block);
           target = block;
@@ -212,10 +242,7 @@ export class DiffRenderer {
           this.lineNumber(null, 'old'),
           this.lineNumber(null, 'new')
         );
-        const content = document.createElement('span');
-        content.className = 'diff-line-content';
-        content.textContent = row.content;
-        el.appendChild(content);
+        this.appendCode(el, row, null);
         target.appendChild(el);
         return;
       }
@@ -230,12 +257,12 @@ export class DiffRenderer {
   renderVirtualized(rows: UnifiedRow[] | SplitRow[], mode: string): void {
     this.disableVirtualization();
     const isUnified = mode === 'unified';
-    const isSplit = mode === 'split' || mode === 'split-unified';
+    const isSplit = mode === 'split';
     const kindOf = (row: VirtualDiffRow): string => ('kind' in row ? String(row.kind) : '');
     const contentOf = (row: VirtualDiffRow): string => ('content' in row && typeof row.content === 'string' ? row.content : '');
     const isFullRow = (row: VirtualDiffRow): boolean => 'type' in row && (row as { type?: unknown }).type === 'full';
     const files = DiffLayout.groupRows<VirtualDiffRow>(rows, {
-      isFile: row => isUnified || mode === 'split-unified'
+      isFile: row => isUnified
         ? kindOf(row) === 'file'
         : isFullRow(row) && kindOf(row) === 'file',
       pathForFile: row => this.extractPath(contentOf(row)) || contentOf(row)
@@ -244,6 +271,12 @@ export class DiffRenderer {
     const layout = DiffLayout.layoutFiles<VirtualDiffRow>(files, { rowHeight });
     this.virtualMode = mode;
     this.virtualFiles = layout.files;
+    let summaryIndex = 0;
+    this.virtualSummaries = new Map();
+    for (const file of layout.files) {
+      const summary = file.header ? this.files[summaryIndex++] : undefined;
+      if (summary) this.virtualSummaries.set(file, summary);
+    }
     this.body.classList.add('diff-virtualized');
     this.body.classList.toggle('diff-split', isSplit);
     this.body.style.setProperty('--diff-gutter-digits', String(DiffParser.maxDigits(rows)));
@@ -291,7 +324,7 @@ export class DiffRenderer {
       block.style.height = `${file.height}px`;
       if (file.path) block.dataset.filePath = file.path;
       if (file.header && 'content' in file.header) {
-        block.appendChild(this.createFileHeader(block, file.header.content));
+        block.appendChild(this.createFileHeader(block, file.header.content, this.virtualSummaries.get(file) ?? null));
       }
 
       const rowsBeforeViewport = Math.ceil(VIRTUAL_DIFF_OVERSCAN_PX / file.rowHeight);
@@ -360,15 +393,32 @@ export class DiffRenderer {
     element.className = `diff-line ${line.kind === 'no-newline' ? 'header' : line.kind}`;
     element.appendChild(this.lineNumber(line.oldLine, 'old'));
     element.appendChild(this.lineNumber(line.newLine, 'new'));
+    this.appendCode(element, line, line.kind === 'add' ? previousRemoval : null);
+    return element;
+  }
+
+  /**
+   * Appends a line's +/- marker in its own column and its code, so wrapped
+   * lines stay aligned and copied code carries no markers.
+   */
+  appendCode(element: HTMLElement, row: UnifiedRow, counterpart: string | null): void {
+    const isCode = row.kind === 'add' || row.kind === 'del' || row.kind === 'context';
+    if (isCode) {
+      const marker = document.createElement('span');
+      marker.className = 'diff-line-marker';
+      marker.setAttribute('aria-hidden', 'true');
+      marker.textContent = row.content.slice(0, 1).trim();
+      element.appendChild(marker);
+    }
     const content = document.createElement('span');
     content.className = 'diff-line-content';
-    if (line.kind === 'add') {
-      this.appendHighlightedLine(content, line.content, previousRemoval);
+    const text = isCode ? row.content.slice(1) : this.displayContent(row);
+    if ((row.kind === 'add' || row.kind === 'del') && counterpart) {
+      this.appendHighlightedLine(content, text, counterpart.slice(1));
     } else {
-      content.textContent = line.content;
+      content.textContent = text;
     }
     element.appendChild(content);
-    return element;
   }
 
   createSplitLineElements(row: SplitRow): HTMLElement[] {
@@ -402,10 +452,7 @@ export class DiffRenderer {
       this.lineNumber(null, 'old'),
       this.lineNumber(null, 'new')
     );
-    const content = document.createElement('span');
-    content.className = 'diff-line-content';
-    content.textContent = row.content;
-    element.appendChild(content);
+    this.appendCode(element, row, null);
     return [element];
   }
 
@@ -421,6 +468,7 @@ export class DiffRenderer {
     this.body.classList.remove('diff-split');
     this.virtualLayer = null;
     this.virtualFiles = [];
+    this.virtualSummaries = new Map();
     this.virtualMode = null;
     this.virtualWindow = null;
   }
@@ -429,14 +477,7 @@ export class DiffRenderer {
     const el = document.createElement('div');
     el.className = `diff-line ${line.kind}`;
     el.appendChild(this.lineNumber(side === 'old' ? line.oldLine : line.newLine, side));
-    const content = document.createElement('span');
-    content.className = 'diff-line-content';
-    if ((line.kind === 'add' || line.kind === 'del') && counterpart) {
-      this.appendHighlightedLine(content, line.content, counterpart);
-    } else {
-      content.textContent = line.content;
-    }
-    el.appendChild(content);
+    this.appendCode(el, line, counterpart ?? null);
     return el;
   }
 
@@ -452,15 +493,57 @@ export class DiffRenderer {
     return m ? m[2] : null;
   }
 
-  createFileHeader(block: HTMLElement, content: string): HTMLElement {
-    const path = this.extractPath(content) || content;
+  createFileHeader(block: HTMLElement, content: string, summary: DiffFileSummary | null = null): HTMLElement {
+    const path = summary?.path || this.extractPath(content) || content;
     block.dataset.filePath = path;
     const header = document.createElement('div');
     header.className = 'diff-file-header';
-    const label = document.createElement('span');
-    label.className = 'diff-file-path';
-    label.textContent = path;
-    header.appendChild(label);
+    header.title = summary?.oldPath ? `${summary.oldPath} → ${path}` : path;
+
+    if (summary) {
+      const status = document.createElement('span');
+      status.className = `diff-file-status is-${summary.status.toLowerCase()}`;
+      status.title = this.translate(STATUS_LABELS[summary.status]);
+      status.setAttribute('aria-label', status.title);
+      const icon = document.createElement('i');
+      icon.className = `ph ${STATUS_ICONS[summary.status]}`;
+      icon.setAttribute('aria-hidden', 'true');
+      status.appendChild(icon);
+      header.appendChild(status);
+    }
+
+    header.appendChild(createPathLabel(path, 'diff-file-path'));
+
+    if (summary?.oldPath) {
+      const renamed = document.createElement('span');
+      renamed.className = 'diff-file-note';
+      renamed.textContent = this.translate('details.renamedFrom', { path: summary.oldPath });
+      header.appendChild(renamed);
+    }
+    if (summary?.modeChange) {
+      const mode = document.createElement('span');
+      mode.className = 'diff-file-note';
+      mode.title = this.translate('details.modeChanged');
+      mode.textContent = `${summary.modeChange.from} → ${summary.modeChange.to}`;
+      header.appendChild(mode);
+    }
+    if (summary && (summary.additions || summary.deletions)) {
+      const stats = document.createElement('span');
+      stats.className = 'diff-file-stats';
+      if (summary.additions) {
+        const additions = document.createElement('span');
+        additions.className = 'is-addition';
+        additions.textContent = `+${summary.additions}`;
+        stats.appendChild(additions);
+      }
+      if (summary.deletions) {
+        const deletions = document.createElement('span');
+        deletions.className = 'is-deletion';
+        deletions.textContent = `−${summary.deletions}`;
+        stats.appendChild(deletions);
+      }
+      header.appendChild(stats);
+    }
     for (const action of this.createFileActions?.(path) || []) header.appendChild(action);
     return header;
   }

@@ -76,12 +76,20 @@ test('unified rendering groups lines by file with numbers and word highlights', 
     const blocks = findAll(body, 'diff-file-block');
     assert.deepEqual(blocks.map(block => block.dataset.filePath), ['src/app.js', 'README.md']);
     assert.equal(text(findAll(blocks[0], 'diff-file-path')[0]), 'src/app.js');
+    assert.equal(findAll(blocks[0], 'path-directory')[0].textContent, 'src/');
+    assert.equal(findAll(blocks[0], 'path-name')[0].textContent, 'app.js');
+    assert.equal(text(findAll(blocks[0], 'diff-file-stats')[0]), '+1−1');
+    assert.equal(findAll(blocks[1], 'diff-file-status')[0].className, 'diff-file-status is-a');
+    assert.deepEqual(renderer.files.map(file => [file.path, file.status, file.additions, file.deletions]), [
+      ['src/app.js', 'M', 1, 1],
+      ['README.md', 'A', 1, 0]
+    ]);
     assert.equal(findAll(blocks[0], 'file-action')[0].textContent, 'act:src/app.js');
 
     const lines = findAll(blocks[0], 'diff-line');
     const kinds = lines.map(line => line.className.replace('diff-line ', ''));
-    assert.deepEqual(kinds, ['header', 'header', 'header', 'hunk', 'context', 'del', 'add', 'context']);
-    const added = lines[6];
+    assert.deepEqual(kinds, ['hunk', 'context', 'del', 'add', 'context'], 'index and ---/+++ lines are hidden');
+    const added = lines[3];
     assert.deepEqual(findAll(added, 'diff-line-num').map(number => number.textContent), ['', '2']);
     assert.equal(findAll(added, 'diff-word')[0].textContent, '2');
     assert.equal(body.style['--diff-gutter-digits'], '1');
@@ -112,6 +120,7 @@ test('split rendering pairs removed and added lines in two columns', () => {
     const pair = firstFileLines.slice(2, 4).map(line => line.className);
     assert.deepEqual(pair, ['diff-line del', 'diff-line add']);
     assert.deepEqual(firstFileLines.slice(2, 4).map(line => findAll(line, 'diff-word')[0]?.textContent), ['1', '2']);
+    assert.equal(findAll(body, 'diff-file-block').length, 2);
   } finally {
     restore();
   }
@@ -171,6 +180,52 @@ test('virtualized scrolling rebuilds rows only when the viewport nears the rende
     body.clientHeight = 800;
     renderer.renderVirtualViewport();
     assert.equal(rebuilds, 2, 'a resized viewport renders again');
+  } finally {
+    restore();
+  }
+});
+
+test('renames, mode changes and binary files are described in the file header', () => {
+  const { body, renderer, restore } = setup();
+  try {
+    renderer.render([
+      'diff --git a/old/name.txt b/new/name.txt',
+      'similarity index 90%',
+      'rename from old/name.txt',
+      'rename to new/name.txt',
+      'diff --git a/run.sh b/run.sh',
+      'old mode 100644',
+      'new mode 100755',
+      'diff --git a/logo.png b/logo.png',
+      'index 111..222 100644',
+      'Binary files a/logo.png and b/logo.png differ'
+    ].join('\n'), { mode: 'unified', wordLevel: true });
+    const blocks = findAll(body, 'diff-file-block');
+    assert.deepEqual(blocks.map(block => block.dataset.filePath), ['new/name.txt', 'run.sh', 'logo.png']);
+    assert.equal(findAll(blocks[0], 'diff-file-status')[0].className, 'diff-file-status is-r');
+    assert.equal(findAll(blocks[0], 'diff-file-note')[0].textContent, 'details.renamedFrom');
+    assert.equal(findAll(blocks[1], 'diff-file-note')[0].textContent, '100644 → 100755');
+    const binaryLines = findAll(blocks[2], 'diff-line');
+    assert.equal(binaryLines.length, 1);
+    assert.equal(text(findAll(binaryLines[0], 'diff-line-content')[0]), 'details.binaryFile');
+    assert.equal(renderer.files[2].binary, true);
+  } finally {
+    restore();
+  }
+});
+
+test('large split diffs keep removed and added lines on the same row', () => {
+  const { body, renderer, restore } = setup({ clientHeight: 600 });
+  try {
+    const rows = ['diff --git a/big.txt b/big.txt', '@@ -1,1500 +1,1500 @@'];
+    for (let index = 0; index < 1500; index += 1) rows.push(`-old ${index}`, `+new ${index}`);
+    renderer.render(rows.join('\n'), { mode: 'split', wordLevel: true });
+    assert.ok(body.classList.contains('diff-virtualized'));
+    const columns = findAll(body, 'diff-split-columns');
+    assert.ok(columns.length > 0);
+    const [left, right] = columns[1].children;
+    assert.equal(left.className, 'diff-line del');
+    assert.equal(right.className, 'diff-line add');
   } finally {
     restore();
   }

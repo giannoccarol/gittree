@@ -1,4 +1,5 @@
 import { InspectorGraph } from './inspector-graph.mts';
+import { createPathLabel } from './diff-renderer.mts';
 
 interface InspectorFile {
   path: string;
@@ -207,9 +208,7 @@ export class InspectorWorkspace {
       status.title = this.translate(this.statusLabel(String(file.status)));
       status.appendChild(statusIcon);
 
-      const path = document.createElement('span');
-      path.className = 'inspector-file-path';
-      path.textContent = file.path;
+      const path = createPathLabel(file.path, 'inspector-file-path');
 
       const stats = document.createElement('span');
       stats.className = 'inspector-file-stats';

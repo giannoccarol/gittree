@@ -104,6 +104,11 @@ function emptySide(): UnifiedRow {
 }
 
 export function parseSplit(patch: unknown): SplitRow[] {
+  return pairRows(parseUnified(patch));
+}
+
+/** Pairs removed and added lines of already parsed unified rows side by side. */
+export function pairRows(rows: UnifiedRow[]): SplitRow[] {
   const output: SplitRow[] = [];
   let deletions: UnifiedRow[] = [];
   let additions: UnifiedRow[] = [];
@@ -120,7 +125,7 @@ export function parseSplit(patch: unknown): SplitRow[] {
     additions = [];
   };
 
-  for (const row of parseUnified(patch)) {
+  for (const row of rows) {
     if (row.kind === 'del') {
       deletions.push(row);
     } else if (row.kind === 'add') {
@@ -135,6 +140,78 @@ export function parseSplit(patch: unknown): SplitRow[] {
   }
   flush();
   return output;
+}
+
+export interface DiffFileSummary {
+  path: string;
+  oldPath: string | null;
+  status: 'A' | 'D' | 'R' | 'M';
+  additions: number;
+  deletions: number;
+  binary: boolean;
+  modeChange: { from: string; to: string } | null;
+}
+
+const BINARY_LINE = /^(?:Binary files .* differ|GIT binary patch)$/;
+
+function filePathOf(content: string): string {
+  const match = content.match(/^diff --git a\/(.+) b\/(.+)$/);
+  return match ? match[2] : content;
+}
+
+/**
+ * Describes every file of a parsed patch and returns the rows worth showing:
+ * Git's per-file header lines (index, ---/+++, modes, renames) become file
+ * properties, except the binary notice, which stays as the file's content.
+ */
+export function summarizeFiles(rows: UnifiedRow[]): { files: DiffFileSummary[]; rows: UnifiedRow[] } {
+  const files: DiffFileSummary[] = [];
+  const visible: UnifiedRow[] = [];
+  let current: DiffFileSummary | null = null;
+  let oldMode = '';
+  for (const row of rows) {
+    if (row.kind === 'file') {
+      current = {
+        path: filePathOf(row.content),
+        oldPath: null,
+        status: 'M',
+        additions: 0,
+        deletions: 0,
+        binary: false,
+        modeChange: null
+      };
+      oldMode = '';
+      files.push(current);
+      visible.push(row);
+      continue;
+    }
+    if (row.kind === 'header') {
+      const content = row.content;
+      if (BINARY_LINE.test(content)) {
+        if (current) current.binary = true;
+        visible.push(row);
+      } else if (current) {
+        if (content.startsWith('new file mode ')) current.status = 'A';
+        else if (content.startsWith('deleted file mode ')) current.status = 'D';
+        else if (content.startsWith('rename from ')) {
+          current.status = 'R';
+          current.oldPath = content.slice('rename from '.length);
+        } else if (content.startsWith('rename to ')) {
+          current.status = 'R';
+          current.path = content.slice('rename to '.length);
+        } else if (content.startsWith('old mode ')) {
+          oldMode = content.slice('old mode '.length);
+        } else if (content.startsWith('new mode ')) {
+          current.modeChange = { from: oldMode, to: content.slice('new mode '.length) };
+        }
+      }
+      continue;
+    }
+    if (current && row.kind === 'add') current.additions += 1;
+    else if (current && row.kind === 'del') current.deletions += 1;
+    visible.push(row);
+  }
+  return { files, rows: visible };
 }
 
 export interface HunkSourceLine {
@@ -198,6 +275,8 @@ export const DiffParser = {
   headerRange,
   parseUnified,
   parseSplit,
+  pairRows,
+  summarizeFiles,
   numberHunk,
   maxDigits
 };

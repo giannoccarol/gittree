@@ -1,7 +1,7 @@
 import type { GitTreeApp } from '../app.mts';
 import { isAgentsFeatureEnabled } from '../ai-feature-gate.mts';
 import { DiffRenderer, type DiffMode } from './diff-renderer.mts';
-import { DiffParser, type SplitRow } from './diff-parser.mts';
+import { DiffParser, type DiffFileSummary, type SplitRow } from './diff-parser.mts';
 import { InspectorPanel } from './inspector-panel.mts';
 
 interface CommitDetail {
@@ -145,11 +145,11 @@ export class DiffViewer {
         return true;
       }
       this.currentDiff = detail.diff ?? null;
-      this.fileSummaries = this.extractFileSummaries(String(detail.diff ?? ''));
       const subject = String(detail.message || '').split(/\r?\n/)[0].trim();
       this.panel.setTitle(subject || compactTitle, detail.message || compactTitle);
-      this.syncCommitMeta(detail);
-      this.render(String(detail.diff));
+      this.render(detail.diff ?? '');
+      this.fileSummaries = this.summaries(this.renderer.files);
+      this.syncCommitMeta(detail, this.fileSummaries.length);
       return true;
     } catch (e) {
       if (request !== this.detailRequest) return false;
@@ -158,7 +158,7 @@ export class DiffViewer {
     }
   }
 
-  syncCommitMeta(detail: Partial<CommitDetail> | null = null): void {
+  syncCommitMeta(detail: Partial<CommitDetail> | null = null, fileCount: number | null = null): void {
     const meta = document.getElementById('detail-meta')!;
     if (!meta) return;
     const hash = detail?.hash || '';
@@ -168,9 +168,9 @@ export class DiffViewer {
       ? new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' })
         .format(new Date(detail.date))
       : '';
-    const count = typeof detail?.diff === 'string'
+    const count = fileCount ?? (typeof detail?.diff === 'string'
       ? (detail.diff.match(/^diff --git /gm) || []).length
-      : 0;
+      : 0);
     document.getElementById('detail-files')!.textContent = count
       ? t('details.files', { count })
       : '';
@@ -305,43 +305,14 @@ export class DiffViewer {
     return current.startsWith('it') ? 'it' : 'en';
   }
 
-  extractFileSummaries(diffText: string): Array<{ path: string; oldPath: string | null; status: string; additions: number; deletions: number }> {
-    const summaries: Array<{ path: string; oldPath: string | null; status: string; additions: number; deletions: number }> = [];
-    let current: { path: string; oldPath: string | null; status: string; additions: number; deletions: number } | null = null;
-    const finish = () => {
-      if (current?.path) summaries.push(current);
-      current = null;
-    };
+  extractFileSummaries(diffText: string): DiffViewer['fileSummaries'] {
+    return this.summaries(DiffParser.summarizeFiles(DiffParser.parseUnified(diffText || '')).files);
+  }
 
-    for (const line of DiffParser.parseUnified(diffText || '')) {
-      if (line.kind === 'file') {
-        finish();
-        current = {
-          path: this.extractPath(line.content) || line.content,
-          oldPath: null,
-          status: 'M',
-          additions: 0,
-          deletions: 0
-        };
-        continue;
-      }
-      if (!current) continue;
-      if (line.kind === 'add') current.additions += 1;
-      else if (line.kind === 'del') current.deletions += 1;
-      else if (line.kind === 'header') {
-        if (line.content.startsWith('new file mode ')) current.status = 'A';
-        else if (line.content.startsWith('deleted file mode ')) current.status = 'D';
-        else if (line.content.startsWith('rename from ')) {
-          current.status = 'R';
-          current.oldPath = line.content.slice('rename from '.length);
-        } else if (line.content.startsWith('rename to ')) {
-          current.status = 'R';
-          current.path = line.content.slice('rename to '.length);
-        }
-      }
-    }
-    finish();
-    return summaries;
+  summaries(files: DiffFileSummary[]): DiffViewer['fileSummaries'] {
+    return files.map(({ path, oldPath, status, additions, deletions }) => ({
+      path, oldPath, status, additions, deletions
+    }));
   }
 
   scrollToFile(path: string): boolean {
