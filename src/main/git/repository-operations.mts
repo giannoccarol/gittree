@@ -597,16 +597,54 @@ export class RepositoryOperations {
     return resolved;
   }
 
-  /** Resolves several `--git-path` names with a single Git process. */
+  /** `--git-path` answers by name, valid while `.git` points to `gitPathLocation`. */
+  private gitPathCache = new Map<string, string>();
+
+  private gitPathLocation: string | null = null;
+
+  /**
+   * Resolves several `--git-path` names with a single Git process. The
+   * answers depend only on where `.git` points, so they are reused until it
+   * changes.
+   */
   async resolveGitPaths(names: string[]): Promise<string[]> {
+    const location = this.gitDirectoryLocation();
+    if (location !== this.gitPathLocation) {
+      this.gitPathCache.clear();
+      this.gitPathLocation = location;
+    }
+    const cached = names.map(name => this.gitPathCache.get(name));
+    if (location !== null && cached.every((value): value is string => value !== undefined)) {
+      return cached;
+    }
     const raw = await this.git.raw(['rev-parse', ...names.flatMap(name => ['--git-path', name])]);
     const values = raw.split(/\r?\n/).map(value => value.trim()).filter(Boolean);
     if (values.length !== names.length) {
       throw new Error('Could not resolve the Git operation state paths');
     }
-    return values.map(value => (
+    const resolved = values.map(value => (
       nodePath.isAbsolute(value) ? value : nodePath.resolve(this.repoPath, value)
     ));
+    if (location !== null && location === this.gitPathLocation) {
+      names.forEach((name, index) => this.gitPathCache.set(name, resolved[index]));
+    }
+    return resolved;
+  }
+
+  /**
+   * Identifies where `.git` points. A linked worktree or submodule keeps its
+   * Git directory in a `.git` file, which changes when the worktree is
+   * re-created or repaired. Null (missing `.git`, symbolic link) disables the
+   * cache.
+   */
+  private gitDirectoryLocation(): string | null {
+    const dotGit = nodePath.join(this.repoPath, '.git');
+    try {
+      const stat = nodeFs.lstatSync(dotGit);
+      if (stat.isDirectory()) return 'directory';
+      if (stat.isFile()) return `file:${nodeFs.readFileSync(dotGit, 'utf8')}`;
+    } catch { /* Git reports a missing repository itself. */ }
+    return null;
   }
 
   async readStageBlob(stage: number, relativePath: string): Promise<Buffer> {
