@@ -461,7 +461,7 @@ async function measureRenderer(page) {
       document.getElementById('agent-card-list').getBoundingClientRect();
       const agentCardsMs = performance.now() - agentCardsStartedAt;
       const renderedAgentCards = document.querySelectorAll('.agent-card').length;
-      agentPanel.ensureTerminal();
+      await agentPanel.ensureTerminal();
       const terminalStartedAt = performance.now();
       for (let index = 0; index < 6000; index += 1) agentPanel.terminal?.write(`line ${index}\r\n`);
       const terminalWriteMs = performance.now() - terminalStartedAt;

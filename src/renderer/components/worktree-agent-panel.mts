@@ -38,6 +38,30 @@ type TerminalLike = {
 declare const Terminal: new (options?: Record<string, unknown>) => TerminalLike;
 declare const FitAddon: { FitAddon: new () => { fit: () => void } };
 
+/** xterm is about 0.5 MB and only the agent terminal uses it: load it on first use. */
+const TERMINAL_SCRIPTS = [
+  '../../node_modules/@xterm/xterm/lib/xterm.js',
+  '../../node_modules/@xterm/addon-fit/lib/addon-fit.js'
+];
+let terminalScripts: Promise<void> | null = null;
+
+export function loadTerminalScripts(doc: Document = document): Promise<void> {
+  if (typeof Terminal !== 'undefined') return Promise.resolve();
+  if (!terminalScripts) {
+    terminalScripts = TERMINAL_SCRIPTS.reduce<Promise<void>>((loaded, source) => loaded.then(() => (
+      new Promise<void>((resolve, reject) => {
+        const script = doc.createElement('script');
+        script.src = source;
+        script.onload = () => resolve();
+        script.onerror = () => reject(new Error(`Could not load ${source}`));
+        doc.head.appendChild(script);
+      })
+    )), Promise.resolve());
+    terminalScripts.catch(() => { terminalScripts = null; });
+  }
+  return terminalScripts;
+}
+
 export class WorktreeAgentPanel {
   app: GitTreeApp;
   repo: { path?: string } | null;
@@ -413,10 +437,16 @@ export class WorktreeAgentPanel {
     });
     document.getElementById('agent-activity')!.classList.toggle('is-hidden', terminal);
     document.getElementById('agent-terminal')!.classList.toggle('is-hidden', !terminal);
-    if (terminal) this.ensureTerminal();
+    if (terminal) void this.ensureTerminal();
   }
 
-  ensureTerminal(): void {
+  async ensureTerminal(): Promise<void> {
+    if (this.terminal) return;
+    try {
+      await loadTerminalScripts();
+    } catch {
+      return;
+    }
     if (this.terminal || typeof Terminal === 'undefined') return;
     this.terminal = new Terminal({
       scrollback: 1000,

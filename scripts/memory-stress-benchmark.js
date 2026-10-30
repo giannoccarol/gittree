@@ -218,7 +218,7 @@ async function applyStress(page, options) {
         updatedAt: new Date(Date.now() - index * 1000).toISOString()
       }));
       panel.renderAgents();
-      panel.ensureTerminal();
+      await panel.ensureTerminal();
       for (let index = 0; index < configuration.terminalLines; index += 1) {
         panel.terminal?.write(`terminal ${index} ${repeat('o', Math.min(256, configuration.subjectBytes))}\r\n`);
       }
