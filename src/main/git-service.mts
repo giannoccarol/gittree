@@ -18,6 +18,43 @@ import type { CreateWorktreeOptions } from './git/repository-worktrees.mts';
 
 const execFileAsync = promisify(execFile);
 
+const CONFIG_LIST_ARGS = ['config', '--list', '-z', '--show-scope'];
+
+/** `include.path` and `includeIf.<condition>.path`, as `git config --list` spells them. */
+const INCLUDE_KEY = /^include(?:if\..*)?\.path$/;
+
+interface ConfigEntry {
+  scope: string;
+  key: string;
+  value: string;
+}
+
+/** Parses `git config --list -z --show-scope`: `scope\0key\nvalue\0` per entry. */
+function parseScopedConfig(raw: string): ConfigEntry[] {
+  const fields = raw.split('\0');
+  const entries: ConfigEntry[] = [];
+  for (let index = 0; index + 1 < fields.length; index += 2) {
+    const entry = fields[index + 1];
+    const separator = entry.indexOf('\n');
+    entries.push({
+      scope: fields[index],
+      key: separator === -1 ? entry : entry.slice(0, separator),
+      // A key written without `=` has no value; `git config --get` prints it empty.
+      value: separator === -1 ? '' : entry.slice(separator + 1)
+    });
+  }
+  return entries;
+}
+
+/** What `git config [--<scope>] --get <key>` returns: the last value, trimmed. */
+function lastConfigValue(entries: ConfigEntry[], key: string, scope?: string): string {
+  for (let index = entries.length - 1; index >= 0; index -= 1) {
+    const entry = entries[index];
+    if (entry.key === key && (!scope || entry.scope === scope)) return entry.value.trim();
+  }
+  return '';
+}
+
 export class GitService {
   private session: RepositorySession;
 
@@ -858,8 +895,27 @@ export class GitService {
   }
 
   async getIdentity() {
-    const [localName, localEmail, globalName, globalEmail, signingKey, signingFormat, gpgSign] =
-      await Promise.all([
+    let values: string[];
+    try {
+      // `--local` and `--global` lookups ignore include directives, unscoped
+      // lookups follow them: list without includes, and again with them only
+      // when the configuration actually has one.
+      const direct = parseScopedConfig(await this.git.raw([...CONFIG_LIST_ARGS, '--no-includes']));
+      const effective = direct.some(entry => INCLUDE_KEY.test(entry.key))
+        ? parseScopedConfig(await this.git.raw(CONFIG_LIST_ARGS))
+        : direct;
+      values = [
+        lastConfigValue(direct, 'user.name', 'local'),
+        lastConfigValue(direct, 'user.email', 'local'),
+        lastConfigValue(direct, 'user.name', 'global'),
+        lastConfigValue(direct, 'user.email', 'global'),
+        lastConfigValue(effective, 'user.signingkey'),
+        lastConfigValue(effective, 'gpg.format'),
+        lastConfigValue(effective, 'commit.gpgsign')
+      ];
+    } catch {
+      // A listing fails as a whole; per-key lookups keep their own failures.
+      values = await Promise.all([
         this.getConfigValue('user.name', 'local'),
         this.getConfigValue('user.email', 'local'),
         this.getConfigValue('user.name', 'global'),
@@ -868,6 +924,9 @@ export class GitService {
         this.getConfigValue('gpg.format'),
         this.getConfigValue('commit.gpgSign')
       ]);
+    }
+    const [localName, localEmail, globalName, globalEmail, signingKey, signingFormat, gpgSign] =
+      values;
     const name = localName || globalName;
     const email = localEmail || globalEmail;
     const format = signingFormat || 'openpgp';
