@@ -141,31 +141,46 @@ export class GitService {
     }
   }
 
+  /**
+   * One `for-each-ref` walk gives the refs, their tracking counts, the
+   * checked-out branch and the target of origin/HEAD. It stays on plumbing:
+   * `git branch --format` translates `%(upstream:track)`, which would break
+   * the ahead/behind parsing in non-English locales.
+   */
   async getBranchMetadata() {
     try {
-      const [rawBranches, current, remoteDetails] = await Promise.all([
+      const [rawBranches, remoteDetails] = await Promise.all([
         this.git.raw([
           'for-each-ref',
-          '--format=%(refname)\t%(refname:short)\t%(objectname)\t%(upstream:short)\t%(upstream:remotename)\t%(upstream:track,nobracket)',
+          '--format=%(refname)\t%(refname:short)\t%(objectname)\t%(upstream:short)\t%(upstream:remotename)\t%(upstream:track,nobracket)\t%(HEAD)\t%(refname:lstrip=2)\t%(symref:short)',
           'refs/heads',
           'refs/remotes'
         ]),
-        this.git.branchLocal().then(result => result.current || ''),
         this.git.getRemotes(true)
       ]);
 
-      const branches = rawBranches
+      const rows = rawBranches
         .split(/\r?\n/)
         .filter(Boolean)
-        .map(line => {
-          const [
-            fullName,
-            name,
-            commit,
-            upstream = '',
-            upstreamRemote = '',
-            upstreamTrack = ''
-          ] = line.split('\t');
+        .map(line => line.split('\t'));
+      // `git branch -v` names the checked-out branch by `refname:lstrip=2`.
+      const headRow = rows.find(([fullName, , , , , , head]) => (
+        head === '*' && fullName.startsWith('refs/heads/')
+      ));
+      // Detached, rebasing and unborn HEADs keep the name `git branch -v` reports.
+      const current = headRow
+        ? headRow[7]
+        : await this.git.branchLocal().then(result => result.current || '');
+
+      const branches = rows
+        .map(([
+          fullName,
+          name,
+          commit,
+          upstream = '',
+          upstreamRemote = '',
+          upstreamTrack = ''
+        ]) => {
           const kind = fullName.startsWith('refs/remotes/') ? 'remote' : 'local';
           const remote = kind === 'remote'
             ? name.split('/')[0]
@@ -200,15 +215,21 @@ export class GitService {
         branches.filter(branch => branch.kind === 'local').map(branch => branch.name)
       );
       let defaultBranch = '';
-      try {
-        const symbolic = (await this.git.raw([
-          'symbolic-ref',
-          '--quiet',
-          '--short',
-          'refs/remotes/origin/HEAD'
-        ])).trim();
-        defaultBranch = symbolic.replace(/^origin\//, '');
-      } catch { /* remote HEAD may be missing */ }
+      const originHead = rows.find(([fullName]) => fullName === 'refs/remotes/origin/HEAD');
+      if (originHead) {
+        defaultBranch = (originHead[8] || '').replace(/^origin\//, '');
+      } else {
+        // for-each-ref skips a dangling origin/HEAD; symbolic-ref still names its target.
+        try {
+          const symbolic = (await this.git.raw([
+            'symbolic-ref',
+            '--quiet',
+            '--short',
+            'refs/remotes/origin/HEAD'
+          ])).trim();
+          defaultBranch = symbolic.replace(/^origin\//, '');
+        } catch { /* remote HEAD may be missing */ }
+      }
       if (!defaultBranch) {
         if (localNames.has('main')) defaultBranch = 'main';
         else if (localNames.has('master')) defaultBranch = 'master';
