@@ -8,6 +8,13 @@ function isInside(rootPath: string, candidatePath: string): boolean {
   return relative === '' || (!relative.startsWith(`..${path.sep}`) && relative !== '..' && !path.isAbsolute(relative));
 }
 
+function intersects(left: Set<string>, right: Set<string>): boolean {
+  for (const key of left) {
+    if (right.has(key)) return true;
+  }
+  return false;
+}
+
 import type { RepositoryEntry } from './repo-manager.mts';
 
 export interface RepositoryStore {
@@ -36,6 +43,7 @@ export class RepositoryWorkspace {
   activeScanRoots: Map<string, string>;
   gitServices: Map<string, GitService>;
   queues: Map<string, RepositoryQueue>;
+  private entryKeys: Map<string, Set<string>>;
 
   constructor({
     repoStore,
@@ -52,6 +60,7 @@ export class RepositoryWorkspace {
     this.activeScanRoots = new Map();
     this.gitServices = new Map();
     this.queues = new Map();
+    this.entryKeys = new Map();
   }
 
   resolvePath(repoPath: unknown, { mustExist = true } = {}): string {
@@ -103,13 +112,33 @@ export class RepositoryWorkspace {
     return keys;
   }
 
+  /**
+   * Remembered keys of registered entries only nominate a candidate; the
+   * candidate is resolved again before it is trusted, so a retargeted link
+   * never keeps its old identity. A miss resolves every entry again, exactly
+   * like an uncached lookup.
+   */
   managedRepository(repoPath: unknown): RepositoryEntry | null {
     const requestedKeys = this.pathKeys(repoPath);
     if (requestedKeys.size === 0) return null;
-    return this.repositories().find(repository => {
-      const managedKeys = this.pathKeys(repository.path);
-      return [...managedKeys].some(key => requestedKeys.has(key));
-    }) || null;
+    const repositories = this.repositories();
+    const candidate = repositories.find(repository => {
+      const remembered = this.entryKeys.get(repository.path);
+      return remembered !== undefined && intersects(remembered, requestedKeys);
+    });
+    if (candidate && intersects(this.resolveEntryKeys(candidate.path), requestedKeys)) {
+      return candidate;
+    }
+    this.entryKeys.clear();
+    return repositories.find(repository => (
+      intersects(this.resolveEntryKeys(repository.path), requestedKeys)
+    )) || null;
+  }
+
+  private resolveEntryKeys(entryPath: string): Set<string> {
+    const keys = this.pathKeys(entryPath);
+    this.entryKeys.set(entryPath, keys);
+    return keys;
   }
 
   isManaged(repoPath: unknown): boolean {
@@ -242,7 +271,8 @@ export class RepositoryWorkspace {
   getGitService(repoPath: unknown): GitService {
     this.assertManaged(repoPath);
     const canonical = this.resolvePath(repoPath);
-    const serviceKey = this.pathKey(canonical);
+    // `canonical` is already resolved; resolving it again would return it unchanged.
+    const serviceKey = this.platform === 'win32' ? canonical.toLocaleLowerCase('en-US') : canonical;
     if (this.gitServices.has(serviceKey)) return this.gitServices.get(serviceKey)!;
     const commonDirectory = this.resolveCommonDirectory(canonical);
     const queueKey = this.pathKey(commonDirectory);

@@ -183,3 +183,130 @@ test('Linked worktrees share one observable operation queue', async t => {
   await Promise.all([first, second]);
   assert.deepEqual(order, ['primary:start', 'primary:end', 'linked']);
 });
+
+function linkOrSkip(t, target, link) {
+  try {
+    fs.symlinkSync(target, link, process.platform === 'win32' ? 'junction' : 'dir');
+    return true;
+  } catch {
+    t.skip('symbolic links are not available on this filesystem');
+    return false;
+  }
+}
+
+test('Repository workspace re-resolves a registered link after it is retargeted', t => {
+  const first = createRepository();
+  const second = createRepository();
+  t.after(() => first.cleanup());
+  t.after(() => second.cleanup());
+  const link = path.join(first.root, 'current');
+  if (!linkOrSkip(t, first.repository, link)) return;
+  const workspace = new RepositoryWorkspace({
+    repoStore: new MemoryRepoStore([{ path: link, name: 'current' }])
+  });
+
+  assert.equal(workspace.isManaged(first.repository), true);
+  assert.equal(workspace.isManaged(link), true);
+  assert.equal(workspace.getGitService(link).repoPath, fs.realpathSync.native(first.repository));
+
+  fs.unlinkSync(link);
+  linkOrSkip(t, second.repository, link);
+  assert.equal(workspace.isManaged(first.repository), false);
+  assert.throws(() => workspace.assertManaged(first.repository), /not opened/);
+  assert.equal(workspace.isManaged(second.repository), true);
+  assert.equal(workspace.isManaged(link), true);
+});
+
+test('Repository workspace admits a request link only while it resolves to a registered repository', t => {
+  const registered = createRepository();
+  const unregistered = createRepository();
+  t.after(() => registered.cleanup());
+  t.after(() => unregistered.cleanup());
+  const workspace = new RepositoryWorkspace({ repoStore: new MemoryRepoStore() });
+  workspace.addTrustedRepository(registered.repository);
+  const link = path.join(unregistered.root, 'request-link');
+  if (!linkOrSkip(t, registered.repository, link)) return;
+
+  assert.equal(workspace.isManaged(link), true);
+  assert.equal(workspace.getGitService(link), workspace.getGitService(registered.repository));
+
+  fs.unlinkSync(link);
+  linkOrSkip(t, unregistered.repository, link);
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    assert.equal(workspace.isManaged(link), false);
+    assert.equal(workspace.isManaged(unregistered.repository), false);
+    assert.throws(() => workspace.getGitService(link), /not opened/);
+  }
+  assert.equal(workspace.isManaged(registered.repository), true);
+});
+
+test('Repository workspace recognizes a registered path created as a link after a lookup', t => {
+  const target = createRepository();
+  t.after(() => target.cleanup());
+  const entry = path.join(target.root, 'created-later');
+  const workspace = new RepositoryWorkspace({
+    repoStore: new MemoryRepoStore([{ path: entry, name: 'created-later' }])
+  });
+  assert.equal(workspace.isManaged(entry), true);
+  assert.equal(workspace.isManaged(target.repository), false);
+
+  if (!linkOrSkip(t, target.repository, entry)) return;
+  assert.equal(workspace.isManaged(target.repository), true);
+});
+
+test('Repository workspace forgets removed repositories and keeps store order', t => {
+  const first = createRepository();
+  const second = createRepository();
+  t.after(() => first.cleanup());
+  t.after(() => second.cleanup());
+  const store = new MemoryRepoStore();
+  const workspace = new RepositoryWorkspace({ repoStore: store });
+  workspace.addTrustedRepository(first.repository);
+  workspace.addTrustedRepository(second.repository);
+  const firstPath = fs.realpathSync.native(first.repository);
+  // A second spelling of the first repository registered after it.
+  store.repositories.push({ path: `${firstPath}${path.sep}`, name: 'duplicate' });
+
+  assert.equal(workspace.managedRepository(first.repository).path, firstPath);
+  assert.equal(workspace.remove(first.repository), true);
+  assert.equal(workspace.managedRepository(first.repository).name, 'duplicate');
+  assert.equal(workspace.remove(first.repository), true);
+  assert.equal(workspace.isManaged(first.repository), false);
+  assert.throws(() => workspace.getGitService(first.repository), /not opened/);
+  assert.equal(workspace.isManaged(second.repository), true);
+});
+
+test('Repository workspace reports a missing registered repository like before', t => {
+  const fixture = createRepository();
+  t.after(() => fixture.cleanup());
+  const missing = path.join(fixture.root, 'missing');
+  const workspace = new RepositoryWorkspace({
+    repoStore: new MemoryRepoStore([{ path: missing, name: 'missing' }])
+  });
+  assert.equal(workspace.isManaged(missing), true);
+  assert.throws(() => workspace.getGitService(missing), { code: 'ENOENT' });
+  assert.equal(workspace.remove(missing), true);
+});
+
+test('Repository workspace resolves only the request and its match on a managed lookup', t => {
+  const fixtures = Array.from({ length: 12 }, () => createRepository());
+  t.after(() => fixtures.forEach(fixture => fixture.cleanup()));
+  let calls = 0;
+  const realpathSync = (value, options) => {
+    calls += 1;
+    return fs.realpathSync.native(value, options);
+  };
+  realpathSync.native = realpathSync;
+  const workspace = new RepositoryWorkspace({
+    repoStore: new MemoryRepoStore(),
+    fileSystem: { ...fs, realpathSync }
+  });
+  fixtures.forEach(fixture => workspace.addTrustedRepository(fixture.repository));
+  const last = fixtures[fixtures.length - 1].repository;
+  workspace.getGitService(last);
+
+  calls = 0;
+  workspace.assertManaged(last);
+  workspace.getGitService(last);
+  assert.ok(calls <= 5, `expected at most 5 realpath calls, got ${calls}`);
+});
