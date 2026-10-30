@@ -639,35 +639,44 @@ export class GraphView {
     this.renderedRange = [start, end];
     this.renderedDataRevision = this.dataRevision;
 
+    // Rows stay attached while scrolling: detaching and re-inserting every
+    // visible row forces style and layout for all of them on each frame.
     const reusableRows = new Map<string, HTMLElement>();
-    const spareRows: HTMLElement[] = [];
-    if (!force) {
-      for (const element of this.layer.children) {
-        if (element.classList.contains('graph-row') && (element as HTMLElement).dataset.hash) {
-          reusableRows.set((element as HTMLElement).dataset.hash ?? '', element as HTMLElement);
-        }
-      }
-      const visibleHashes = new Set(
-        this.visibleRows.slice(start, end).map(row => row.commit.hash)
-      );
-      for (const [hash, element] of reusableRows) {
-        if (!visibleHashes.has(hash)) spareRows.push(element);
-      }
+    const strayNodes: Element[] = [];
+    for (const element of this.layer.children) {
+      const hash = (element as HTMLElement).dataset?.hash;
+      if (element.classList.contains('graph-row') && hash) reusableRows.set(hash, element as HTMLElement);
+      else strayNodes.push(element);
     }
-    const fragment = document.createDocumentFragment();
+    // An empty state or other placeholder never shares the layer with rows.
+    for (const node of strayNodes) this.layer.removeChild(node);
+
+    const visibleHashes = new Set<string>();
+    for (let index = start; index < end; index += 1) {
+      visibleHashes.add(this.visibleRows[index].commit.hash);
+    }
+    const spareRows: HTMLElement[] = [];
+    for (const [hash, element] of reusableRows) {
+      if (force || !visibleHashes.has(hash)) spareRows.push(element);
+    }
+    if (force) reusableRows.clear();
+
+    const createdRows: HTMLElement[] = [];
+    let nextSpare = 0;
     for (let index = start; index < end; index += 1) {
       const layoutRow = this.visibleRows[index];
-      const hash = layoutRow.commit.hash;
-      const reusable = reusableRows.get(hash);
-      const row = reusable || spareRows.pop();
-      if (row) {
-        this.updateRow(row, layoutRow, index);
-        fragment.appendChild(row);
-      } else {
-        fragment.appendChild(this.createRow(layoutRow, index));
-      }
+      const row = reusableRows.get(layoutRow.commit.hash) || spareRows[nextSpare++];
+      if (row) this.updateRow(row, layoutRow, index);
+      else createdRows.push(this.createRow(layoutRow, index));
     }
-    this.layer.replaceChildren(fragment);
+    for (let index = nextSpare; index < spareRows.length; index += 1) {
+      this.layer.removeChild(spareRows[index]);
+    }
+    if (createdRows.length) {
+      const fragment = document.createDocumentFragment();
+      fragment.append(...createdRows);
+      this.layer.appendChild(fragment);
+    }
   }
 
   createRow(layoutRow: GraphLayoutRow, index: number): HTMLElement {

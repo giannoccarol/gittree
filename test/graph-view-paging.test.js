@@ -231,3 +231,66 @@ test('ref badges and lanes reach the rendered rows', async () => {
     harness.restore();
   }
 });
+
+test('scrolling keeps visible rows attached and only swaps rows that leave the viewport', async () => {
+  const commits = createHistory(1300);
+  const refs = createRefs(commits);
+  const harness = createGraphViewHarness(GraphView, { bridge: createLegacyBridge(commits, refs) });
+  try {
+    const { view, container } = harness;
+    await view.load('/repo');
+    container.scrollTop = view.rowHeight * 40;
+    view.renderViewport();
+    const [startBefore] = view.renderedRange;
+    const before = new Map(view.layer.children.map(row => [row.dataset.hash, row]));
+    const removed = [];
+    const originalRemove = view.layer.removeChild;
+    view.layer.removeChild = node => { removed.push(node); return originalRemove(node); };
+    let replaced = 0;
+    const originalReplace = view.layer.replaceChildren;
+    view.layer.replaceChildren = (...nodes) => { replaced += 1; return originalReplace(...nodes); };
+
+    container.scrollTop += view.rowHeight * 3;
+    view.renderViewport();
+
+    assert.equal(replaced, 0);
+    assert.equal(removed.length, 0, 'rows leaving the viewport are reused for rows entering it');
+    const after = view.layer.children;
+    assert.equal(after.length, before.size);
+    const kept = after.filter(row => before.get(row.dataset.hash) === row);
+    assert.equal(view.renderedRange[0] - startBefore, 3);
+    assert.equal(kept.length, before.size - 3);
+    const renderedHashes = after.map(row => row.dataset.hash).sort();
+    const expectedHashes = view.visibleRows
+      .slice(view.renderedRange[0], view.renderedRange[1])
+      .map(row => row.commit.hash)
+      .sort();
+    assert.deepEqual(renderedHashes, expectedHashes);
+    for (const row of after) {
+      const index = view.visibleRows.findIndex(item => item.commit.hash === row.dataset.hash);
+      assert.equal(row.style.transform, `translateY(${index * view.rowHeight}px)`);
+    }
+  } finally {
+    harness.restore();
+  }
+});
+
+test('a forced render reuses row elements and replaces a placeholder', async () => {
+  const commits = createHistory(1300);
+  const refs = createRefs(commits);
+  const harness = createGraphViewHarness(GraphView, { bridge: createLegacyBridge(commits, refs) });
+  try {
+    const { view } = harness;
+    await view.load('/repo');
+    const rowsBefore = new Set(view.layer.children);
+    view.layer.appendChild(view.emptyState('ph-git-commit', 'stale placeholder'));
+
+    view.renderViewport(true);
+
+    assert.ok(view.layer.children.every(row => row.classList.contains('graph-row')));
+    assert.ok(view.layer.children.every(row => rowsBefore.has(row)));
+    assert.ok(view.layer.children.some(row => row.dataset.hash === commits[0].hash));
+  } finally {
+    harness.restore();
+  }
+});
