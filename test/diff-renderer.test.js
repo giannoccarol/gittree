@@ -144,3 +144,34 @@ test('large patches are virtualized and render only rows near the viewport', () 
     restore();
   }
 });
+
+test('virtualized scrolling rebuilds rows only when the viewport nears the rendered edge', () => {
+  const { body, renderer, restore } = setup({ clientHeight: 600 });
+  try {
+    renderer.render(largePatch(5000), { mode: 'unified', wordLevel: true });
+    const layer = body.children[0];
+    let rebuilds = 0;
+    const replace = layer.replaceChildren;
+    layer.replaceChildren = (...nodes) => { rebuilds += 1; return replace(...nodes); };
+
+    for (let step = 1; step <= 9; step += 1) {
+      body.scrollTop = step * 22;
+      renderer.renderVirtualViewport();
+    }
+    assert.equal(rebuilds, 0, 'small scroll steps reuse the rendered rows');
+
+    body.scrollTop = 400;
+    renderer.renderVirtualViewport();
+    assert.equal(rebuilds, 1);
+    const first = findAll(layer, 'diff-line')
+      .map(line => Number.parseFloat(line.style.top))
+      .sort((left, right) => left - right)[0];
+    assert.ok(first <= 400 - 220, 'rows above the viewport stay rendered after a rebuild');
+
+    body.clientHeight = 800;
+    renderer.renderVirtualViewport();
+    assert.equal(rebuilds, 2, 'a resized viewport renders again');
+  } finally {
+    restore();
+  }
+});

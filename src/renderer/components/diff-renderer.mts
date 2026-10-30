@@ -40,6 +40,8 @@ export class DiffRenderer {
   virtualFiles: VirtualDiffFile[];
   virtualMode: string | null;
   virtualScrollRaf: number;
+  /** Scroll range covered by the rendered rows, including overscan. */
+  virtualWindow: { top: number; bottom: number; viewportHeight: number } | null;
   fileTargetTimer: number;
   handleVirtualScroll: () => void;
 
@@ -54,6 +56,7 @@ export class DiffRenderer {
     this.virtualFiles = [];
     this.virtualMode = null;
     this.virtualScrollRaf = 0;
+    this.virtualWindow = null;
     this.fileTargetTimer = 0;
     this.handleVirtualScroll = () => {
       if (this.virtualScrollRaf) return;
@@ -253,13 +256,30 @@ export class DiffRenderer {
   renderVirtualViewport(force = false): void {
     if (!this.virtualLayer || !this.virtualMode) return;
     const viewportHeight = this.body.clientHeight || 640;
+    const scrollTop = this.body.scrollTop;
+    // Rows are rebuilt only when the viewport gets within half the overscan of
+    // the rendered edge, not on every scroll frame.
+    const margin = VIRTUAL_DIFF_OVERSCAN_PX / 2;
+    const rendered = this.virtualWindow;
+    if (
+      !force &&
+      rendered &&
+      rendered.viewportHeight === viewportHeight &&
+      scrollTop - rendered.top >= margin &&
+      rendered.bottom - (scrollTop + viewportHeight) >= margin
+    ) return;
     const visible = DiffLayout.visibleFiles<VirtualDiffRow>(
       this.virtualFiles,
-      this.body.scrollTop,
+      scrollTop,
       viewportHeight,
       VIRTUAL_DIFF_OVERSCAN_PX
     );
     if (!force && !visible.length) return;
+    this.virtualWindow = {
+      top: scrollTop - VIRTUAL_DIFF_OVERSCAN_PX,
+      bottom: scrollTop + viewportHeight + VIRTUAL_DIFF_OVERSCAN_PX,
+      viewportHeight
+    };
 
     const fragment = document.createDocumentFragment();
     for (const file of visible) {
@@ -275,12 +295,12 @@ export class DiffRenderer {
       const rowsBeforeViewport = Math.ceil(VIRTUAL_DIFF_OVERSCAN_PX / file.rowHeight);
       const firstRow = Math.max(
         0,
-        Math.floor((this.body.scrollTop - file.top - file.contentTop) / file.rowHeight)
+        Math.floor((scrollTop - file.top - file.contentTop) / file.rowHeight)
           - rowsBeforeViewport
       );
       const lastRow = Math.min(
         file.rows.length,
-        Math.ceil((this.body.scrollTop + viewportHeight - file.top - file.contentTop)
+        Math.ceil((scrollTop + viewportHeight - file.top - file.contentTop)
           / file.rowHeight) + rowsBeforeViewport
       );
       let previousRemoval: string | null = null;
@@ -400,6 +420,7 @@ export class DiffRenderer {
     this.virtualLayer = null;
     this.virtualFiles = [];
     this.virtualMode = null;
+    this.virtualWindow = null;
   }
 
   splitLine(line: UnifiedRow, side: string, counterpart?: string): HTMLElement {
