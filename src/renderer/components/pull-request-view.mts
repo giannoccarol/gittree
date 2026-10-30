@@ -189,7 +189,9 @@ export class PullRequestView {
   setActive(active: boolean): void {
     this.active = active;
     this.root.classList.toggle('is-hidden', !active);
-    if (active && this.repoPath) {
+    // While another repository is opening, load() for that repository follows;
+    // reloading the previous one would only query the provider for nothing.
+    if (active && this.repoPath && this.app.isCurrentRepo(this.repoPath)) {
       this.refreshStatus().then(() => this.reload());
     }
   }
