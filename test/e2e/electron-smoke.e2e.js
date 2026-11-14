@@ -484,7 +484,15 @@ test('Electron runs a fixture agent in an isolated worktree and blocks dirty rem
   });
 
   application = await electron.launch({
-    args: [projectRoot, '--no-sandbox', `--user-data-dir=${fixture.userData}`, fixture.deepLink],
+    args: [
+      projectRoot,
+      '--no-sandbox',
+      // The drawer hides its Activity/Terminal tabs below 1040 CSS px; the
+      // Windows runner's 1024x768 screen needs the smaller scale to show them.
+      '--force-device-scale-factor=0.75',
+      `--user-data-dir=${fixture.userData}`,
+      fixture.deepLink
+    ],
     cwd: projectRoot,
     env: { ...process.env, PATH: `${cliRoot}${path.delimiter}${process.env.PATH || ''}` }
   });
@@ -499,6 +507,7 @@ test('Electron runs a fixture agent in an isolated worktree and blocks dirty rem
   step('launched');
   await page.locator('.repo-tab.active').waitFor({ timeout: 60000 });
   await page.waitForFunction(() => document.getElementById('workspace')?.dataset.loadState === 'settled');
+  assert.ok(await page.evaluate(() => window.innerWidth > 1040), 'the drawer tabs need a window wider than 1040 px');
   step('repository settled');
   await page.locator('[data-sidebar-mode="agents"]').click();
   await page.locator('#btn-new-agent-session').click();
