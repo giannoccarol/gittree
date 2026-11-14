@@ -1,0 +1,76 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <title>GitTree</title>
+  <!-- Source of icon.png and build/icons/*.png: regenerate them with scripts/generate-icons.sh -->
+  <defs>
+    <!-- Tile: GitTree navy, a little lighter in the top-left corner -->
+    <linearGradient id="bg" x1="96" y1="96" x2="928" y2="928" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#2b679e"/>
+      <stop offset="0.55" stop-color="#173b68"/>
+      <stop offset="1" stop-color="#0a1f3a"/>
+    </linearGradient>
+    <radialGradient id="bgLight" cx="240" cy="180" r="560" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#cfe3ff" stop-opacity="0.18"/>
+      <stop offset="1" stop-color="#cfe3ff" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="rim" x1="512" y1="96" x2="512" y2="928" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.18"/>
+      <stop offset="0.5" stop-color="#ffffff" stop-opacity="0.03"/>
+      <stop offset="1" stop-color="#000000" stop-opacity="0.12"/>
+    </linearGradient>
+    <radialGradient id="floor">
+      <stop offset="0" stop-color="#030b16" stop-opacity="0.45"/>
+      <stop offset="1" stop-color="#030b16" stop-opacity="0"/>
+    </radialGradient>
+
+    <!-- Trunk: cool white -->
+    <linearGradient id="trunk" x1="380" y1="300" x2="450" y2="730" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="0.55" stop-color="#e6edf7"/>
+      <stop offset="1" stop-color="#a9cdfb"/>
+    </linearGradient>
+    <linearGradient id="trunkShade" x1="370" y1="0" x2="460" y2="0" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.35"/>
+      <stop offset="1" stop-color="#7aa7d8" stop-opacity="0.22"/>
+    </linearGradient>
+    <!-- Branch: GitTree blue, darker where it tucks under the trunk -->
+    <linearGradient id="branch" x1="610" y1="300" x2="430" y2="690" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#a9cdfb"/>
+      <stop offset="0.5" stop-color="#6aa5ea"/>
+      <stop offset="1" stop-color="#2f6fb2"/>
+    </linearGradient>
+    <linearGradient id="branchShade" x1="470" y1="0" x2="560" y2="0" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#06152a" stop-opacity="0.40"/>
+      <stop offset="1" stop-color="#06152a" stop-opacity="0"/>
+    </linearGradient>
+
+    <filter id="shadow" filterUnits="userSpaceOnUse" x="0" y="0" width="1024" height="1024">
+      <feGaussianBlur stdDeviation="18"/>
+    </filter>
+
+    <!-- The branch leaves the trunk low and rises beside it -->
+    <path id="branchPath" d="M414 668 C414 540 610 540 610 418 L610 318"/>
+    <path id="trunkPath" d="M414 298 L414 718"/>
+  </defs>
+
+  <!-- Tile -->
+  <rect x="96" y="96" width="832" height="832" rx="196" fill="url(#bg)"/>
+  <rect x="96" y="96" width="832" height="832" rx="196" fill="url(#bgLight)"/>
+  <rect x="97.5" y="97.5" width="829" height="829" rx="194.5" fill="none" stroke="url(#rim)" stroke-width="3"/>
+
+  <!-- Soft shadow under the mark (a blurred, offset copy) -->
+  <g filter="url(#shadow)" opacity="0.55" transform="translate(0 22)" fill="none" stroke="#030b16" stroke-width="104" stroke-linecap="round">
+    <use xlink:href="#branchPath"/>
+    <use xlink:href="#trunkPath"/>
+  </g>
+  <ellipse cx="414" cy="778" rx="96" ry="13" fill="url(#floor)"/>
+
+  <!-- Mark: a branch tucked under the trunk -->
+  <g fill="none" stroke-width="104" stroke-linecap="round">
+    <use xlink:href="#branchPath" stroke="url(#branch)"/>
+    <use xlink:href="#branchPath" stroke="url(#branchShade)"/>
+    <!-- Shadow the trunk casts on the branch -->
+    <use xlink:href="#trunkPath" stroke="#06152a" stroke-opacity="0.45" filter="url(#shadow)" transform="translate(14 8)"/>
+    <use xlink:href="#trunkPath" stroke="url(#trunk)"/>
+    <use xlink:href="#trunkPath" stroke="url(#trunkShade)"/>
+  </g>
+</svg>

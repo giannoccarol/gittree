@@ -37,7 +37,7 @@ fs.copyFileSync(source, destination);
 // Linux packaging (deb/pacman/AppImage) installs every size found in build/icons
 // as hicolor icons. Keep the largest size in sync so the launcher shows the
 // icon also when the app is closed (KDE looks up 16..512, not just 1024).
-// ponytail: exact copy, no resampling — regenerate smaller sizes only if icon changes.
+// Exact copy, no resampling: when the icon changes, run scripts/generate-icons.sh.
 try {
   fs.mkdirSync(path.join(buildDirectory, "icons"), { recursive: true });
   fs.copyFileSync(source, path.join(buildDirectory, "icons", `${metadata.width}x${metadata.height}.png`));
