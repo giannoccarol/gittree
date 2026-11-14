@@ -16,6 +16,17 @@ function startConflictedMerge(cwd, branch) {
   assert.throws(() => git(cwd, 'merge', '--no-ff', branch));
 }
 
+/**
+ * Asserts that a resolved Git path names `file` inside `directory`. Git and
+ * the operating system may spell one location differently (macOS `/var` and
+ * `/private/var`, Windows 8.3 short names and forward slashes), so the
+ * existing directories are compared by their canonical location.
+ */
+function assertGitPath(actual, directory, file) {
+  assert.equal(path.basename(actual), file);
+  assert.equal(fs.realpathSync.native(path.dirname(actual)), fs.realpathSync.native(directory));
+}
+
 function createConflictingBranches(t) {
   const repo = createRepository();
   t.after(() => repo.cleanup());
@@ -46,10 +57,7 @@ test('a reused service sees operations started after its first state read', asyn
     canContinue: false
   });
   await assert.rejects(service.getWorkingTree(), /pending merge/);
-  assert.equal(
-    await service.resolveGitPath('MERGE_HEAD'),
-    path.join(fs.realpathSync(repo.repository), '.git', 'MERGE_HEAD')
-  );
+  assertGitPath(await service.resolveGitPath('MERGE_HEAD'), path.join(repo.repository, '.git'), 'MERGE_HEAD');
   await service.abortOperation();
   assert.equal((await service.getOperationState()).type, null);
 });
@@ -87,10 +95,7 @@ test('state paths still resolve when the repository metadata is missing or repla
 
   // `.git` becomes a gitdir file that points at the moved directory.
   fs.writeFileSync(path.join(repo.repository, '.git'), `gitdir: ${moved}\n`);
-  assert.equal(
-    await service.resolveGitPath('MERGE_HEAD'),
-    path.join(fs.realpathSync(moved), 'MERGE_HEAD')
-  );
+  assertGitPath(await service.resolveGitPath('MERGE_HEAD'), moved, 'MERGE_HEAD');
   repo.git('switch', '-c', 'ours');
   commit(repo.repository, 'conflict.txt', 'ours\n', 'ours');
   startConflictedMerge(repo.repository, 'theirs');
