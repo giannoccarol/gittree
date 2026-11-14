@@ -1,3 +1,10 @@
+# [1.2.0](https://github.com/giannoccarol/gittree/compare/v1.1.0...v1.2.0) (2026-11-14)
+
+
+### Features
+
+* **brand:** redesign the application icon ([bea4d1a](https://github.com/giannoccarol/gittree/commit/bea4d1a55f57d6dfedd23cbcb16283022b80d9fc))
+
 # [1.1.0](https://github.com/giannoccarol/gittree/compare/v1.0.0...v1.1.0) (2026-10-30)
 
 
