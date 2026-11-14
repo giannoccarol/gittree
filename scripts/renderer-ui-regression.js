@@ -70,6 +70,16 @@ async function waitForRenderer(client) {
 
 const contractExpression = `
 (async () => {
+  // Polls a condition once per frame: debounced input and IPC-backed dialogs
+  // settle asynchronously, so a synchronous check would race them.
+  const settle = async (condition, timeout = 2000) => {
+    const deadline = performance.now() + timeout;
+    while (!condition()) {
+      if (performance.now() > deadline) return false;
+      await new Promise(resolve => requestAnimationFrame(resolve));
+    }
+    return true;
+  };
   const activeTabs = [...document.querySelectorAll('.repo-tab.active')];
   const projectLoadingIndicators = [
     document.getElementById('branch-loading-indicator'),
@@ -337,6 +347,9 @@ const contractExpression = `
   let graphKeyboardResize = false;
 
   if (messageHandle && graphView.columnWidths) {
+    // Start from the default width, so a width persisted near the maximum
+    // cannot clamp the resize; the original widths are restored below.
+    graphView.resizeColumn('message', graphView.columnDefinitions.message.default, false);
     const initialWidth = graphView.columnWidths.message;
     messageHandle.dispatchEvent(new PointerEvent('pointerdown', {
       bubbles: true,
@@ -392,6 +405,7 @@ const contractExpression = `
   if (historyQuery && filterHash) {
     historyQuery.value = filterHash;
     historyQuery.dispatchEvent(new Event('input', { bubbles: true }));
+    await settle(() => graphView.filters.query === filterHash);
   }
   const historyFilterWorks =
     Boolean(filterHash) &&
@@ -574,9 +588,10 @@ const contractExpression = `
     );
     const createTagItem = commitContext.element.querySelector('[data-action="create-tag"]');
     createTagItem?.click();
-    commitTagDialogOpens =
+    commitTagDialogOpens = await settle(() =>
       !document.getElementById('modal-overlay').classList.contains('is-hidden') &&
-      Boolean(document.querySelector('.tag-create-dialog'));
+      Boolean(document.querySelector('.tag-create-dialog'))
+    );
     document.querySelector('.tag-create-dialog [data-cancel]')?.click();
     commitContext.close();
   }
