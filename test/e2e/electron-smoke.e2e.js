@@ -8,6 +8,29 @@ const { createElectronFixture } = require('../helpers/electron-fixture');
 
 const projectRoot = path.resolve(__dirname, '..', '..');
 
+/**
+ * Closes the application, but never waits forever: a child process that
+ * keeps Electron alive (an agent pseudo-terminal on Windows) would otherwise
+ * hang the test run until the CI job times out without a result.
+ */
+async function closeApplication(application, timeout = 15000) {
+  let timer;
+  const closed = await Promise.race([
+    application.close().then(() => true, () => true),
+    new Promise(resolve => { timer = setTimeout(() => resolve(false), timeout); })
+  ]);
+  clearTimeout(timer);
+  if (closed) return;
+  const pid = application.process()?.pid;
+  console.error(`Electron did not close within ${timeout} ms; killing process tree ${pid}`);
+  if (!pid) return;
+  if (process.platform === 'win32') {
+    require('node:child_process').spawnSync('taskkill', ['/PID', String(pid), '/T', '/F']);
+  } else {
+    try { process.kill(pid, 'SIGKILL'); } catch { /* already gone */ }
+  }
+}
+
 async function capturePanelMotion(page, buttonId, panelId, expectedAnimationName, expectedClass) {
   await page.evaluate(({ id, expectedName, lifecycleClass }) => {
     const panel = document.getElementById(id);
@@ -425,7 +448,7 @@ test('Electron welcome is full-bleed and exposes only About and updates', async 
   assert.equal(await page.locator('#btn-export-diagnostics').count(), 0);
 });
 
-test('Electron runs a fixture agent in an isolated worktree and blocks dirty removal', async t => {
+test('Electron runs a fixture agent in an isolated worktree and blocks dirty removal', { timeout: 240000 }, async t => {
   const fixture = createElectronFixture();
   const agentRoot = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'gittree-agent-root-'));
   const cliRoot = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'gittree-agent-cli-'));
@@ -451,8 +474,10 @@ test('Electron runs a fixture agent in an isolated worktree and blocks dirty rem
   }));
   let application;
   const processOutput = [];
+  // Progress markers show in the test output where a hang or failure happened.
+  const step = name => t.diagnostic(`agent e2e: ${name}`);
   t.after(async () => {
-    if (application) await application.close().catch(() => {});
+    if (application) await closeApplication(application);
     fixture.cleanup();
     fs.rmSync(agentRoot, { recursive: true, force: true });
     fs.rmSync(cliRoot, { recursive: true, force: true });
@@ -471,8 +496,10 @@ test('Electron runs a fixture agent in an isolated worktree and blocks dirty rem
     const mainLog = fs.existsSync(logPath) ? fs.readFileSync(logPath, 'utf8').slice(-4000) : '';
     console.error('Agent E2E renderer crashed', { processOutput, mainLog });
   });
+  step('launched');
   await page.locator('.repo-tab.active').waitFor({ timeout: 60000 });
   await page.waitForFunction(() => document.getElementById('workspace')?.dataset.loadState === 'settled');
+  step('repository settled');
   await page.locator('[data-sidebar-mode="agents"]').click();
   await page.locator('#btn-new-agent-session').click();
   await page.getByRole('dialog').waitFor();
@@ -481,11 +508,13 @@ test('Electron runs a fixture agent in an isolated worktree and blocks dirty rem
   await page.locator('select[name="adapterId"]').selectOption('codex');
   await page.getByRole('dialog').locator('button[type="submit"]').click();
   await page.locator('#agent-drawer:not(.is-hidden)').waitFor({ timeout: 60000 });
+  step('agent started');
   await page.locator('[data-agent-drawer-tab="terminal"]').click();
   await page.waitForFunction(() => (
     window.app.components.worktreeAgents.terminal?.buffer.active
       .getLine(0)?.translateToString(true).includes('fixture-ready')
   ), null, { timeout: 60000 });
+  step('terminal ready');
   await page.locator('.xterm-helper-textarea').click();
   await page.keyboard.type('hello');
   await page.keyboard.press('Enter');
@@ -501,6 +530,7 @@ test('Electron runs a fixture agent in an isolated worktree and blocks dirty rem
     return window.gitTree.resizeAgentTerminal(taskId, 110, 35);
   });
   assert.equal(resizeResult?.error, undefined);
+  step('terminal echoed and resized');
   await page.locator('#btn-stop-agent').click();
   await page.waitForFunction(() => {
     const panel = window.app.components.worktreeAgents;
@@ -512,9 +542,11 @@ test('Electron runs a fixture agent in an isolated worktree and blocks dirty rem
     const task = panel.tasks.find(item => item.id === panel.selectedTaskId);
     return { repositoryPath: task.repositoryPath, worktreePath: task.worktreePath };
   });
+  step('agent stopped');
   fs.writeFileSync(path.join(paths.worktreePath, 'dirty-agent.txt'), 'dirty\n');
   const removal = await page.evaluate(({ repositoryPath, worktreePath }) => (
     window.gitTree.removeWorktree(repositoryPath, worktreePath)
   ), paths);
   assert.match(removal.error, /modified|untracked|working tree|worktree/i);
+  step('dirty removal blocked');
 });
